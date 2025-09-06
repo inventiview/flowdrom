@@ -21,6 +21,38 @@
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
 
+    /* Clean title styles */
+    .title-container {
+      text-align: center;
+      margin-bottom: 30px;
+      padding: 25px 0;
+      background: linear-gradient(135deg, #2a5eb2 0%, #1a4a8a 100%);
+      border-radius: 12px;
+    }
+
+    .main-title {
+      font-size: 3.5em;
+      font-weight: 800;
+      margin: 0;
+      color: white;
+      letter-spacing: 3px;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .subtitle {
+      font-size: 1.2em;
+      color: rgba(255,255,255,0.9);
+      margin: 10px 0 0 0;
+      font-weight: 300;
+      letter-spacing: 2px;
+    }
+
+    .tech-accent {
+      font-family: 'Courier New', monospace;
+      color: #87ceeb;
+      font-weight: bold;
+    }
+
     h1 {
       color: #2a5eb2;
       margin-bottom: 20px;
@@ -203,6 +235,12 @@
 </head>
 <body>
   <div class="container">
+    <!-- Clean title section -->
+    <div class="title-container">
+      <h1 class="main-title">FLOWDROM</h1>
+      <p class="subtitle">Transaction Sequence <span class="tech-accent">[DIAGRAMS]</span></p>
+    </div>
+
     <div class="input-section">
       <label for="input"><strong>Transaction JSON (use "|" for line breaks):</strong></label>
       <textarea id="input" rows="30">{
