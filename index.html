@@ -252,6 +252,15 @@
     <div id="svg-container"></div>
   </div>
 
-   <script src="src/js/main.js"></script>
+   <!-- load your renderer -->
+  <script src="src/js/main.js"></script>
+
+   <!-- trigger auto-render on page load -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      renderGraph();
+    });
+  </script>
+
   </body>
 </html>
