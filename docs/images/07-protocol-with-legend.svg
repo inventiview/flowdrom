@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Original JSON Input:
+{
+  "title": "Protocol Messages with Legend",
+  "lanes": [
+    "Client",
+    "Router",
+    "Server"
+  ],
+  "messages": [
+    {
+      "path": "Client->Router",
+      "label": "HTTP GET",
+      "color": "blue",
+      "style": "solid",
+      "fromTime": 0,
+      "toTime": 1
+    },
+    {
+      "path": "Router->Server",
+      "label": "Forward",
+      "color": "green",
+      "style": "solid",
+      "fromTime": 1,
+      "toTime": 2
+    },
+    {
+      "path": "Server->Router",
+      "label": "HTTP 200",
+      "color": "purple",
+      "style": "solid",
+      "fromTime": 2,
+      "toTime": 3
+    },
+    {
+      "path": "Router->Client",
+      "label": "Response",
+      "color": "orange",
+      "style": "solid",
+      "fromTime": 3,
+      "toTime": 4
+    }
+  ],
+  "legend": [
+    {
+      "label": "Request",
+      "color": "blue",
+      "style": "solid"
+    },
+    {
+      "label": "Forward",
+      "color": "green",
+      "style": "solid"
+    },
+    {
+      "label": "Response",
+      "color": "purple",
+      "style": "solid"
+    },
+    {
+      "label": "Delivery",
+      "color": "orange",
+      "style": "solid"
+    }
+  ]
+}
+-->
+<svg xmlns="http://www.w3.org/2000/svg" id="temp-graph" width="1280" height="350" viewBox="0 0 1280 350" preserveAspectRatio="xMidYMid meet" style="max-width: 100%; height: auto;"><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: 'Segoe UI', sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+  </style><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: 'Segoe UI', sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+  </style><defs><marker id="arrowhead-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="blue"/></marker><marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="green"/></marker><marker id="arrowhead-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="purple"/></marker><marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="orange"/></marker><marker id="legend-arrowhead-0-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="blue"/></marker><marker id="legend-arrowhead-1-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="green"/></marker><marker id="legend-arrowhead-2-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="purple"/></marker><marker id="legend-arrowhead-3-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="orange"/></marker></defs><line x1="150" y1="70" x2="150" y2="270" stroke="#333" stroke-width="3"/><text x="150" y="60" class="lane-label">Client</text><line x1="400" y1="70" x2="400" y2="270" stroke="#333" stroke-width="3"/><text x="400" y="60" class="lane-label">Router</text><line x1="650" y1="70" x2="650" y2="270" stroke="#333" stroke-width="3"/><text x="650" y="60" class="lane-label">Server</text><text x="520" y="25" text-anchor="middle" font-size="24" font-weight="bold" fill="#2a5eb2">Protocol Messages with Legend</text><line x1="50" y1="70" x2="700" y2="70" class="grid-line"/><text x="30" y="75" class="time-label">T0</text><line x1="50" y1="120" x2="700" y2="120" class="grid-line"/><text x="30" y="125" class="time-label">T1</text><line x1="50" y1="170" x2="700" y2="170" class="grid-line"/><text x="30" y="175" class="time-label">T2</text><line x1="50" y1="220" x2="700" y2="220" class="grid-line"/><text x="30" y="225" class="time-label">T3</text><line x1="50" y1="270" x2="700" y2="270" class="grid-line"/><text x="30" y="275" class="time-label">T4</text><g/><g><line x1="150" y1="70" x2="400" y2="120" stroke="blue" class="arrow" marker-end="url(#arrowhead-blue)"/><line x1="400" y1="120" x2="650" y2="170" stroke="green" class="arrow" marker-end="url(#arrowhead-green)"/><line x1="650" y1="170" x2="400" y2="220" stroke="purple" class="arrow" marker-end="url(#arrowhead-purple)"/><line x1="400" y1="220" x2="150" y2="270" stroke="orange" class="arrow" marker-end="url(#arrowhead-orange)"/><g transform="rotate(11.309932474020213, 275, 95)"><rect x="232.99375915527344" y="81.5250015258789" width="84.01250457763672" height="26" class="label-box"/><text x="275" y="95" class="message-label" fill="blue" text-anchor="middle"><tspan x="275" dy="0">HTTP GET</tspan></text></g><g transform="rotate(11.309932474020213, 525, 145)"><rect x="487.4937438964844" y="131.52500915527344" width="75.60879135131836" height="26" class="label-box"/><text x="525" y="145" class="message-label" fill="green" text-anchor="middle"><tspan x="525" dy="0">Forward</tspan></text></g><g transform="rotate(348.69006752597977, 525, 195)"><rect x="482.9937438964844" y="181.52500915527344" width="84.01250457763672" height="26" class="label-box"/><text x="525" y="195" class="message-label" fill="purple" text-anchor="middle"><tspan x="525" dy="0">HTTP 200</tspan></text></g><g transform="rotate(348.69006752597977, 275, 245)"><rect x="232.99375915527344" y="231.52500915527344" width="84.01250457763672" height="26" class="label-box"/><text x="275" y="245" class="message-label" fill="orange" text-anchor="middle"><tspan x="275" dy="0">Response</tspan></text></g></g><rect x="900" y="40" width="340" height="318" class="legend-box"/><text x="1070" y="30" text-anchor="middle" class="legend-title" font-size="24">Legend</text><line x1="920" y1="100" x2="1220" y2="100" stroke="blue" class="arrow" marker-end="url(#legend-arrowhead-0-blue)"/><g><rect x="1007.2875366210938" y="79.3125" width="125.42500305175781" height="38.39999961853027" class="label-box"/><text x="1070" y="100" class="legend-label" fill="blue" text-anchor="middle"><tspan x="1070" dy="0">Request</tspan></text></g><line x1="920" y1="167" x2="1220" y2="167" stroke="green" class="arrow" marker-end="url(#legend-arrowhead-1-green)"/><g><rect x="1007.2875366210938" y="146.3125" width="126.01582336425781" height="38.39999961853027" class="label-box"/><text x="1070" y="167" class="legend-label" fill="green" text-anchor="middle"><tspan x="1070" dy="0">Forward</tspan></text></g><line x1="920" y1="234" x2="1220" y2="234" stroke="purple" class="arrow" marker-end="url(#legend-arrowhead-2-purple)"/><g><rect x="999.1875" y="213.3125" width="141.625" height="38.39999961853027" class="label-box"/><text x="1070" y="234" class="legend-label" fill="purple" text-anchor="middle"><tspan x="1070" dy="0">Response</tspan></text></g><line x1="920" y1="301" x2="1220" y2="301" stroke="orange" class="arrow" marker-end="url(#legend-arrowhead-3-orange)"/><g><rect x="999.1875" y="280.3125" width="141.625" height="38.39999961853027" class="label-box"/><text x="1070" y="301" class="legend-label" fill="orange" text-anchor="middle"><tspan x="1070" dy="0">Delivery</tspan></text></g></svg>

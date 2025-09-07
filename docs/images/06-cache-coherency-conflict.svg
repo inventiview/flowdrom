@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Original JSON Input:
+{
+  "title": "Cache Coherency Conflict",
+  "lanes": [
+    "CA0",
+    "_D2D_",
+    "CA1",
+    "HN",
+    "HN.MEM"
+  ],
+  "laneGroups": [
+    {
+      "label": "Caching Agents",
+      "lanes": [
+        "CA0",
+        "CA1"
+      ]
+    },
+    {
+      "label": "System",
+      "lanes": [
+        "HN",
+        "HN.MEM"
+      ]
+    }
+  ],
+  "infoBoxes": [
+    {
+      "lane": "HN",
+      "time": 2,
+      "text": "Conflict detected|serialize requests"
+    }
+  ],
+  "messages": [
+    {
+      "path": "CA0->HN",
+      "label": "Read|Unique(A)",
+      "color": "red",
+      "style": "solid",
+      "fromTime": 0,
+      "toTime": 1
+    },
+    {
+      "path": "CA1->HN",
+      "label": "Read|Unique(A)",
+      "color": "red",
+      "style": "dashed",
+      "fromTime": 1,
+      "toTime": 2
+    },
+    {
+      "path": "HN->HN.MEM",
+      "label": "Rd(A)",
+      "color": "orange",
+      "style": "solid",
+      "fromTime": 2,
+      "toTime": 3
+    },
+    {
+      "path": "HN.MEM->HN",
+      "label": "D(A)",
+      "color": "orange",
+      "style": "solid",
+      "fromTime": 4,
+      "toTime": 5.5
+    },
+    {
+      "path": "HN->CA1",
+      "label": "SnpInvalid(A)",
+      "color": "purple",
+      "style": "solid",
+      "fromTime": 2,
+      "toTime": 4
+    },
+    {
+      "path": "CA1->HN",
+      "label": "SnpResp(I)",
+      "color": "green",
+      "style": "solid",
+      "fromTime": 4,
+      "toTime": 6
+    },
+    {
+      "path": "HN->CA0",
+      "label": "CompData(A)",
+      "color": "blue",
+      "style": "solid",
+      "fromTime": 6,
+      "toTime": 7
+    },
+    {
+      "path": "HN->CA1",
+      "label": "Retry",
+      "color": "red",
+      "style": "dashed",
+      "fromTime": 7,
+      "toTime": 8
+    }
+  ],
+  "states": [
+    {
+      "lane": "CA0",
+      "label": "I->UD",
+      "color": "yellow",
+      "fromTime": 0,
+      "toTime": 0.5
+    },
+    {
+      "lane": "CA1",
+      "label": "S->I",
+      "color": "orange",
+      "fromTime": 4,
+      "toTime": 4.5
+    },
+    {
+      "lane": "HN",
+      "label": "Conflict",
+      "color": "red",
+      "fromTime": 2,
+      "toTime": 7
+    }
+  ]
+}
+-->
+<svg xmlns="http://www.w3.org/2000/svg" id="temp-graph" width="1253.3333333333335" height="580" viewBox="0 0 1253.3333333333335 580" preserveAspectRatio="xMidYMid meet" style="max-width: 100%; height: auto;"><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: 'Segoe UI', sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+  </style><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: 'Segoe UI', sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+  </style><defs><marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="red"/></marker><marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="orange"/></marker><marker id="arrowhead-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="purple"/></marker><marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="green"/></marker><marker id="arrowhead-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="blue"/></marker></defs><line x1="150" y1="100" x2="150" y2="500" stroke="#333" stroke-width="3"/><text x="150" y="90" class="lane-label">CA0</text><line x1="400" y1="100" x2="400" y2="500" stroke="LightGray" stroke-width="16"/><text x="400" y="90" class="lane-label">_D2D_</text><line x1="650" y1="100" x2="650" y2="500" stroke="#333" stroke-width="3"/><text x="650" y="90" class="lane-label">CA1</text><line x1="900" y1="100" x2="900" y2="500" stroke="#333" stroke-width="3"/><text x="900" y="90" class="lane-label">HN</text><line x1="983.3333333333334" y1="100" x2="983.3333333333334" y2="500" stroke="#666" stroke-width="2"/><text x="983.3333333333334" y="90" class="sub-lane-label" fill="#2a5eb2">HN.MEM</text><text x="400" y="60" class="lane-group-label" opacity="1">Caching Agents</text><path d="&#10;          M 150 80&#10;          L 150 72.5&#10;          L 390 72.5&#10;          L 400 65&#10;          L 410 72.5&#10;          L 650 72.5&#10;          L 650 80&#10;        " class="lane-group-bracket" opacity="1"/><text x="941.6666666666667" y="60" class="lane-group-label" opacity="1">System</text><path d="&#10;          M 900 80&#10;          L 900 72.5&#10;          L 931.6666666666667 72.5&#10;          L 941.6666666666667 65&#10;          L 951.6666666666667 72.5&#10;          L 983.3333333333334 72.5&#10;          L 983.3333333333334 80&#10;        " class="lane-group-bracket" opacity="1"/><text x="506.66666666666674" y="25" text-anchor="middle" font-size="24" font-weight="bold" fill="#2a5eb2">Cache Coherency Conflict</text><line x1="50" y1="100" x2="1033.3333333333335" y2="100" class="grid-line"/><text x="30" y="105" class="time-label">T0</text><line x1="50" y1="150" x2="1033.3333333333335" y2="150" class="grid-line"/><text x="30" y="155" class="time-label">T1</text><line x1="50" y1="200" x2="1033.3333333333335" y2="200" class="grid-line"/><text x="30" y="205" class="time-label">T2</text><line x1="50" y1="250" x2="1033.3333333333335" y2="250" class="grid-line"/><text x="30" y="255" class="time-label">T3</text><line x1="50" y1="300" x2="1033.3333333333335" y2="300" class="grid-line"/><text x="30" y="305" class="time-label">T4</text><line x1="50" y1="350" x2="1033.3333333333335" y2="350" class="grid-line"/><text x="30" y="355" class="time-label">T5</text><line x1="50" y1="400" x2="1033.3333333333335" y2="400" class="grid-line"/><text x="30" y="405" class="time-label">T6</text><line x1="50" y1="450" x2="1033.3333333333335" y2="450" class="grid-line"/><text x="30" y="455" class="time-label">T7</text><line x1="50" y1="500" x2="1033.3333333333335" y2="500" class="grid-line"/><text x="30" y="505" class="time-label">T8</text><line x1="900" y1="200" x2="945" y2="141.7998275756836" class="info-box-line"/><rect x="945" y="118.59965515136719" width="106.30194854736328" height="46.40034484863281" class="info-box"/><text x="953" y="138.5996551513672" class="info-box-text"><tspan x="953" dy="0">Conflict detected</tspan><tspan x="953" dy="14.399999999999999">serialize requests</tspan></text><g><g><rect x="125" width="50" y="100" height="25" fill="#ffffcc" stroke="#aaa" stroke-width="1" rx="4" ry="4"/><text x="150" y="116.5" class="state-label"><tspan x="150" dy="0">I-&gt;UD</tspan></text></g><g><rect x="625" width="50" y="300" height="25" fill="#ffddcc" stroke="#aaa" stroke-width="1" rx="4" ry="4"/><text x="650" y="316.5" class="state-label"><tspan x="650" dy="0">S-&gt;I</tspan></text></g><g><rect x="875.2003269195557" width="49.59934616088867" y="200" height="250" fill="#ffcccc" stroke="#aaa" stroke-width="1" rx="4" ry="4"/><text x="900" y="329" class="state-label"><tspan x="900" dy="0">Conflict</tspan></text></g></g><g><line x1="150" y1="100" x2="900" y2="150" stroke="red" class="arrow" marker-end="url(#arrowhead-red)"/><line x1="650" y1="150" x2="900" y2="200" stroke="red" class="arrow dashed" marker-end="url(#arrowhead-red)"/><line x1="900" y1="200" x2="983.3333333333334" y2="250" stroke="orange" class="arrow" marker-end="url(#arrowhead-orange)"/><line x1="983.3333333333334" y1="300" x2="900" y2="375" stroke="orange" class="arrow" marker-end="url(#arrowhead-orange)"/><line x1="900" y1="200" x2="650" y2="300" stroke="purple" class="arrow" marker-end="url(#arrowhead-purple)"/><line x1="650" y1="300" x2="900" y2="400" stroke="green" class="arrow" marker-end="url(#arrowhead-green)"/><line x1="900" y1="400" x2="150" y2="450" stroke="blue" class="arrow" marker-end="url(#arrowhead-blue)"/><line x1="900" y1="450" x2="650" y2="500" stroke="red" class="arrow dashed" marker-end="url(#arrowhead-red)"/><g transform="rotate(3.8140748342903548, 525, 125)"><rect x="477.71160888671875" y="102.52479553222656" width="93.77679443359375" height="44" class="label-box"/><text x="525" y="116" class="message-label" fill="red" text-anchor="middle"><tspan x="525" dy="0">Read</tspan><tspan x="525" dy="18">Unique(A)</tspan></text></g><g transform="rotate(11.309932474020213, 775, 175)"><rect x="727.7116088867188" y="152.52479553222656" width="93.77679443359375" height="44" class="label-box"/><text x="775" y="166" class="message-label" fill="red" text-anchor="middle"><tspan x="775" dy="0">Read</tspan><tspan x="775" dy="18">Unique(A)</tspan></text></g><g transform="rotate(30.96375653207351, 941.6666666666667, 225)"><rect x="913.1724243164062" y="211.5247802734375" width="56.988468170166016" height="26" class="label-box"/><text x="941.6666666666667" y="225" class="message-label" fill="orange" text-anchor="middle"><tspan x="941.6666666666667" dy="0">Rd(A)</tspan></text></g><g transform="rotate(318.0127875041834, 941.6666666666667, 337.5)"><rect x="916.8724975585938" y="324.0247802734375" width="48.788291931152344" height="26" class="label-box"/><text x="941.6666666666667" y="337.5" class="message-label" fill="orange" text-anchor="middle"><tspan x="941.6666666666667" dy="0">D(A)</tspan></text></g><g transform="rotate(338.1985905136482, 775, 250)"><rect x="710.5175170898438" y="236.5247802734375" width="128.96501922607422" height="26" class="label-box"/><text x="775" y="250" class="message-label" fill="purple" text-anchor="middle"><tspan x="775" dy="0">SnpInvalid(A)</tspan></text></g><g transform="rotate(21.80140948635181, 775, 350)"><rect x="724.0115356445312" y="336.5247802734375" width="101.97693634033203" height="26" class="label-box"/><text x="775" y="350" class="message-label" fill="green" text-anchor="middle"><tspan x="775" dy="0">SnpResp(I)</tspan></text></g><g transform="rotate(356.18592516570965, 525, 425)"><rect x="469.51141357421875" y="411.5247802734375" width="110.97713470458984" height="26" class="label-box"/><text x="525" y="425" class="message-label" fill="blue" text-anchor="middle"><tspan x="525" dy="0">CompData(A)</tspan></text></g><g transform="rotate(348.69006752597977, 775, 475)"><rect x="746.5057373046875" y="461.5247802734375" width="57.58760452270508" height="26" class="label-box"/><text x="775" y="475" class="message-label" fill="red" text-anchor="middle"><tspan x="775" dy="0">Retry</tspan></text></g></g></svg>

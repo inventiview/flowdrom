@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Original JSON Input:
+{
+  "title": "Unordered traffic",
+  "lanes": [
+    "CA0",
+    "HN"
+  ],
+  "messages": [
+    {
+      "path": "CA0->HN",
+      "label": "RdData(k1)",
+      "color": "red",
+      "style": "solid",
+      "fromTime": 0,
+      "toTime": 4
+    },
+    {
+      "path": "HN->CA0",
+      "label": "Data (k1)",
+      "color": "red",
+      "style": "solid",
+      "fromTime": 4,
+      "toTime": 6
+    },
+    {
+      "path": "CA0->HN",
+      "label": "RdData(k2)",
+      "color": "purple",
+      "style": "solid",
+      "fromTime": 0.5,
+      "toTime": 2
+    },
+    {
+      "path": "HN->CA0",
+      "label": "Data (k2)",
+      "color": "purple",
+      "style": "solid",
+      "fromTime": 2,
+      "toTime": 7
+    }
+  ]
+}
+-->
+<svg xmlns="http://www.w3.org/2000/svg" id="temp-graph" width="670" height="500" viewBox="0 0 670 500" preserveAspectRatio="xMidYMid meet" style="max-width: 100%; height: auto;"><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: 'Segoe UI', sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+  </style><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: 'Segoe UI', sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+  </style><defs><marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="red"/></marker><marker id="arrowhead-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="purple"/></marker></defs><line x1="150" y1="70" x2="150" y2="420" stroke="#333" stroke-width="3"/><text x="150" y="60" class="lane-label">CA0</text><line x1="400" y1="70" x2="400" y2="420" stroke="#333" stroke-width="3"/><text x="400" y="60" class="lane-label">HN</text><text x="215" y="25" text-anchor="middle" font-size="24" font-weight="bold" fill="#2a5eb2">Unordered traffic</text><line x1="50" y1="70" x2="450" y2="70" class="grid-line"/><text x="30" y="75" class="time-label">T0</text><line x1="50" y1="120" x2="450" y2="120" class="grid-line"/><text x="30" y="125" class="time-label">T1</text><line x1="50" y1="170" x2="450" y2="170" class="grid-line"/><text x="30" y="175" class="time-label">T2</text><line x1="50" y1="220" x2="450" y2="220" class="grid-line"/><text x="30" y="225" class="time-label">T3</text><line x1="50" y1="270" x2="450" y2="270" class="grid-line"/><text x="30" y="275" class="time-label">T4</text><line x1="50" y1="320" x2="450" y2="320" class="grid-line"/><text x="30" y="325" class="time-label">T5</text><line x1="50" y1="370" x2="450" y2="370" class="grid-line"/><text x="30" y="375" class="time-label">T6</text><line x1="50" y1="420" x2="450" y2="420" class="grid-line"/><text x="30" y="425" class="time-label">T7</text><g/><g><line x1="150" y1="70" x2="400" y2="270" stroke="red" class="arrow" marker-end="url(#arrowhead-red)"/><line x1="400" y1="270" x2="150" y2="370" stroke="red" class="arrow" marker-end="url(#arrowhead-red)"/><line x1="150" y1="95" x2="400" y2="170" stroke="purple" class="arrow" marker-end="url(#arrowhead-purple)"/><line x1="400" y1="170" x2="150" y2="420" stroke="purple" class="arrow" marker-end="url(#arrowhead-purple)"/><g transform="rotate(38.659808254090095, 275, 170)"><rect x="223.9875030517578" y="156.52500915527344" width="102.0250015258789" height="26" class="label-box"/><text x="275" y="170" class="message-label" fill="red" text-anchor="middle"><tspan x="275" dy="0">RdData(k1)</tspan></text></g><g transform="rotate(338.1985905136482, 275, 320)"><rect x="227.6875" y="306.5249938964844" width="93.82500457763672" height="26" class="label-box"/><text x="275" y="320" class="message-label" fill="red" text-anchor="middle"><tspan x="275" dy="0">Data (k1)</tspan></text></g><g transform="rotate(16.69924423399362, 275, 132.5)"><rect x="223.9875030517578" y="119.0250015258789" width="102.0250015258789" height="26" class="label-box"/><text x="275" y="132.5" class="message-label" fill="purple" text-anchor="middle"><tspan x="275" dy="0">RdData(k2)</tspan></text></g><g transform="rotate(315, 299.74873734152914, 270.25126265847086)"><rect x="252.43623734152914" y="256.77625655495524" width="93.82500457763672" height="26" class="label-box"/><text x="299.74873734152914" y="270.25126265847086" class="message-label" fill="purple" text-anchor="middle"><tspan x="299.74873734152914" dy="0">Data (k2)</tspan></text></g></g></svg>

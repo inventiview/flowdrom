@@ -1,0 +1,12 @@
+title: Flowdrom Documentation
+description: Transaction Timing Diagram Generator
+theme: minima
+markdown: kramdown
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+
+# Enable SVG rendering
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge

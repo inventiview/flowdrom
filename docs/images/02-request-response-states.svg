@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Original JSON Input:
+{
+  "title": "Request-Response with States",
+  "lanes": [
+    "Client",
+    "Server"
+  ],
+  "messages": [
+    {
+      "path": "Client->Server",
+      "label": "Request",
+      "color": "blue",
+      "style": "solid",
+      "fromTime": 0,
+      "toTime": 1
+    },
+    {
+      "path": "Server->Client",
+      "label": "Response",
+      "color": "green",
+      "style": "solid",
+      "fromTime": 2,
+      "toTime": 3
+    }
+  ],
+  "states": [
+    {
+      "lane": "Client",
+      "label": "Waiting",
+      "color": "yellow",
+      "fromTime": 1,
+      "toTime": 3
+    },
+    {
+      "lane": "Server",
+      "label": "Processing",
+      "color": "orange",
+      "fromTime": 1,
+      "toTime": 2
+    }
+  ]
+}
+-->
+<svg xmlns="http://www.w3.org/2000/svg" id="temp-graph" width="670" height="300" viewBox="0 0 670 300" preserveAspectRatio="xMidYMid meet" style="max-width: 100%; height: auto;"><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: 'Segoe UI', sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+  </style><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: 'Segoe UI', sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+  </style><defs><marker id="arrowhead-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="blue"/></marker><marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="green"/></marker></defs><line x1="150" y1="70" x2="150" y2="220" stroke="#333" stroke-width="3"/><text x="150" y="60" class="lane-label">Client</text><line x1="400" y1="70" x2="400" y2="220" stroke="#333" stroke-width="3"/><text x="400" y="60" class="lane-label">Server</text><text x="215" y="25" text-anchor="middle" font-size="24" font-weight="bold" fill="#2a5eb2">Request-Response with States</text><line x1="50" y1="70" x2="450" y2="70" class="grid-line"/><text x="30" y="75" class="time-label">T0</text><line x1="50" y1="120" x2="450" y2="120" class="grid-line"/><text x="30" y="125" class="time-label">T1</text><line x1="50" y1="170" x2="450" y2="170" class="grid-line"/><text x="30" y="175" class="time-label">T2</text><line x1="50" y1="220" x2="450" y2="220" class="grid-line"/><text x="30" y="225" class="time-label">T3</text><g><g><rect x="125.32333946228027" width="49.35332107543945" y="120" height="100" fill="#ffffcc" stroke="#aaa" stroke-width="1" rx="4" ry="4"/><text x="150" y="174" class="state-label"><tspan x="150" dy="0">Waiting</tspan></text></g><g><rect x="366.65156173706055" width="66.6968765258789" y="120" height="50" fill="#ffddcc" stroke="#aaa" stroke-width="1" rx="4" ry="4"/><text x="400" y="149" class="state-label"><tspan x="400" dy="0">Processing</tspan></text></g></g><g><line x1="150" y1="70" x2="400" y2="120" stroke="blue" class="arrow" marker-end="url(#arrowhead-blue)"/><line x1="400" y1="170" x2="150" y2="220" stroke="green" class="arrow" marker-end="url(#arrowhead-green)"/><g transform="rotate(11.309932474020213, 275, 95)"><rect x="237.49375915527344" y="81.5250015258789" width="75.60879135131836" height="26" class="label-box"/><text x="275" y="95" class="message-label" fill="blue" text-anchor="middle"><tspan x="275" dy="0">Request</tspan></text></g><g transform="rotate(348.69006752597977, 275, 195)"><rect x="232.99375915527344" y="181.52500915527344" width="84.01250457763672" height="26" class="label-box"/><text x="275" y="195" class="message-label" fill="green" text-anchor="middle"><tspan x="275" dy="0">Response</tspan></text></g></g></svg>
