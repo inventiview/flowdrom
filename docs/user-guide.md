@@ -86,6 +86,7 @@ Since flowdrom is not just a sequence graph generator but actually has timing pa
 ```
 
 ![Unordered traffic](images/01-unordered-traffic.svg)
+
 Here source and target sequences are different. 
 
 ### 2. Adding States
@@ -333,7 +334,7 @@ Here's an advanced example showing 2 new features of lanes by using a different 
 1. Sublanes: these are handy to show a sub component interaction with the system. A lane may have 2 sublanes (one on each side).
 The Syntax for a sublane is to use one of the lane names and add a "." concatination either on the left or the right. For example for Lane="HN", a sublane on the right is given by using "HN.MEM" (MEM.HN would place it on the left).
 
-2. Medium: this is handy when describing a medium through a message may pass. This is done using the syntax "_lane_".
+2. Medium: this is handy when describing a medium through a message may pass. This is done using underscores on both sides - "\_Lane\_"
 
 ```json
 {
