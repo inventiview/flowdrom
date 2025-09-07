@@ -16,8 +16,6 @@
   - [6. Complex Transactions](#6-complex-transactions)
   - [7. Legends](#7-legends)
 - [JSON Schema Reference](#json-schema-reference)
-- [Export and Integration](#export-and-integration)
-- [GitHub Pages Setup](#github-pages-setup)
 
 ## Getting Started
 

@@ -231,6 +231,34 @@
       stroke-dasharray: 3,3;
       fill: none;
     }
+    
+    .docs-link {
+    /* Size and spacing */
+    font-size: 18px;
+    padding: 10px 10px;
+    
+    /* Colors for high contrast */
+    background-color: #1b64ae;
+    color: #ffffff;
+    border: 2px solid #007acc;
+    
+    /* Remove default link styling */
+    text-decoration: none;
+    
+    /* Make it look like a button */
+    border-radius: 6px;
+    display: inline-block;
+    
+    /* Hover effect */
+    transition: all 0.3s ease;
+    }
+
+    .docs-link:hover {
+      background-color: #830352;
+      color: #ffffff;
+      transform: translateY(2px);
+    }
+
   </style>
 </head>
 <body>
@@ -239,16 +267,18 @@
     <div class="title-container">
       <h1 class="main-title">FLOWDROM</h1>
       <p class="subtitle">Transaction Sequence <span class="tech-accent">[DIAGRAMS]</span></p>
+      <a href="docs/" class="docs-link">📖 Documentation / User Guide</a>
     </div>
+          
 
     <div class="input-section">
       <label for="input"><strong>Transaction JSON (use "|" for line breaks):</strong></label>
       <textarea id="input" rows="30">{
   "title": "Conflict: Two CAs ReadUnique Same Address",
-  "lanes": ["CA0", "_D2D_", "CA1", "HN", "HN.MEM"],
+  "lanes": ["CA0", "CA1", "HN"],
   "laneGroups": [
     { "label": "Caching Agents", "lanes": ["CA0", "CA1"] },
-    { "label": "System", "lanes": ["HN", "HN.MEM"] }
+    { "label": "System", "lanes": ["HN"] }
   ],
   "infoBoxes": [
     { "lane": "HN", "time": 2, "text": "Conflict detected|serialize requests" }
@@ -256,25 +286,18 @@
   "messages": [
     { "path": "CA0->HN", "label": "Read|Unique(A)", "color": "red", "style": "solid", "fromTime": 0, "toTime": 1 },
     { "path": "CA1->HN", "label": "Read|Unique(A)", "color": "red", "style": "dashed", "fromTime": 1, "toTime": 2 },
-    { "path": "HN->HN.MEM", "label": "Rd(A)", "color": "orange", "style": "solid", "fromTime": 2, "toTime": 3 },
-    { "path": "HN.MEM->HN", "label": "D(A)", "color": "orange", "style": "solid", "fromTime": 4, "toTime": 5.5 },
     { "path": "HN->CA1", "label": "SnpInvalid(A)", "color": "purple", "style": "solid", "fromTime": 2, "toTime": 4 },
-    { "path": "CA1->HN", "label": "SnpResp(I)", "color": "green", "style": "solid", "fromTime": 4, "toTime": 6 },
-    { "path": "HN->CA0", "label": "CompData(A)", "color": "blue", "style": "solid", "fromTime": 6, "toTime": 7 },
-    { "path": "HN->CA1", "label": "Retry", "color": "red", "style": "dashed", "fromTime": 7, "toTime": 8 }
+    { "path": "CA1->HN", "label": "SnpResp(I)", "color": "green", "style": "solid", "fromTime": 4, "toTime": 6 }
   ],
   "states": [
     { "lane": "CA0", "label": "I->UD", "color": "yellow", "fromTime": 0, "toTime": 0.5 },
-    { "lane": "CA1", "label": "S->I", "color": "orange", "fromTime": 4, "toTime": 4.5 },
-    { "lane": "HN", "label": "Conflict", "color": "red", "fromTime": 2, "toTime": 7 }
+    { "lane": "CA1", "label": "S->I", "color": "orange", "fromTime": 4, "toTime": 4.5 }
   ],
   "legend": [
     { "label": "Request", "color": "red", "style": "solid" },
     { "label": "Conflicted", "color": "red", "style": "dashed" },
     { "label": "Snoop", "color": "purple", "style": "solid" },
-    { "label": "Response", "color": "green", "style": "solid" },
-    { "label": "Memory", "color": "orange", "style": "solid" },
-    { "label": "Complete", "color": "blue", "style": "solid" }
+    { "label": "Response", "color": "green", "style": "solid" }
   ]
 }</textarea>
       <div class="button-group">
