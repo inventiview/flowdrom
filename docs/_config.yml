@@ -1,15 +1,19 @@
 title: Flowdrom Documentation
 description: Transaction Timing Diagram Generator
 theme: minima
-markdown: kramdown
+
+# Use CommonMark (GitHub-flavored Markdown) instead of Kramdown
+markdown: CommonMarkGhPages
+
 plugins:
   - jekyll-feed
   - jekyll-sitemap
 
-# Enable SVG rendering
-kramdown:
-  input: GFM
-  syntax_highlighter: rouge
+# Syntax highlighting (Rouge is still used under the hood)
+highlighter: rouge
+
+# Rouge settings
 rouge:
-  theme: monokai
-  
+  theme: base16   # safest bet (consistent with GitHub)
+  # Alternatives: monokai, colorful, tulip, base16
+
