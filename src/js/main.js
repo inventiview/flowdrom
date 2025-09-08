@@ -1107,6 +1107,7 @@ function exportSVG(download = true, svgElement = null) {
 
   let svgData = new XMLSerializer().serializeToString(svg);
   const jsonInput = document.getElementById('input').value;
+
   let formattedJson;
   try {
     formattedJson = JSON.stringify(JSON.parse(jsonInput), null, 2);
@@ -1159,7 +1160,7 @@ function exportSVG(download = true, svgElement = null) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'transaction-graph.svg';
+    a.download =  `${((JSON.parse(document.getElementById('input').value)).title?.trim() || 'transaction-graph').replace(/\s+/g, '-').replace(/[:/\\*?"<>|]/g, '-')}.svg`;
     a.click();
     URL.revokeObjectURL(url);
   } else {
@@ -1227,9 +1228,8 @@ function exportPNG() {
         const pngUrl = URL.createObjectURL(pngBlob);
         const a = document.createElement('a');
         a.href = pngUrl;
-        a.download = 'transaction-graph.png';
+        a.download = `${((JSON.parse(document.getElementById('input').value)).title?.trim() || 'transaction-graph').replace(/\s+/g, '-').replace(/[:/\\*?"<>|]/g, '-')}.png`;
         a.click();
-        
         URL.revokeObjectURL(url);
         URL.revokeObjectURL(pngUrl);
       }, 'image/png');
