@@ -41,7 +41,7 @@ Flowdrom diagrams consist of:
 #### simple-two-lane-communication
 Let's start with the simplest possible diagram - two entities exchanging a message:
 
-```json
+```javascript
 {
   "title": "Basic Request-Response",
   "lanes": ["Client", "Server"],
