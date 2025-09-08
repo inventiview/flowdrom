@@ -98,38 +98,12 @@ Now let's add state changes to show what happens inside each entity:
   "title": "Request-Response with States",
   "lanes": ["Client", "Server"],
   "messages": [
-    { 
-      "path": "Client->Server", 
-      "label": "Request", 
-      "color": "blue", 
-      "style": "solid", 
-      "fromTime": 0, 
-      "toTime": 1 
-    },
-    { 
-      "path": "Server->Client", 
-      "label": "Response", 
-      "color": "green", 
-      "style": "solid", 
-      "fromTime": 2, 
-      "toTime": 3 
-    }
+    { "path": "Client->Server", "label": "Request", "color": "blue", "style": "solid", "fromTime": 0, "toTime": 1 },
+    { "path": "Server->Client", "label": "Response","color": "green", "style": "solid", "fromTime": 2, "toTime": 3 }
   ],
   "states": [
-    { 
-      "lane": "Client", 
-      "label": "Waiting", 
-      "color": "yellow", 
-      "fromTime": 1, 
-      "toTime": 3 
-    },
-    { 
-      "lane": "Server", 
-      "label": "Processing", 
-      "color": "orange", 
-      "fromTime": 1, 
-      "toTime": 2 
-    }
+    { "lane": "Client", "label": "Waiting", "color": "yellow", "fromTime": 1, "toTime": 3 },
+    { "lane": "Server", "label": "Processing", "color": "orange","fromTime": 1, "toTime": 2 }
   ]
 }
 ```
@@ -147,54 +121,14 @@ Real systems often involve multiple components. Here's a three-lane system:
   "title": "Three-Tier Architecture",
   "lanes": ["Frontend", "Backend", "Database"],
   "messages": [
-    { 
-      "path": "Frontend->Backend", 
-      "label": "API Call", 
-      "color": "blue", 
-      "style": "solid", 
-      "fromTime": 0, 
-      "toTime": 1 
-    },
-    { 
-      "path": "Backend->Database", 
-      "label": "Query", 
-      "color": "purple", 
-      "style": "solid", 
-      "fromTime": 1, 
-      "toTime": 2 
-    },
-    { 
-      "path": "Database->Backend", 
-      "label": "Results", 
-      "color": "orange", 
-      "style": "solid", 
-      "fromTime": 3, 
-      "toTime": 4 
-    },
-    { 
-      "path": "Backend->Frontend", 
-      "label": "JSON Response", 
-      "color": "green", 
-      "style": "solid", 
-      "fromTime": 4, 
-      "toTime": 5 
-    }
+    {"path": "Frontend->Backend", "label": "API Call", "color": "blue",   "style": "solid", "fromTime": 0, "toTime": 1},
+    {"path": "Backend->Database", "label": "Query",    "color": "purple", "style": "solid", "fromTime": 1, "toTime": 2},
+    {"path": "Database->Backend", "label": "Results",  "color": "orange", "style": "solid", "fromTime": 3, "toTime": 4},
+    {"path": "Backend->Frontend", "label": "JSON Response", "color": "green", "style": "solid", "fromTime": 4, "toTime": 5}
   ],
   "states": [
-    { 
-      "lane": "Backend", 
-      "label": "Processing", 
-      "color": "yellow", 
-      "fromTime": 1, 
-      "toTime": 4 
-    },
-    { 
-      "lane": "Database", 
-      "label": "Query Execution", 
-      "color": "cyan", 
-      "fromTime": 2, 
-      "toTime": 3 
-    }
+    {"lane": "Backend",  "label": "Processing",      "color": "yellow", "fromTime": 1, "toTime": 4},
+    {"lane": "Database", "label": "Query Execution", "color": "cyan",   "fromTime": 2, "toTime": 3}
   ]
 }
 ```
@@ -209,55 +143,18 @@ For complex systems, you can group related lanes visually:
 
 ```json
 {
-  "title": "Microservices Architecture",
-  "lanes": ["Client", "API Gateway", "Auth Service", "User Service", "Database"],
+  "title":      "Microservices Architecture",
+  "lanes":      ["Client", "API Gateway", "Auth Service", "User Service", "Database"],
   "laneGroups": [
-    { 
-      "label": "Client Layer", 
-      "lanes": ["Client"] 
-    },
-    { 
-      "label": "Service Layer", 
-      "lanes": ["API Gateway", "Auth Service", "User Service"] 
-    },
-    { 
-      "label": "Data Layer", 
-      "lanes": ["Database"] 
-    }
+    {"label": "Client Layer",  "lanes": ["Client"]},
+    {"label": "Service Layer", "lanes": ["API Gateway", "Auth Service", "User Service"]},
+    {"label": "Data Layer",    "lanes": ["Database"]}
   ],
   "messages": [
-    { 
-      "path": "Client->API Gateway", 
-      "label": "Login Request", 
-      "color": "blue", 
-      "style": "solid", 
-      "fromTime": 0, 
-      "toTime": 1 
-    },
-    { 
-      "path": "API Gateway->Auth Service", 
-      "label": "Validate", 
-      "color": "purple", 
-      "style": "solid", 
-      "fromTime": 1, 
-      "toTime": 2 
-    },
-    { 
-      "path": "Auth Service->User Service", 
-      "label": "Get User", 
-      "color": "orange", 
-      "style": "solid", 
-      "fromTime": 2, 
-      "toTime": 3 
-    },
-    { 
-      "path": "User Service->Database", 
-      "label": "Query User", 
-      "color": "red", 
-      "style": "solid", 
-      "fromTime": 3, 
-      "toTime": 4 
-    }
+    {"path": "Client->API Gateway",        "label": "Login Request", "color": "blue",   "style": "solid", "fromTime": 0, "toTime": 1},
+    {"path": "API Gateway->Auth Service",  "label": "Validate",      "color": "purple", "style": "solid", "fromTime": 1, "toTime": 2},
+    {"path": "Auth Service->User Service", "label": "Get User",      "color": "orange", "style": "solid", "fromTime": 2, "toTime": 3},
+    {"path": "User Service->Database",     "label": "Query User",    "color": "red",    "style": "solid", "fromTime": 3, "toTime": 4}
   ]
 }
 ```
@@ -272,54 +169,19 @@ Add contextual information with info boxes:
 
 ```json
 {
-  "title": "Error Handling Example",
-  "lanes": ["Client", "Server", "Database"],
+  "title":     "Error Handling Example",
+  "lanes":     ["Client", "Server", "Database"],
   "infoBoxes": [
-    { 
-      "lane": "Server", 
-      "time": 2, 
-      "text": "Connection timeout|Retry with |exponential backoff" 
-    },
-    { 
-      "lane": "Client", 
-      "time": 4, 
-      "text": "Display |error message|to user" 
-    }
+    {"lane": "Server", "time": 2, "text": "Connection timeout|Retry with |exponential backoff"},
+    {"lane": "Client", "time": 4, "text": "Display |error message|to user"}
   ],
   "messages": [
-    { 
-      "path": "Client->Server", 
-      "label": "Data Request", 
-      "color": "blue", 
-      "style": "solid", 
-      "fromTime": 0, 
-      "toTime": 1 
-    },
-    { 
-      "path": "Server->Database", 
-      "label": "Query", 
-      "color": "purple", 
-      "style": "solid", 
-      "fromTime": 1, 
-      "toTime": 2 
-    },
-    { 
-      "path": "Server->Client", 
-      "label": "Timeout Error", 
-      "color": "red", 
-      "style": "dashed", 
-      "fromTime": 3, 
-      "toTime": 4 
-    }
+    {"path": "Client->Server",   "label": "Data Request",   "color": "blue",   "style": "solid",  "fromTime": 0, "toTime": 1},
+    {"path": "Server->Database", "label": "Query",          "color": "purple", "style": "solid",  "fromTime": 1, "toTime": 2},
+    {"path": "Server->Client",   "label": "Timeout Error",  "color": "red",    "style": "dashed", "fromTime": 3, "toTime": 4}
   ],
   "states": [
-    { 
-      "lane": "Server", 
-      "label": "Error State", 
-      "color": "red", 
-      "fromTime": 2, 
-      "toTime": 3 
-    }
+    {"lane": "Server", "label": "Error State", "color": "red", "fromTime": 2, "toTime": 3}
   ]
 }
 ```
