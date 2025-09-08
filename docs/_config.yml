@@ -11,4 +11,4 @@ kramdown:
   input: GFM
   syntax_highlighter: rouge
 rouge:
-  theme: thankful_eyes
+  theme: monokai
