@@ -275,24 +275,24 @@
     <div class="input-section">
       <label for="input"><strong>Transaction JSON (use "|" for line breaks):</strong></label>
       <textarea id="input" rows="21">{
-  "title": "Conflict: Two CAs ReadUnique Same Address",
-  "lanes": ["CA0", "CA1", "HN"],
-  "infoBoxes": [{ "lane": "HN", "time": 2, "text": "Conflict detected|serialize requests"}],
-  "messages": [
-    { "path": "CA0->HN", "label": "Read|Unique(A)", "color": "red",    "style": "solid",  "fromTime": 0, "toTime": 1 },
-    { "path": "CA1->HN", "label": "Read|Unique(A)", "color": "red",    "style": "dashed", "fromTime": 1, "toTime": 2 },
-    { "path": "HN->CA1", "label": "SnpInvalid(A)",  "color": "purple", "style": "solid",  "fromTime": 2, "toTime": 4 },
-    { "path": "CA1->HN", "label": "SnpResp(I)",     "color": "green",  "style": "solid",  "fromTime": 4, "toTime": 6 }
+  title: 'Conflict: Two CAs ReadUnique Same Address',
+  lanes: ['CA0', 'CA1', 'HN'],
+  infoBoxes: [{ lane: 'HN', time: 2, text: 'Conflict detected|serialize requests' }],
+  messages: [
+    { path: 'CA0->HN', label: 'Read|Unique(A)', color: 'red',    style: 'solid',  fromTime: 0, toTime: 1 },
+    { path: 'CA1->HN', label: 'Read|Unique(A)', color: 'red',    style: 'dashed', fromTime: 1, toTime: 2 },
+    { path: 'HN->CA1', label: 'SnpInvalid(A)',  color: 'purple', style: 'solid',  fromTime: 2, toTime: 4 },
+    { path: 'CA1->HN', label: 'SnpResp(I)',     color: 'green',  style: 'solid',  fromTime: 4, toTime: 6 }
   ],
-  "states": [
-    { "lane": "CA0", "label": "I->UD", "color": "yellow", "fromTime": 0, "toTime": 0.5 },
-    { "lane": "CA1", "label": "S->I",  "color": "orange", "fromTime": 4, "toTime": 4.5 }
+  states: [
+    { lane: 'CA0', label: 'I->UD', color: 'yellow', fromTime: 0, toTime: 0.5 },
+    { lane: 'CA1', label: 'S->I',  color: 'orange', fromTime: 4, toTime: 4.5 },
   ],
-  "legend": [
-    { "label": "Request",    "color": "red",    "style": "solid" },
-    { "label": "Conflicted", "color": "red",    "style": "dashed" },
-    { "label": "Snoop",      "color": "purple", "style": "solid" },
-    { "label": "Response",   "color": "green",  "style": "solid" }
+  legend: [
+    { label: 'Request',    color: 'red',    style: 'solid' },
+    { label: 'Conflicted', color: 'red',    style: 'dashed' },
+    { label: 'Snoop',      color: 'purple', style: 'solid' },
+    { label: 'Response',   color: 'green',  style: 'solid' },
   ]
 }</textarea>
       <div class="button-group">
@@ -307,6 +307,8 @@
     <h1 id="graph-title" style="display: none;">Enhanced Transaction Sequence Graph</h1>
     <div id="svg-container"></div>
   </div>
+
+  <script src="src/js/json5.min.js"></script>
 
    <!-- load your renderer -->
   <script src="src/js/main.js"></script>

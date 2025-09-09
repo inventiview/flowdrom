@@ -41,27 +41,13 @@ Flowdrom diagrams consist of:
 #### simple-two-lane-communication
 Let's start with the simplest possible diagram - two entities exchanging a message:
 
-```json
+```js
 {
-  "title": "Basic Request-Response",
-  "lanes": ["Client", "Server"],
-  "messages": [
-    { 
-      "path": "Client->Server", 
-      "label": "Request", 
-      "color": "blue", 
-      "style": "solid", 
-      "fromTime": 0, 
-      "toTime": 1 
-    },
-    { 
-      "path": "Server->Client", 
-      "label": "Response", 
-      "color": "green", 
-      "style": "solid", 
-      "fromTime": 1, 
-      "toTime": 2 
-    }
+  title: 'Basic Request-Response',
+  lanes: ['Client', 'Server'],
+  messages: [
+    { path: 'Client->Server', label: 'Request', color: 'blue', style: 'solid', fromTime: 0, toTime: 1 },
+    { path: 'Server->Client', label: 'Response', color: 'green', style: 'solid', fromTime: 1, toTime: 2 }
   ]
 }
 ```
@@ -72,15 +58,16 @@ This creates a simple sequence showing a client sending a request to a server an
 
 #### unordered-two-lane-communication
 Since flowdrom is not just a sequence graph generator but actually has timing parameters, it opens the possibilities to create unordered sequences / non linear sequences.
-```json
+
+```js
 {
-  "title": "Unordered traffic",
-  "lanes": ["CA0" , "HN"],
-  "messages": [
-    { "path": "CA0->HN", "label": "RdData(k1)", "color": "red", "style": "solid", "fromTime": 0, "toTime": 4 },
-    { "path": "HN->CA0",  "label": "Data (k1)", "color": "red", "style": "solid", "fromTime": 4, "toTime": 6 },
-    { "path": "CA0->HN", "label": "RdData(k2)", "color": "purple", "style": "solid", "fromTime": 0.5, "toTime": 2 },
-    { "path": "HN->CA0",  "label": "Data (k2)", "color": "purple", "style": "solid", "fromTime": 2, "toTime": 7}
+  title: 'Unordered traffic',
+  lanes: ['CA0', 'HN'],
+  messages: [
+    { path: 'CA0->HN', label: 'RdData(k1)', color: 'red', style: 'solid', fromTime: 0, toTime: 4 },
+    { path: 'HN->CA0', label: 'Data (k1)', color: 'red', style: 'solid', fromTime: 4, toTime: 6 },
+    { path: 'CA0->HN', label: 'RdData(k2)', color: 'purple', style: 'solid', fromTime: 0.5, toTime: 2 },
+    { path: 'HN->CA0', label: 'Data (k2)', color: 'purple', style: 'solid', fromTime: 2, toTime: 7 }
   ]
 }
 ```
@@ -93,17 +80,17 @@ Here source and target sequences are different.
 
 Now let's add state changes to show what happens inside each entity:
 
-```json
+```js
 {
-  "title": "Request-Response with States",
-  "lanes": ["Client", "Server"],
-  "messages": [
-    { "path": "Client->Server", "label": "Request", "color": "blue", "style": "solid", "fromTime": 0, "toTime": 1 },
-    { "path": "Server->Client", "label": "Response","color": "green", "style": "solid", "fromTime": 2, "toTime": 3 }
+  title: 'Request-Response with States',
+  lanes: ['Client', 'Server'],
+  messages: [
+    { path: 'Client->Server', label: 'Request', color: 'blue', style: 'solid', fromTime: 0, toTime: 1 },
+    { path: 'Server->Client', label: 'Response', color: 'green', style: 'solid', fromTime: 2, toTime: 3 }
   ],
-  "states": [
-    { "lane": "Client", "label": "Waiting", "color": "yellow", "fromTime": 1, "toTime": 3 },
-    { "lane": "Server", "label": "Processing", "color": "orange","fromTime": 1, "toTime": 2 }
+  states: [
+    { lane: 'Client', label: 'Waiting', color: 'yellow', fromTime: 1, toTime: 3 },
+    { lane: 'Server', label: 'Processing', color: 'orange', fromTime: 1, toTime: 2 }
   ]
 }
 ```
@@ -116,19 +103,19 @@ The states show that the client waits while the server processes the request.
 
 Real systems often involve multiple components. Here's a three-lane system:
 
-```json
+```js
 {
-  "title": "Three-Tier Architecture",
-  "lanes": ["Frontend", "Backend", "Database"],
-  "messages": [
-    {"path": "Frontend->Backend", "label": "API Call", "color": "blue",   "style": "solid", "fromTime": 0, "toTime": 1},
-    {"path": "Backend->Database", "label": "Query",    "color": "purple", "style": "solid", "fromTime": 1, "toTime": 2},
-    {"path": "Database->Backend", "label": "Results",  "color": "orange", "style": "solid", "fromTime": 3, "toTime": 4},
-    {"path": "Backend->Frontend", "label": "JSON Response", "color": "green", "style": "solid", "fromTime": 4, "toTime": 5}
+  title: 'Three-Tier Architecture',
+  lanes: ['Frontend', 'Backend', 'Database'],
+  messages: [
+    { path: 'Frontend->Backend', label: 'API Call', color: 'blue', style: 'solid', fromTime: 0, toTime: 1 },
+    { path: 'Backend->Database', label: 'Query', color: 'purple', style: 'solid', fromTime: 1, toTime: 2 },
+    { path: 'Database->Backend', label: 'Results', color: 'orange', style: 'solid', fromTime: 3, toTime: 4 },
+    { path: 'Backend->Frontend', label: 'JSON Response', color: 'green', style: 'solid', fromTime: 4, toTime: 5 }
   ],
-  "states": [
-    {"lane": "Backend",  "label": "Processing",      "color": "yellow", "fromTime": 1, "toTime": 4},
-    {"lane": "Database", "label": "Query Execution", "color": "cyan",   "fromTime": 2, "toTime": 3}
+  states: [
+    { lane: 'Backend', label: 'Processing', color: 'yellow', fromTime: 1, toTime: 4 },
+    { lane: 'Database', label: 'Query Execution', color: 'cyan', fromTime: 2, toTime: 3 }
   ]
 }
 ```
@@ -141,20 +128,20 @@ This shows a typical web application flow: frontend → backend → database →
 
 For complex systems, you can group related lanes visually:
 
-```json
+```js
 {
-  "title":      "Microservices Architecture",
-  "lanes":      ["Client", "API Gateway", "Auth Service", "User Service", "Database"],
-  "laneGroups": [
-    {"label": "Client Layer",  "lanes": ["Client"]},
-    {"label": "Service Layer", "lanes": ["API Gateway", "Auth Service", "User Service"]},
-    {"label": "Data Layer",    "lanes": ["Database"]}
+  title: 'Microservices Architecture',
+  lanes: ['Client', 'API Gateway', 'Auth Service', 'User Service', 'Database'],
+  laneGroups: [
+    { label: 'Client Layer', lanes: ['Client'] },
+    { label: 'Service Layer', lanes: ['API Gateway','Auth Service','User Service'] },
+    { label: 'Data Layer', lanes: ['Database'] }
   ],
-  "messages": [
-    {"path": "Client->API Gateway",        "label": "Login Request", "color": "blue",   "style": "solid", "fromTime": 0, "toTime": 1},
-    {"path": "API Gateway->Auth Service",  "label": "Validate",      "color": "purple", "style": "solid", "fromTime": 1, "toTime": 2},
-    {"path": "Auth Service->User Service", "label": "Get User",      "color": "orange", "style": "solid", "fromTime": 2, "toTime": 3},
-    {"path": "User Service->Database",     "label": "Query User",    "color": "red",    "style": "solid", "fromTime": 3, "toTime": 4}
+  messages: [
+    { path: 'Client->API Gateway', label: 'Login Request', color: 'blue', style: 'solid', fromTime: 0, toTime: 1 },
+    { path: 'API Gateway->Auth Service', label: 'Validate', color: 'purple', style: 'solid', fromTime: 1, toTime: 2 },
+    { path: 'Auth Service->User Service', label: 'Get User', color: 'orange', style: 'solid', fromTime: 2, toTime: 3 },
+    { path: 'User Service->Database', label: 'Query User', color: 'red', style: 'solid', fromTime: 3, toTime: 4 }
   ]
 }
 ```
@@ -167,21 +154,21 @@ Lane groups help organize complex diagrams by showing architectural boundaries.
 
 Add contextual information with info boxes:
 
-```json
+```js
 {
-  "title":     "Error Handling Example",
-  "lanes":     ["Client", "Server", "Database"],
-  "infoBoxes": [
-    {"lane": "Server", "time": 2, "text": "Connection timeout|Retry with |exponential backoff"},
-    {"lane": "Client", "time": 4, "text": "Display |error message|to user"}
+  title: 'Error Handling Example',
+  lanes: ['Client', 'Server', 'Database'],
+  infoBoxes: [
+    { lane: 'Server', time: 2, text: 'Connection timeout|Retry with |exponential backoff' },
+    { lane: 'Client', time: 4, text: 'Display |error message|to user' }
   ],
-  "messages": [
-    {"path": "Client->Server",   "label": "Data Request",   "color": "blue",   "style": "solid",  "fromTime": 0, "toTime": 1},
-    {"path": "Server->Database", "label": "Query",          "color": "purple", "style": "solid",  "fromTime": 1, "toTime": 2},
-    {"path": "Server->Client",   "label": "Timeout Error",  "color": "red",    "style": "dashed", "fromTime": 3, "toTime": 4}
+  messages: [
+    { path: 'Client->Server', label: 'Data Request', color: 'blue', style: 'solid', fromTime: 0, toTime: 1 },
+    { path: 'Server->Database', label: 'Query', color: 'purple', style: 'solid', fromTime: 1, toTime: 2 },
+    { path: 'Server->Client', label: 'Timeout Error', color: 'red', style: 'dashed', fromTime: 3, toTime: 4 }
   ],
-  "states": [
-    {"lane": "Server", "label": "Error State", "color": "red", "fromTime": 2, "toTime": 3}
+  states: [
+    { lane: 'Server', label: 'Error State', color: 'red', fromTime: 2, toTime: 3 }
   ]
 }
 ```
@@ -198,31 +185,31 @@ The Syntax for a sublane is to use one of the lane names and add a "." concatina
 
 2. Medium: this is handy when describing a medium through a message may pass. This is done using underscores on both sides - "\_Lane\_"
 
-```json
+```js
 {
-  "title": "Cache Coherency Conflict",
-  "lanes": ["CA0", "_D2D_", "CA1", "HN", "HN.MEM"],
-  "laneGroups": [
-    { "label": "Caching Agents", "lanes": ["CA0", "CA1"] },
-    { "label": "System", "lanes": ["HN", "HN.MEM"] }
+  title: 'Cache Coherency Conflict',
+  lanes: ['CA0', '_D2D_', 'CA1', 'HN', 'HN.MEM'],
+  laneGroups: [
+    { label: 'Caching Agents', lanes: ['CA0','CA1'] },
+    { label: 'System', lanes: ['HN','HN.MEM'] }
   ],
-  "infoBoxes": [
-    { "lane": "HN", "time": 2, "text": "Conflict detected|serialize requests" }
+  infoBoxes: [
+    { lane: 'HN', time: 2, text: 'Conflict detected|serialize requests' }
   ],
-  "messages": [
-    { "path": "CA0->HN", "label": "Read|Unique(A)", "color": "red", "style": "solid", "fromTime": 0, "toTime": 1 },
-    { "path": "CA1->HN", "label": "Read|Unique(A)", "color": "red", "style": "dashed", "fromTime": 1, "toTime": 2 },
-    { "path": "HN->HN.MEM", "label": "Rd(A)", "color": "orange", "style": "solid", "fromTime": 2, "toTime": 3 },
-    { "path": "HN.MEM->HN", "label": "D(A)", "color": "orange", "style": "solid", "fromTime": 4, "toTime": 5.5 },
-    { "path": "HN->CA1", "label": "SnpInvalid(A)", "color": "purple", "style": "solid", "fromTime": 2, "toTime": 4 },
-    { "path": "CA1->HN", "label": "SnpResp(I)", "color": "green", "style": "solid", "fromTime": 4, "toTime": 6 },
-    { "path": "HN->CA0", "label": "CompData(A)", "color": "blue", "style": "solid", "fromTime": 6, "toTime": 7 },
-    { "path": "HN->CA1", "label": "Retry", "color": "red", "style": "dashed", "fromTime": 7, "toTime": 8 }
+  messages: [
+    { path: 'CA0->HN', label: 'Read|Unique(A)', color: 'red', style: 'solid', fromTime: 0, toTime: 1 },
+    { path: 'CA1->HN', label: 'Read|Unique(A)', color: 'red', style: 'dashed', fromTime: 1, toTime: 2 },
+    { path: 'HN->HN.MEM', label: 'Rd(A)', color: 'orange', style: 'solid', fromTime: 2, toTime: 3 },
+    { path: 'HN.MEM->HN', label: 'D(A)', color: 'orange', style: 'solid', fromTime: 4, toTime: 5.5 },
+    { path: 'HN->CA1', label: 'SnpInvalid(A)', color: 'purple', style: 'solid', fromTime: 2, toTime: 4 },
+    { path: 'CA1->HN', label: 'SnpResp(I)', color: 'green', style: 'solid', fromTime: 4, toTime: 6 },
+    { path: 'HN->CA0', label: 'CompData(A)', color: 'blue', style: 'solid', fromTime: 6, toTime: 7 },
+    { path: 'HN->CA1', label: 'Retry', color: 'red', style: 'dashed', fromTime: 7, toTime: 8 }
   ],
-  "states": [
-    { "lane": "CA0", "label": "I->UD", "color": "yellow", "fromTime": 0, "toTime": 0.5 },
-    { "lane": "CA1", "label": "S->I", "color": "orange", "fromTime": 4, "toTime": 4.5 },
-    { "lane": "HN", "label": "Conflict", "color": "red", "fromTime": 2, "toTime": 7 }
+  states: [
+    { lane: 'CA0', label: 'I->UD', color: 'yellow', fromTime: 0, toTime: 0.5 },
+    { lane: 'CA1', label: 'S->I', color: 'orange', fromTime: 4, toTime: 4.5 },
+    { lane: 'HN', label: 'Conflict', color: 'red', fromTime: 2, toTime: 7 }
   ]
 }
 ```
@@ -235,21 +222,21 @@ This complex example shows how two caching agents conflict when trying to access
 
 Add legends to explain your color coding:
 
-```json
+```js
 {
-  "title": "Protocol Messages with Legend",
-  "lanes": ["Client", "Router", "Server"],
-  "messages": [
-    { "path": "Client->Router", "label": "HTTP GET", "color": "blue", "style": "solid", "fromTime": 0, "toTime": 1 },
-    { "path": "Router->Server", "label": "Forward", "color": "green", "style": "solid", "fromTime": 1, "toTime": 2 },
-    { "path": "Server->Router", "label": "HTTP 200", "color": "purple", "style": "solid", "fromTime": 2, "toTime": 3 },
-    { "path": "Router->Client", "label": "Response", "color": "orange", "style": "solid", "fromTime": 3, "toTime": 4 }
+  title: 'Protocol Messages with Legend',
+  lanes: ['Client', 'Router', 'Server'],
+  messages: [
+    { path: 'Client->Router', label: 'HTTP GET', color: 'blue', style: 'solid', fromTime: 0, toTime: 1 },
+    { path: 'Router->Server', label: 'Forward', color: 'green', style: 'solid', fromTime: 1, toTime: 2 },
+    { path: 'Server->Router', label: 'HTTP 200', color: 'purple', style: 'solid', fromTime: 2, toTime: 3 },
+    { path: 'Router->Client', label: 'Response', color: 'orange', style: 'solid', fromTime: 3, toTime: 4 }
   ],
-  "legend": [
-    { "label": "Request", "color": "blue", "style": "solid" },
-    { "label": "Forward", "color": "green", "style": "solid" },
-    { "label": "Response", "color": "purple", "style": "solid" },
-    { "label": "Delivery", "color": "orange", "style": "solid" }
+  legend: [
+    { label: 'Request', color: 'blue', style: 'solid' },
+    { label: 'Forward', color: 'green', style: 'solid' },
+    { label: 'Response', color: 'purple', style: 'solid' },
+    { label: 'Delivery', color: 'orange', style: 'solid' }
   ]
 }
 ```
@@ -261,65 +248,65 @@ Legends help readers understand what different colors and line styles represent.
 ## JSON Schema Reference
 
 ### Root Object
-```json
+```js
 {
-  "title": "string",           // Diagram title
-  "lanes": ["string"],         // Array of lane names
-  "laneGroups": [...],         // Optional lane groupings
-  "messages": [...],           // Message arrows
-  "states": [...],             // State changes
-  "infoBoxes": [...],          // Information annotations
-  "legend": [...]              // Legend entries
+  title: 'string',           // Diagram title
+  lanes: ['string'],         // Array of lane names
+  laneGroups: [...],         // Optional lane groupings
+  messages: [...],           // Message arrows
+  states: [...],             // State changes
+  infoBoxes: [...],          // Information annotations
+  legend: [...]              // Legend entries
 }
 ```
 
 ### Message Object
-```json
+```js
 {
-  "path": "Source->Target",    // Lane1->Lane2 format
-  "label": "Message text",     // Use | for line breaks
-  "color": "red|blue|green|purple|orange", // Message color
-  "style": "solid|dashed",     // Line style
-  "fromTime": 0,               // Start time (number)
-  "toTime": 1                  // End time (number)
+  path: 'Source->Target',    // Lane1->Lane2 format
+  label: 'Message text',     // Use | for line breaks
+  color: 'red|blue|green|purple|orange', // Message color
+  style: 'solid|dashed',     // Line style
+  fromTime: 0,               // Start time (number)
+  toTime: 1                  // End time (number)
 }
 ```
 
 ### State Object
-```json
+```js
 {
-  "lane": "LaneName",          // Which lane
-  "label": "State Name",       // State description
-  "color": "yellow|red|green|blue|orange|cyan", // Background color
-  "fromTime": 0,               // Start time
-  "toTime": 1                  // End time
+  lane: 'LaneName',          // Which lane
+  label: 'State Name',       // State description
+  color: 'yellow|red|green|blue|orange|cyan', // Background color
+  fromTime: 0,               // Start time
+  toTime: 1                  // End time
 }
 ```
 > Note: state may have a single time (i.e. Start time = End time)
 
 ### Lane Group Object
-```json
+```js
 {
-  "label": "Group Name",       // Group title
-  "lanes": ["Lane1", "Lane2"]  // Lanes to group
+  label: 'Group Name',       // Group title
+  lanes: ['Lane1', 'Lane2']  // Lanes to group
 }
 ```
 
 ### Info Box Object
-```json
+```js
 {
-  "lane": "LaneName",          // Which lane to attach to
-  "time": 2,                   // Time position
-  "text": "Info text|Line 2"   // Text with | for line breaks
+  lane: 'LaneName',          // Which lane to attach to
+  time: 2,                   // Time position
+  text: 'Info text|Line 2'   // Text with | for line breaks
 }
 ```
 
 ### Legend Entry
-```json
+```js
 {
-  "label": "Description",      // Legend text
-  "color": "red",              // Color to show
-  "style": "solid"             // Line style to show
+  label: 'Description',      // Legend text
+  color: 'red',              // Color to show
+  style: 'solid'             // Line style to show
 }
 ```
 

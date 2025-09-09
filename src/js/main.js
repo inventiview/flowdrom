@@ -11,7 +11,7 @@ function renderGraph() {
   tempSvg.appendChild(defs);
 
   try {
-    const input = JSON.parse(document.getElementById("input").value);
+    const input = JSON5.parse(document.getElementById("input").value);
     currentConfig = input;
 
     const lanes = input.lanes;
@@ -1110,7 +1110,7 @@ function exportSVG(download = true, svgElement = null) {
 
   let formattedJson;
   try {
-    formattedJson = JSON.stringify(JSON.parse(jsonInput), null, 2);
+    formattedJson = JSON5.stringify(JSON5.parse(jsonInput), null, 2);
   } catch (e) {
     formattedJson = jsonInput;
   }
@@ -1160,7 +1160,7 @@ function exportSVG(download = true, svgElement = null) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download =  `${((JSON.parse(document.getElementById('input').value)).title?.trim() || 'transaction-graph').replace(/\s+/g, '-').replace(/[:/\\*?"<>|]/g, '-')}.svg`;
+    a.download =  `${((JSON5.parse(document.getElementById('input').value)).title?.trim() || 'transaction-graph').replace(/\s+/g, '-').replace(/[:/\\*?"<>|]/g, '-')}.svg`;
     a.click();
     URL.revokeObjectURL(url);
   } else {
@@ -1228,7 +1228,7 @@ function exportPNG() {
         const pngUrl = URL.createObjectURL(pngBlob);
         const a = document.createElement('a');
         a.href = pngUrl;
-        a.download = `${((JSON.parse(document.getElementById('input').value)).title?.trim() || 'transaction-graph').replace(/\s+/g, '-').replace(/[:/\\*?"<>|]/g, '-')}.png`;
+        a.download = `${((JSON5.parse(document.getElementById('input').value)).title?.trim() || 'transaction-graph').replace(/\s+/g, '-').replace(/[:/\\*?"<>|]/g, '-')}.png`;
         a.click();
         URL.revokeObjectURL(url);
         URL.revokeObjectURL(pngUrl);
@@ -1279,7 +1279,7 @@ function loadSVGFile(event) {
       jsonString = jsonString.replace(/\\-\\-/g, '--');
       
       try {
-        const jsonData = JSON.parse(jsonString);
+        const jsonData = JSON5.parse(jsonString);
         
         function formatCompactJson(obj, indent = 0) {
           const spaces = '  '.repeat(indent);
@@ -1292,12 +1292,12 @@ function loadSVGFile(event) {
             );
             
             if (allSimple) {
-              return `[${obj.map(item => JSON.stringify(item)).join(', ')}]`;
+              return `[${obj.map(item => JSON5.stringify(item)).join(', ')}]`;
             } else {
               const items = obj.map(item => {
                 if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
                   const pairs = Object.keys(item).map(key => 
-                    `"${key}": ${JSON.stringify(item[key])}`
+                    `${key}: ${JSON5.stringify(item[key])}`
                   );
                   return `${spaces}  { ${pairs.join(', ')} }`;
                 } else {
@@ -1312,11 +1312,11 @@ function loadSVGFile(event) {
             
             const items = keys.map(key => {
               const value = formatCompactJson(obj[key], indent + 1);
-              return `${spaces}  "${key}": ${value}`;
+              return `${spaces}  ${key}: ${value}`;
             });
             return `{\n${items.join(',\n')}\n${spaces}}`;
           } else {
-            return JSON.stringify(obj);
+            return JSON5.stringify(obj);
           }
         }
         
