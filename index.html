@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flowdrom</title>
+  
+  <!-- CodeMirror CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/default.min.css">
+  
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -64,14 +69,22 @@
       margin-bottom: 20px;
     }
 
-    #input {
-      width: 100%;
-      font-family: 'Courier New', monospace;
-      font-size: 16px;
+    /* CodeMirror styling */
+    .CodeMirror {
       border: 1px solid #ddd;
       border-radius: 4px;
-      padding: 10px;
-      resize: vertical;
+      font-size: 16px;
+      height: auto;
+      min-height: 400px;
+    }
+
+    .CodeMirror-scroll {
+      min-height: 400px;
+    }
+
+    /* Hide the original textarea but keep it for compatibility */
+    #input {
+      display: none;
     }
 
     .button-group {
@@ -233,31 +246,40 @@
     }
     
     .docs-link {
-    /* Size and spacing */
-    font-size: 18px;
-    padding: 10px 10px;
-    margin-top: 18px;
-
-    /* Colors for high contrast */
-    background-color: #1b64ae;
-    color: #ffffff;
-    border: 2px solid #007acc;
-    
-    /* Remove default link styling */
-    text-decoration: none;
-    
-    /* Make it look like a button */
-    border-radius: 6px;
-    display: inline-block;
-    
-    /* Hover effect */
-    transition: all 0.3s ease;
+      font-size: 18px;
+      padding: 10px 10px;
+      margin-top: 18px;
+      background-color: #1b64ae;
+      color: #ffffff;
+      border: 2px solid #007acc;
+      text-decoration: none;
+      border-radius: 6px;
+      display: inline-block;
+      transition: all 0.3s ease;
     }
 
     .docs-link:hover {
       background-color: #830352;
       color: #ffffff;
       transform: translateY(2px);
+    }
+
+      /* Make autocomplete menu bigger */
+    .CodeMirror-hints {
+    max-width: 400px !important;     /* Increase width */
+    min-width: 300px !important;     /* Set minimum width */
+    max-height: 300px !important;    /* Increase height */
+    font-size: 14px !important;      /* Larger text */    
+    }
+
+    .CodeMirror-hint {
+    padding: 8px 12px !important;    /* More padding for bigger items */
+    line-height: 1.4 !important;     /* Better line spacing */
+    }
+
+    .CodeMirror-hint-active {
+    background: #2a5eb2 !important;  /* Match your theme colors */
+    color: white !important;
     }
 
   </style>
@@ -271,9 +293,10 @@
       <a href="docs/" class="docs-link">📖 Documentation / User Guide</a>
     </div>
           
-
     <div class="input-section">
       <label for="input"><strong>Transaction JSON (use "|" for line breaks):</strong></label>
+      
+      <!-- Hidden textarea for compatibility with existing main.js -->
       <textarea id="input" rows="21">{
   title: 'Conflict: Two CAs ReadUnique Same Address',
   lanes: ['CA0', 'CA1', 'HN'],
@@ -295,6 +318,10 @@
     { label: 'Response',   color: 'green',  style: 'solid' },
   ]
 }</textarea>
+
+      <!-- CodeMirror editor container -->
+      <div id="codemirror-container"></div>
+
       <div class="button-group">
         <button onclick="renderGraph()">Render</button>
         <button onclick="exportSVG(true)">Export SVG</button>
@@ -308,17 +335,151 @@
     <div id="svg-container"></div>
   </div>
 
+  <!-- CodeMirror Core -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  
+  <!-- CodeMirror JavaScript Mode -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  
+  <!-- CodeMirror Addons for dynamic features -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+  
+  <!-- CodeMirror Hint CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+  
   <script src="src/js/json5.min.js"></script>
-
-   <!-- load your renderer -->
-  <script src="src/js/main.js"></script>
-
-   <!-- trigger auto-render on page load -->
+  
+  <!-- Simple Snippet Autocomplete -->
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      renderGraph();
+    // Simple snippet-based autocomplete
+    CodeMirror.registerHelper("hint", "snippets", function(editor, options) {
+      const cur = editor.getCursor();
+      const curLine = editor.getLine(cur.line);
+      let start = cur.ch, end = cur.ch;
+      
+      // Find word boundaries
+      while (start && /\w/.test(curLine.charAt(start - 1))) --start;
+      while (end < curLine.length && /\w/.test(curLine.charAt(end))) ++end;
+      
+      const word = curLine.slice(start, end).toLowerCase();
+      
+      // Define simple snippets
+      const snippets = {
+        'legend': `legend: [
+    { label: 'Request', color: 'red', style: 'solid' },
+    { label: 'Response', color: 'green', style: 'solid' },
+    { label: 'Snoop', color: 'purple', style: 'solid' },
+  ],`,
+        'messages': `messages: [
+    { path: 'Source->Target', label: 'Message', color: 'red', style: 'solid', fromTime: 0, toTime: 1 },
+  ],`,
+        'lanes': `lanes: ['Source', 'Target'],`,
+        'states': `states: [
+    { lane: 'Source', label: 'State', color: 'yellow', fromTime: 0, toTime: 0.5 },
+  ],`,
+        'infoboxes': `infoBoxes: [
+    { lane: 'Target', time: 2, text: 'Info text here' },
+  ],`,
+        'lanegroups': `laneGroups: [
+    { label: 'Group Name', lanes: ['Source', 'Target'] },
+  ],`,
+        'title': `title: 'Your Diagram Title',`
+      };
+      
+      const suggestions = [];
+      for (const key in snippets) {
+        if (key.startsWith(word)) {
+          suggestions.push({
+            text: snippets[key],
+            displayText: key + " (snippet)"
+          });
+        }
+      }
+      
+      if (suggestions.length === 0) return null;
+      
+      return {
+        list: suggestions,
+        from: CodeMirror.Pos(cur.line, start),
+        to: CodeMirror.Pos(cur.line, end)
+      };
     });
   </script>
+  
+  <!-- CodeMirror initialization script -->
+  <script>
+    let codeMirrorEditor;
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      // Get the hidden textarea
+      const textarea = document.getElementById('input');
+      
+      // Create CodeMirror editor with snippet autocomplete
+      codeMirrorEditor = CodeMirror(document.getElementById('codemirror-container'), {
+        value: textarea.value,
+        mode: 'javascript',
+        theme: 'default',
+        lineNumbers: true,
+        indentUnit: 2,
+        tabSize: 2,
+        indentWithTabs: false,
+        matchBrackets: true,
+        autoCloseBrackets: true,
+        lineWrapping: true,
+        extraKeys: {
+          "Tab": function(cm) {
+            // If autocomplete is active, accept the completion
+            if (cm.state.completionActive && cm.state.completionActive.widget) {
+              cm.state.completionActive.widget.pick();
+            } else {
+              // Otherwise, handle normal tab behavior
+              if (cm.somethingSelected()) {
+                cm.indentSelection("add");
+              } else {
+                cm.replaceSelection("  ", "end");
+              }
+            }
+          }
+        }
+      });
+      
+      // Simple autocomplete on typing
+      codeMirrorEditor.on("keyup", function(cm, event) {
+        // Don't trigger if already active or on Enter
+        if (!cm.state.completionActive && event.keyCode !== 13) {
+          // Only trigger on letters
+          if (/[a-zA-Z]/.test(String.fromCharCode(event.keyCode))) {
+            CodeMirror.showHint(cm, CodeMirror.hint.snippets, {
+              completeSingle: false,
+              alignWithWord: true,
+              closeCharacters: /[\s()\[\]{};:>,]/,
+              closeOnUnfocus: true
+            });
+          }
+        }
+      });
+      
+      // Sync CodeMirror content with hidden textarea
+      codeMirrorEditor.on('change', function() {
+        textarea.value = codeMirrorEditor.getValue();
+      });
+      
+      // Auto-render on page load
+      renderGraph();
+    });
+    
+    // Optional: Function to update CodeMirror content programmatically
+    function updateCodeMirrorContent(content) {
+      if (codeMirrorEditor) {
+        codeMirrorEditor.setValue(content);
+      }
+    }
+  </script>
 
-  </body>
+  <!-- load your renderer -->
+  <script src="src/js/main.js"></script>
+</body>
 </html>
+
