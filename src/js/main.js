@@ -286,15 +286,16 @@ function renderGraph() {
     // Function to calculate label position based on leading/trailing spaces
     function calculateLabelPosition(labelText, fromX, fromY, toX, toY) {
       const originalLabel = labelText || '';
-      
-      // Count leading spaces
-      const leadingSpaces = originalLabel.length - originalLabel.trimStart().length;
-      // Count trailing spaces
-      const trailingSpaces = originalLabel.length - originalLabel.trimEnd().length;
-      
-      // Get the cleaned label (no leading/trailing spaces)
-      const cleanLabel = originalLabel.trim();
-      
+
+      // Count leading '>' characters (instead of leading spaces)
+      const leadingSpaces = originalLabel.length - originalLabel.replace(/^>+/, '').length;
+
+      // Count leading '<' characters (instead of trailing spaces)
+      const trailingSpaces = originalLabel.length - originalLabel.replace(/^<+/, '').length;
+
+      // Get the cleaned label (remove leading '<' and '>' characters)
+      const cleanLabel = originalLabel.replace(/^[<>]+/, '');
+
       // Calculate arrow properties
       const arrowLength = Math.sqrt((toX - fromX) ** 2 + (toY - fromY) ** 2);
       const unitX = (toX - fromX) / arrowLength;
