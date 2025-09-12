@@ -76,6 +76,29 @@ Since flowdrom is not just a sequence graph generator but actually has timing pa
 
 Here source and target sequences are different. 
 
+#### message label syntax
+use '|' to create a multi line message label. In casse of collisions (message label obscures another graph element) you can use leading or trailing spaces to shift the message right or left accordingly along its arrow.
+
+```js
+{
+  title: 'Request-Response with collision',
+  lanes: ['Client', 'Server'],
+  messages: [
+    { path: 'Client->Server', label: 'Request', color: 'blue', style: 'solid', fromTime: 0, toTime: 1 },
+    { path: 'Client->Server', label: ' ctl|msg', color: 'red', style: 'solid', fromTime: 0, toTime: 4 },
+   { path: 'Server->Client', label: 'Response', color: 'green', style: 'solid', fromTime: 1, toTime: 2 }
+  ]
+}
+```
+
+![message syntax example](images/01-Request-Response-with-collision.svg)
+
+>*message defaults*
+>All given examples are full, however:
+>If label is omitted the message would be arrow only
+>If color is omitted the message would be black
+>If style is omitted the style would be solid
+
 ### 2. Adding States
 
 Now let's add state changes to show what happens inside each entity:

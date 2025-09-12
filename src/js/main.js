@@ -151,7 +151,7 @@ function renderGraph() {
     
     const laneTop = titleHeight + spaceBetweenTitleAndGroups + laneGroupHeight + spaceBetweenGroupsAndLanes;
     
-    const bottomPadding = 30; // Reduced from 120 to 30 since we have responsive scaling
+    const bottomPadding = 30;
     const svgHeight = laneTop + (maxTime + 1) * timeStep + bottomPadding;
 
     // Draw lanes
@@ -235,8 +235,8 @@ function renderGraph() {
     }
     const legendX = rightmostLaneX + laneSpacing;
 
-    const legendWidth = legend.length > 0 ? 360 : 0; // Reduced from 600 to 360
-    const svgWidth = legendX + legendWidth + 20; // Reduced padding from 50 to 20
+    const legendWidth = legend.length > 0 ? 360 : 0;
+    const svgWidth = legendX + legendWidth + 20;
 
     tempSvg.setAttribute('width', svgWidth);
     tempSvg.setAttribute('height', svgHeight);
@@ -283,10 +283,53 @@ function renderGraph() {
     const stateGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     const messageGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
-    // Store message label positions for collision detection and adjustment
-    const messageLabelData = [];
+    // Function to calculate label position based on leading/trailing spaces
+    function calculateLabelPosition(labelText, fromX, fromY, toX, toY) {
+      const originalLabel = labelText || '';
+      
+      // Count leading spaces
+      const leadingSpaces = originalLabel.length - originalLabel.trimStart().length;
+      // Count trailing spaces
+      const trailingSpaces = originalLabel.length - originalLabel.trimEnd().length;
+      
+      // Get the cleaned label (no leading/trailing spaces)
+      const cleanLabel = originalLabel.trim();
+      
+      // Calculate arrow properties
+      const arrowLength = Math.sqrt((toX - fromX) ** 2 + (toY - fromY) ** 2);
+      const unitX = (toX - fromX) / arrowLength;
+      const unitY = (toY - fromY) / arrowLength;
+      
+      // Base position (center of arrow)
+      const midX = (fromX + toX) / 2;
+      const midY = (fromY + toY) / 2;
+      
+      // Calculate offset based on spaces
+      // 8 spaces = full arrow length, so 4 spaces = half arrow length
+      let offsetRatio = 0; // 0 = center, -0.5 = start, +0.5 = end
+      
+      if (leadingSpaces > 0) {
+        // Leading spaces push label towards the end of the arrow (right/down)
+        offsetRatio = Math.min(leadingSpaces / 8.0, 0.4); // Cap at 0.4 to stay within arrow bounds
+      } else if (trailingSpaces > 0) {
+        // Trailing spaces push label towards the start of the arrow (left/up)
+        offsetRatio = -Math.min(trailingSpaces / 8.0, 0.4); // Cap at -0.4 to stay within arrow bounds
+      }
+      
+      // Apply offset
+      const offsetDistance = offsetRatio * arrowLength;
+      const finalX = midX + offsetDistance * unitX;
+      const finalY = midY + offsetDistance * unitY;
+      
+      return {
+        x: finalX,
+        y: finalY,
+        cleanLabel: cleanLabel,
+        offsetRatio: offsetRatio
+      };
+    }
 
-    // First pass: create all message labels with initial positions and detect collisions
+    // Draw messages with space-based label positioning
     messages.forEach((msg, msgIndex) => {
       const [from, to] = msg.path.split("->").map(x => x.trim());
       const fromX = lanePositions[from] || startX;
@@ -321,333 +364,65 @@ function renderGraph() {
       }
       line.setAttribute("marker-end", `url(#${arrowId})`);
 
-      // Calculate arrow properties
-      const midX = (fromX + toX) / 2;
-      const midY = (fromY + toY) / 2;
-      const dx = toX - fromX;
-      const dy = toY - fromY;
-      let angle = Math.atan2(dy, dx) * 180 / Math.PI;
-      if (angle > 90 || angle < -90) {
-        angle += 180;
-      }
-
-      const arrowLength = Math.sqrt(dx * dx + dy * dy);
-      const unitX = dx / arrowLength;
-      const unitY = dy / arrowLength;
-
-      const fontSize = 15;
-      const lines = (msg.label || '').split('|');
-      const lineHeight = fontSize * 1.2;
-      const paddingX = 6;
-      const paddingY = 4;
-      const textHeight = lines.length * lineHeight;
-
-      // Create temporary text to measure dimensions properly for multiline text
-      const tempGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      tempGroup.setAttribute("transform", `rotate(${angle}, ${midX}, ${midY})`);
-
-      const tempText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      tempText.setAttribute("x", midX);
-      tempText.setAttribute("y", midY - (textHeight - lineHeight) / 2);
-      tempText.setAttribute("class", "message-label");
-      tempText.setAttribute("text-anchor", "middle");
-      tempText.setAttribute("font-size", fontSize);
-      tempText.setAttribute("font-family", "'Courier New', monospace");
-
-      lines.forEach((line, i) => {
-        const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-        tspan.setAttribute("x", midX);
-        tspan.setAttribute("dy", i === 0 ? 0 : lineHeight);
-        tspan.textContent = line;
-        tempText.appendChild(tspan);
-      });
-
-      tempGroup.appendChild(tempText);
-      tempSvg.appendChild(tempGroup);
+      // Calculate label position based on spaces
+      const labelPosition = calculateLabelPosition(msg.label, fromX, fromY, toX, toY);
       
-      // Get accurate bounding box for multiline text
-      let bbox;
-      try {
-        bbox = tempText.getBBox();
-        // For multiline text, ensure we have adequate height
-        const calculatedHeight = lines.length * lineHeight;
-        if (bbox.height < calculatedHeight) {
-          bbox.height = calculatedHeight;
+      // Only create label if there's actual text content
+      if (labelPosition.cleanLabel) {
+        // Calculate arrow angle for text rotation
+        const dx = toX - fromX;
+        const dy = toY - fromY;
+        let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        if (angle > 90 || angle < -90) {
+          angle += 180;
         }
-      } catch (e) {
-        // Fallback if getBBox fails
+
+        const fontSize = 15;
+        const lines = labelPosition.cleanLabel.split('|');
+        const lineHeight = fontSize * 1.2;
+        const paddingX = 6;
+        const paddingY = 4;
+        const textHeight = lines.length * lineHeight;
+
+        // Create label group with rotation
+        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        group.setAttribute("transform", `rotate(${angle}, ${labelPosition.x}, ${labelPosition.y})`);
+
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", labelPosition.x);
+        text.setAttribute("y", labelPosition.y - (textHeight - lineHeight) / 2);
+        text.setAttribute("class", "message-label");
+        text.setAttribute("fill", msg.color || "black");
+        text.setAttribute("text-anchor", "middle");
+
+        lines.forEach((line, i) => {
+          const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          tspan.setAttribute("x", labelPosition.x);
+          tspan.setAttribute("dy", i === 0 ? 0 : lineHeight);
+          tspan.textContent = line;
+          text.appendChild(tspan);
+        });
+
+        // Create background rectangle
         const maxLineLength = Math.max(...lines.map(line => line.length));
-        bbox = {
-          x: midX - (maxLineLength * fontSize * 0.6) / 2,
-          y: midY - textHeight / 2,
-          width: maxLineLength * fontSize * 0.6,
-          height: textHeight
-        };
-      }
-      
-      tempSvg.removeChild(tempGroup);
+        const estimatedTextWidth = Math.max(maxLineLength * fontSize * 0.55, 30);
+        
+        const labelBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const bgX = labelPosition.x - estimatedTextWidth / 2 - paddingX;
+        const bgY = labelPosition.y - textHeight / 2 - paddingY;
+        labelBg.setAttribute("x", bgX);
+        labelBg.setAttribute("y", bgY);
+        labelBg.setAttribute("width", estimatedTextWidth + 2 * paddingX);
+        labelBg.setAttribute("height", textHeight + 2 * paddingY);
+        labelBg.setAttribute("class", "label-box");
 
-      // Store label data for collision resolution
-      messageLabelData.push({
-        msgIndex,
-        msg,
-        fromX, fromY, toX, toY,
-        midX, midY, dx, dy, angle,
-        arrowLength, unitX, unitY,
-        lines, fontSize, lineHeight, paddingX, paddingY, textHeight,
-        bbox,
-        finalX: midX, // Start centered
-        finalY: midY, // Start centered
-        offsetType: 'centered' // Track offset type
-      });
+        group.appendChild(labelBg);
+        group.appendChild(text);
+        messageGroup.appendChild(group);
+      }
     });
 
-    // Function to check if two bounding boxes overlap (more accurate for rotated text)
-    function bboxOverlap(bbox1, bbox2, angle1, angle2) {
-      // If the angles are very different, the texts are likely not actually overlapping visually
-      const angleDiff = Math.abs(angle1 - angle2);
-      const normalizedAngleDiff = Math.min(angleDiff, 360 - angleDiff);
-      
-      // If arrows have significantly different angles, be less strict about collision
-      let buffer = 18;
-      if (normalizedAngleDiff > 30) { // If arrows are at different angles
-        buffer = 8; // Use smaller buffer - they're likely not visually overlapping
-      }
-      if (normalizedAngleDiff > 60) { // If arrows are very different angles
-        buffer = 4; // Use very small buffer - almost certainly not overlapping
-      }
-      
-      return !(bbox1.x + bbox1.width + buffer < bbox2.x || 
-               bbox2.x + bbox2.width + buffer < bbox1.x || 
-               bbox1.y + bbox1.height + buffer < bbox2.y || 
-               bbox2.y + bbox2.height + buffer < bbox1.y);
-    }
-
-    // Function to calculate bounding box at a given position (improved)
-    function calculateBboxAtPosition(labelData, shiftAmount) {
-      const newX = labelData.midX + shiftAmount * labelData.unitX;
-      const newY = labelData.midY + shiftAmount * labelData.unitY;
-      
-      // Reduce rotation buffer - it was too aggressive
-      const rotationBuffer = Math.max(5, labelData.bbox.height * 0.1); // Reduced significantly
-      
-      return {
-        x: labelData.bbox.x + (newX - labelData.midX) - labelData.paddingX - rotationBuffer,
-        y: labelData.bbox.y + (newY - labelData.midY) - labelData.paddingY - rotationBuffer,
-        width: labelData.bbox.width + 2 * labelData.paddingX + 2 * rotationBuffer,
-        height: labelData.bbox.height + 2 * labelData.paddingY + 2 * rotationBuffer
-      };
-    }
-
-    // Function to check if a shift position is valid (within arrow bounds)
-    function isValidShift(labelData, shiftAmount) {
-      const newX = labelData.midX + shiftAmount * labelData.unitX;
-      const newY = labelData.midY + shiftAmount * labelData.unitY;
-      
-      const distanceFromStart = Math.sqrt((newX - labelData.fromX) ** 2 + (newY - labelData.fromY) ** 2);
-      const distanceFromEnd = Math.sqrt((newX - labelData.toX) ** 2 + (newY - labelData.toY) ** 2);
-      const minDistanceFromEnds = 25;
-      
-      return distanceFromStart >= minDistanceFromEnds && distanceFromEnd >= minDistanceFromEnds;
-    }
-
-    // Much simpler collision resolution approach
-    for (let i = 0; i < messageLabelData.length; i++) {
-      const labelA = messageLabelData[i];
-      
-      for (let j = i + 1; j < messageLabelData.length; j++) {
-        const labelB = messageLabelData[j];
-        
-        // Only check labels that are actually close to each other
-        const centerDistance = Math.sqrt(
-          (labelA.finalX - labelB.finalX) ** 2 + (labelA.finalY - labelB.finalY) ** 2
-        );
-        
-        // Skip if centers are far apart (more than 80px)
-        if (centerDistance > 80) continue;
-        
-        // Calculate proper multiline text dimensions
-        function getTextDimensions(labelData) {
-          const lineCount = labelData.lines.length;
-          
-          // For multiline text, use the actual measured bbox but ensure minimum dimensions
-          let width = labelData.bbox.width;
-          let height = labelData.bbox.height;
-          
-          // For multiline text (more than 1 line), ensure height accounts for all lines
-          if (lineCount > 1) {
-            const calculatedHeight = lineCount * labelData.lineHeight * 0.9; // Slightly tighter line spacing
-            height = Math.max(height, calculatedHeight);
-            
-            // For width, ensure we account for the longest line
-            const maxLineLength = Math.max(...labelData.lines.map(line => line.length));
-            const estimatedWidth = maxLineLength * labelData.fontSize * 0.55; // Adjusted for better accuracy
-            width = Math.max(width, estimatedWidth);
-          }
-          
-          return { width, height };
-        }
-        
-        const dimA = getTextDimensions(labelA);
-        const dimB = getTextDimensions(labelB);
-        
-        // Simple overlap check with multiline-aware dimensions
-        const margin = 8; // Small margin for clear separation
-        
-        const aLeft = labelA.finalX - dimA.width / 2 - margin;
-        const aRight = labelA.finalX + dimA.width / 2 + margin;
-        const aTop = labelA.finalY - dimA.height / 2 - margin;
-        const aBottom = labelA.finalY + dimA.height / 2 + margin;
-        
-        const bLeft = labelB.finalX - dimB.width / 2 - margin;
-        const bRight = labelB.finalX + dimB.width / 2 + margin;
-        const bTop = labelB.finalY - dimB.height / 2 - margin;
-        const bBottom = labelB.finalY + dimB.height / 2 + margin;
-        
-        // Check actual overlap
-        const overlapping = !(aRight < bLeft || bRight < aLeft || aBottom < bTop || bBottom < aTop);
-        
-        if (overlapping) {
-          // Try to resolve by moving labelB first
-          const shiftDistance = 35;
-          const minDistanceFromEnd = 25;
-          
-          function tryShiftLabel(label, direction) {
-            const newX = label.midX + direction * shiftDistance * label.unitX;
-            const newY = label.midY + direction * shiftDistance * label.unitY;
-            
-            const distFromStart = Math.sqrt((newX - label.fromX) ** 2 + (newY - label.fromY) ** 2);
-            const distFromEnd = Math.sqrt((newX - label.toX) ** 2 + (newY - label.toY) ** 2);
-            
-            if (distFromStart >= minDistanceFromEnd && distFromEnd >= minDistanceFromEnd) {
-              return { x: newX, y: newY, valid: true };
-            }
-            return { valid: false };
-          }
-          
-          // Try moving labelB in both directions
-          let resolved = false;
-          
-          // Calculate which direction has more room for labelB
-          const bDistFromStart = Math.sqrt((labelB.midX - labelB.fromX) ** 2 + (labelB.midY - labelB.fromY) ** 2);
-          const bDistFromEnd = Math.sqrt((labelB.midX - labelB.toX) ** 2 + (labelB.midY - labelB.toY) ** 2);
-          
-          const directions = bDistFromEnd > bDistFromStart ? [1, -1] : [-1, 1]; // Try direction with more room first
-          
-          for (const dir of directions) {
-            const newPosB = tryShiftLabel(labelB, dir);
-            if (newPosB.valid) {
-              // Test if this resolves the collision
-              const testBLeft = newPosB.x - dimB.width / 2 - margin;
-              const testBRight = newPosB.x + dimB.width / 2 + margin;
-              const testBTop = newPosB.y - dimB.height / 2 - margin;
-              const testBBottom = newPosB.y + dimB.height / 2 + margin;
-              
-              const stillOverlapping = !(aRight < testBLeft || testBRight < aLeft || aBottom < testBTop || testBBottom < aTop);
-              
-              if (!stillOverlapping) {
-                labelB.finalX = newPosB.x;
-                labelB.finalY = newPosB.y;
-                labelB.offsetType = 'shifted';
-                resolved = true;
-                break;
-              }
-            }
-          }
-          
-          // If moving labelB didn't work, try bilateral movement
-          if (!resolved) {
-            // Try moving both labels in opposite directions
-            const aDistFromStart = Math.sqrt((labelA.midX - labelA.fromX) ** 2 + (labelA.midY - labelA.fromY) ** 2);
-            const aDistFromEnd = Math.sqrt((labelA.midX - labelA.toX) ** 2 + (labelA.midY - labelA.toY) ** 2);
-            
-            const aDirPreference = aDistFromEnd > aDistFromStart ? 1 : -1;
-            const bDirPreference = bDistFromEnd > bDistFromStart ? 1 : -1;
-            
-            // Try moving them in opposite directions
-            const newPosA = tryShiftLabel(labelA, aDirPreference);
-            const newPosB = tryShiftLabel(labelB, -aDirPreference); // Opposite direction
-            
-            if (newPosA.valid && newPosB.valid) {
-              // Test if bilateral movement resolves collision
-              const testALeft = newPosA.x - dimA.width / 2 - margin;
-              const testARight = newPosA.x + dimA.width / 2 + margin;
-              const testATop = newPosA.y - dimA.height / 2 - margin;
-              const testABottom = newPosA.y + dimA.height / 2 + margin;
-              
-              const testBLeft = newPosB.x - dimB.width / 2 - margin;
-              const testBRight = newPosB.x + dimB.width / 2 + margin;
-              const testBTop = newPosB.y - dimB.height / 2 - margin;
-              const testBBottom = newPosB.y + dimB.height / 2 + margin;
-              
-              const stillOverlapping = !(testARight < testBLeft || testBRight < testALeft || testABottom < testBTop || testBBottom < testATop);
-              
-              if (!stillOverlapping) {
-                labelA.finalX = newPosA.x;
-                labelA.finalY = newPosA.y;
-                labelA.offsetType = 'shifted';
-                labelB.finalX = newPosB.x;
-                labelB.finalY = newPosB.y;
-                labelB.offsetType = 'shifted';
-                resolved = true;
-              }
-            }
-            
-            // Last resort: try the other bilateral combination
-            if (!resolved) {
-              const newPosA2 = tryShiftLabel(labelA, -aDirPreference);
-              const newPosB2 = tryShiftLabel(labelB, aDirPreference);
-              
-              if (newPosA2.valid && newPosB2.valid) {
-                labelA.finalX = newPosA2.x;
-                labelA.finalY = newPosA2.y;
-                labelA.offsetType = 'shifted';
-                labelB.finalX = newPosB2.x;
-                labelB.finalY = newPosB2.y;
-                labelB.offsetType = 'shifted';
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Second pass: create the actual label elements with resolved positions
-    messageLabelData.forEach((labelData) => {
-      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      group.setAttribute("transform", `rotate(${labelData.angle}, ${labelData.finalX}, ${labelData.finalY})`);
-
-      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      text.setAttribute("x", labelData.finalX);
-      text.setAttribute("y", labelData.finalY - (labelData.textHeight - labelData.lineHeight) / 2);
-      text.setAttribute("class", "message-label");
-      text.setAttribute("fill", labelData.msg.color || "black");
-      text.setAttribute("text-anchor", "middle");
-
-      labelData.lines.forEach((line, i) => {
-        const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-        tspan.setAttribute("x", labelData.finalX);
-        tspan.setAttribute("dy", i === 0 ? 0 : labelData.lineHeight);
-        tspan.textContent = line;
-        text.appendChild(tspan);
-      });
-
-      // Create background rectangle
-      const labelBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      const bgX = labelData.bbox.x + (labelData.finalX - labelData.midX) - labelData.paddingX;
-      const bgY = labelData.bbox.y + (labelData.finalY - labelData.midY) - labelData.paddingY;
-      labelBg.setAttribute("x", bgX);
-      labelBg.setAttribute("y", bgY);
-      labelBg.setAttribute("width", labelData.bbox.width + 2 * labelData.paddingX);
-      labelBg.setAttribute("height", labelData.bbox.height + 2 * labelData.paddingY);
-      labelBg.setAttribute("class", "label-box");
-
-      group.appendChild(labelBg);
-      group.appendChild(text);
-      messageGroup.appendChild(group);
-    });
-
-    // Draw states
+    // Draw states (unchanged)
     states.forEach((state, stateIndex) => {
       if (!showStates) return;
       
@@ -753,7 +528,7 @@ function renderGraph() {
       stateGroup.appendChild(stateSubGroup);
     });
 
-    // Draw info boxes
+    // Draw info boxes (unchanged from original)
     if (infoBoxes.length > 0) {
       const occupiedAreas = [];
       const messageLines = [];
@@ -869,7 +644,6 @@ function renderGraph() {
           positions.push({ x: anchorX + 10, y: anchorY + distance });
           positions.push({ x: anchorX - boxWidth - 10, y: anchorY + distance });
 
-
           positions.push({ x: anchorX + distance, y: anchorY - boxHeight/2 + distance});
           positions.push({ x: anchorX + distance, y: anchorY - boxHeight - 10 + distance});
           positions.push({ x: anchorX + distance, y: anchorY + 10 + distance});
@@ -979,7 +753,7 @@ function renderGraph() {
     tempSvg.appendChild(stateGroup);
     tempSvg.appendChild(messageGroup);
 
-    // Draw legend
+    // Draw legend (unchanged from original)
     if (legend.length > 0) {
       const legendY = laneTop;
       const legendItemHeight = 67;
@@ -1007,12 +781,8 @@ function renderGraph() {
       tempSvg.appendChild(legendTitle);
       
       legend.forEach((item, index) => {
-        const fontSize = 27;
-        const lines = (item.label || '').split('|');
-        const lineHeight = fontSize * 1.2;
-        const paddingX = 6;
-        const paddingY = 4;
-        const textHeight = lines.length * lineHeight;
+        // Calculate position for legend item labels using the same space-based system
+        const labelPosition = calculateLabelPosition(item.label, arrowStartX, legendY + 30 + index * legendItemHeight, arrowStartX + arrowLength, legendY + 30 + index * legendItemHeight);
         
         const itemY = legendY + 30 + index * legendItemHeight;
         
@@ -1042,44 +812,51 @@ function renderGraph() {
         arrow.setAttribute("marker-end", `url(#${arrowId})`);
         tempSvg.appendChild(arrow);
         
-        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        
-        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        const midX = arrowStartX + arrowLength / 2;
-        const midY = itemY;
-        
-        const textYPosition = midY - (textHeight - lineHeight) / 2;
+        // Only create legend label if there's actual text content
+        if (labelPosition.cleanLabel) {
+          const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          
+          const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          const fontSize = 27;
+          const lines = labelPosition.cleanLabel.split('|');
+          const lineHeight = fontSize * 1.2;
+          const paddingX = 6;
+          const paddingY = 4;
+          const textHeight = lines.length * lineHeight;
+          
+          const textYPosition = labelPosition.y - (textHeight - lineHeight) / 2;
 
-        text.setAttribute("x", midX);
-        text.setAttribute("y", textYPosition);
-        text.setAttribute("class", "legend-label");
-        text.setAttribute("fill", item.color || "black");
-        text.setAttribute("text-anchor", "middle");
-        
-        lines.forEach((line, i) => {
-          const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-          tspan.setAttribute("x", midX);
-          tspan.setAttribute("dy", i === 0 ? 0 : lineHeight);
-          tspan.textContent = line;
-          text.appendChild(tspan);
-        });
-        
-        group.appendChild(text);
-        tempSvg.appendChild(group);
-        const bbox = text.getBBox();
-        tempSvg.removeChild(group);
-        
-        const labelBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        labelBg.setAttribute("x", bbox.x - paddingX);
-        labelBg.setAttribute("y", bbox.y - paddingY);
-        labelBg.setAttribute("width", bbox.width + 2 * paddingX);
-        labelBg.setAttribute("height", bbox.height + 2 * paddingY);
-        labelBg.setAttribute("class", "label-box");
-        
-        group.innerHTML = '';
-        group.appendChild(labelBg);
-        group.appendChild(text);
-        tempSvg.appendChild(group);
+          text.setAttribute("x", labelPosition.x);
+          text.setAttribute("y", textYPosition);
+          text.setAttribute("class", "legend-label");
+          text.setAttribute("fill", item.color || "black");
+          text.setAttribute("text-anchor", "middle");
+          
+          lines.forEach((line, i) => {
+            const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+            tspan.setAttribute("x", labelPosition.x);
+            tspan.setAttribute("dy", i === 0 ? 0 : lineHeight);
+            tspan.textContent = line;
+            text.appendChild(tspan);
+          });
+          
+          group.appendChild(text);
+          tempSvg.appendChild(group);
+          const bbox = text.getBBox();
+          tempSvg.removeChild(group);
+          
+          const labelBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          labelBg.setAttribute("x", bbox.x - paddingX);
+          labelBg.setAttribute("y", bbox.y - paddingY);
+          labelBg.setAttribute("width", bbox.width + 2 * paddingX);
+          labelBg.setAttribute("height", bbox.height + 2 * paddingY);
+          labelBg.setAttribute("class", "label-box");
+          
+          group.innerHTML = '';
+          group.appendChild(labelBg);
+          group.appendChild(text);
+          tempSvg.appendChild(group);
+        }
       });
     }
 
