@@ -248,7 +248,7 @@ function renderGraph() {
     // Add title with minimal spacing
     const titleY = 25;
     const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    title.setAttribute("x", (svgWidth / 2) - 120);
+    title.setAttribute("x", (svgWidth / 2) - 80);
     title.setAttribute("y", titleY);
     title.setAttribute("text-anchor", "middle");
     title.setAttribute("font-size", "24");
