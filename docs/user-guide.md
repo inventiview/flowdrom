@@ -43,6 +43,21 @@ Let's start with the simplest possible diagram - two entities exchanging a messa
 
 ```js
 {
+  title: 'Hello world',
+  lanes: ['Source', 'Target'],
+  messages: [
+    { path: 'Source->Target', label: 'Hello', fromTime: 0, toTime: 1 },
+    { path: 'Target->Source', label: 'World', fromTime: 1, toTime: 2 },
+  ],  
+}
+```
+![Hello-World](images/01-Hello-world.svg)
+
+
+Adding color and style.
+
+```js
+{
   title: 'Basic Request-Response',
   lanes: ['Client', 'Server'],
   messages: [
