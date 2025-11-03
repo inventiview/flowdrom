@@ -285,158 +285,158 @@ Legends help readers understand what different colors and line styles represent.
 
 ## HTML / CSS named colors
 
-You can use any standard HTML/CSS named color in your diagrams (for message colors, state backgrounds, legends, etc.). Below is the complete list of named colors and their hexadecimal values — copy the color name (for example `red` or `RebeccaPurple`) into your diagram JSON's `color` field.
+You can use any standard HTML/CSS named color in your diagrams (for message colors, state backgrounds, legends, etc.). Below is the complete list of named colors and their hexadecimal values — copy the color name (for example `red` or `RebeccaPurple`) into your diagram JSON's `color` field. On GitHub Pages the table will also display a small color swatch for each name.
 
-| Name | Hex |
-|---|---:|
-| AliceBlue | #F0F8FF |
-| AntiqueWhite | #FAEBD7 |
-| Aqua | #00FFFF |
-| Aquamarine | #7FFFD4 |
-| Azure | #F0FFFF |
-| Beige | #F5F5DC |
-| Bisque | #FFE4C4 |
-| Black | #000000 |
-| BlanchedAlmond | #FFEBCD |
-| Blue | #0000FF |
-| BlueViolet | #8A2BE2 |
-| Brown | #A52A2A |
-| BurlyWood | #DEB887 |
-| CadetBlue | #5F9EA0 |
-| Chartreuse | #7FFF00 |
-| Chocolate | #D2691E |
-| Coral | #FF7F50 |
-| CornflowerBlue | #6495ED |
-| Cornsilk | #FFF8DC |
-| Crimson | #DC143C |
-| Cyan | #00FFFF |
-| DarkBlue | #00008B |
-| DarkCyan | #008B8B |
-| DarkGoldenRod | #B8860B |
-| DarkGray | #A9A9A9 |
-| DarkGrey | #A9A9A9 |
-| DarkGreen | #006400 |
-| DarkKhaki | #BDB76B |
-| DarkMagenta | #8B008B |
-| DarkOliveGreen | #556B2F |
-| DarkOrange | #FF8C00 |
-| DarkOrchid | #9932CC |
-| DarkRed | #8B0000 |
-| DarkSalmon | #E9967A |
-| DarkSeaGreen | #8FBC8F |
-| DarkSlateBlue | #483D8B |
-| DarkSlateGray | #2F4F4F |
-| DarkSlateGrey | #2F4F4F |
-| DarkTurquoise | #00CED1 |
-| DarkViolet | #9400D3 |
-| DeepPink | #FF1493 |
-| DeepSkyBlue | #00BFFF |
-| DimGray | #696969 |
-| DimGrey | #696969 |
-| DodgerBlue | #1E90FF |
-| FireBrick | #B22222 |
-| FloralWhite | #FFFAF0 |
-| ForestGreen | #228B22 |
-| Fuchsia | #FF00FF |
-| Gainsboro | #DCDCDC |
-| GhostWhite | #F8F8FF |
-| Gold | #FFD700 |
-| GoldenRod | #DAA520 |
-| Gray | #808080 |
-| Grey | #808080 |
-| Green | #008000 |
-| GreenYellow | #ADFF2F |
-| HoneyDew | #F0FFF0 |
-| HotPink | #FF69B4 |
-| IndianRed | #CD5C5C |
-| Indigo | #4B0082 |
-| Ivory | #FFFFF0 |
-| Khaki | #F0E68C |
-| Lavender | #E6E6FA |
-| LavenderBlush | #FFF0F5 |
-| LawnGreen | #7CFC00 |
-| LemonChiffon | #FFFACD |
-| LightBlue | #ADD8E6 |
-| LightCoral | #F08080 |
-| LightCyan | #E0FFFF |
-| LightGoldenRodYellow | #FAFAD2 |
-| LightGray | #D3D3D3 |
-| LightGrey | #D3D3D3 |
-| LightGreen | #90EE90 |
-| LightPink | #FFB6C1 |
-| LightSalmon | #FFA07A |
-| LightSeaGreen | #20B2AA |
-| LightSkyBlue | #87CEFA |
-| LightSlateGray | #778899 |
-| LightSlateGrey | #778899 |
-| LightSteelBlue | #B0C4DE |
-| LightYellow | #FFFFE0 |
-| Lime | #00FF00 |
-| LimeGreen | #32CD32 |
-| Linen | #FAF0E6 |
-| Magenta | #FF00FF |
-| Maroon | #800000 |
-| MediumAquaMarine | #66CDAA |
-| MediumBlue | #0000CD |
-| MediumOrchid | #BA55D3 |
-| MediumPurple | #9370DB |
-| MediumSeaGreen | #3CB371 |
-| MediumSlateBlue | #7B68EE |
-| MediumSpringGreen | #00FA9A |
-| MediumTurquoise | #48D1CC |
-| MediumVioletRed | #C71585 |
-| MidnightBlue | #191970 |
-| MintCream | #F5FFFA |
-| MistyRose | #FFE4E1 |
-| Moccasin | #FFE4B5 |
-| NavajoWhite | #FFDEAD |
-| Navy | #000080 |
-| OldLace | #FDF5E6 |
-| Olive | #808000 |
-| OliveDrab | #6B8E23 |
-| Orange | #FFA500 |
-| OrangeRed | #FF4500 |
-| Orchid | #DA70D6 |
-| PaleGoldenRod | #EEE8AA |
-| PaleGreen | #98FB98 |
-| PaleTurquoise | #AFEEEE |
-| PaleVioletRed | #DB7093 |
-| PapayaWhip | #FFEFD5 |
-| PeachPuff | #FFDAB9 |
-| Peru | #CD853F |
-| Pink | #FFC0CB |
-| Plum | #DDA0DD |
-| PowderBlue | #B0E0E6 |
-| Purple | #800080 |
-| RebeccaPurple | #663399 |
-| Red | #FF0000 |
-| RosyBrown | #BC8F8F |
-| RoyalBlue | #4169E1 |
-| SaddleBrown | #8B4513 |
-| Salmon | #FA8072 |
-| SandyBrown | #F4A460 |
-| SeaGreen | #2E8B57 |
-| SeaShell | #FFF5EE |
-| Sienna | #A0522D |
-| Silver | #C0C0C0 |
-| SkyBlue | #87CEEB |
-| SlateBlue | #6A5ACD |
-| SlateGray | #708090 |
-| SlateGrey | #708090 |
-| Snow | #FFFAFA |
-| SpringGreen | #00FF7F |
-| SteelBlue | #4682B4 |
-| Tan | #D2B48C |
-| Teal | #008080 |
-| Thistle | #D8BFD8 |
-| Tomato | #FF6347 |
-| Turquoise | #40E0D0 |
-| Violet | #EE82EE |
-| Wheat | #F5DEB3 |
-| White | #FFFFFF |
-| WhiteSmoke | #F5F5F5 |
-| Yellow | #FFFF00 |
-| YellowGreen | #9ACD32 |
+| Swatch | Name | Hex |
+|:---:|---|---:|
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F0F8FF;vertical-align:middle"></span> | AliceBlue | #F0F8FF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FAEBD7;vertical-align:middle"></span> | AntiqueWhite | #FAEBD7 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#00FFFF;vertical-align:middle"></span> | Aqua | #00FFFF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#7FFFD4;vertical-align:middle"></span> | Aquamarine | #7FFFD4 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F0FFFF;vertical-align:middle"></span> | Azure | #F0FFFF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F5F5DC;vertical-align:middle"></span> | Beige | #F5F5DC |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFE4C4;vertical-align:middle"></span> | Bisque | #FFE4C4 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#000000;vertical-align:middle"></span> | Black | #000000 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFEBCD;vertical-align:middle"></span> | BlanchedAlmond | #FFEBCD |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#0000FF;vertical-align:middle"></span> | Blue | #0000FF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#8A2BE2;vertical-align:middle"></span> | BlueViolet | #8A2BE2 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#A52A2A;vertical-align:middle"></span> | Brown | #A52A2A |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#DEB887;vertical-align:middle"></span> | BurlyWood | #DEB887 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#5F9EA0;vertical-align:middle"></span> | CadetBlue | #5F9EA0 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#7FFF00;vertical-align:middle"></span> | Chartreuse | #7FFF00 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#D2691E;vertical-align:middle"></span> | Chocolate | #D2691E |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FF7F50;vertical-align:middle"></span> | Coral | #FF7F50 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#6495ED;vertical-align:middle"></span> | CornflowerBlue | #6495ED |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFF8DC;vertical-align:middle"></span> | Cornsilk | #FFF8DC |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#DC143C;vertical-align:middle"></span> | Crimson | #DC143C |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#00FFFF;vertical-align:middle"></span> | Cyan | #00FFFF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#00008B;vertical-align:middle"></span> | DarkBlue | #00008B |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#008B8B;vertical-align:middle"></span> | DarkCyan | #008B8B |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#B8860B;vertical-align:middle"></span> | DarkGoldenRod | #B8860B |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#A9A9A9;vertical-align:middle"></span> | DarkGray | #A9A9A9 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#A9A9A9;vertical-align:middle"></span> | DarkGrey | #A9A9A9 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#006400;vertical-align:middle"></span> | DarkGreen | #006400 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#BDB76B;vertical-align:middle"></span> | DarkKhaki | #BDB76B |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#8B008B;vertical-align:middle"></span> | DarkMagenta | #8B008B |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#556B2F;vertical-align:middle"></span> | DarkOliveGreen | #556B2F |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FF8C00;vertical-align:middle"></span> | DarkOrange | #FF8C00 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#9932CC;vertical-align:middle"></span> | DarkOrchid | #9932CC |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#8B0000;vertical-align:middle"></span> | DarkRed | #8B0000 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#E9967A;vertical-align:middle"></span> | DarkSalmon | #E9967A |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#8FBC8F;vertical-align:middle"></span> | DarkSeaGreen | #8FBC8F |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#483D8B;vertical-align:middle"></span> | DarkSlateBlue | #483D8B |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#2F4F4F;vertical-align:middle"></span> | DarkSlateGray | #2F4F4F |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#2F4F4F;vertical-align:middle"></span> | DarkSlateGrey | #2F4F4F |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#00CED1;vertical-align:middle"></span> | DarkTurquoise | #00CED1 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#9400D3;vertical-align:middle"></span> | DarkViolet | #9400D3 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FF1493;vertical-align:middle"></span> | DeepPink | #FF1493 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#00BFFF;vertical-align:middle"></span> | DeepSkyBlue | #00BFFF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#696969;vertical-align:middle"></span> | DimGray | #696969 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#696969;vertical-align:middle"></span> | DimGrey | #696969 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#1E90FF;vertical-align:middle"></span> | DodgerBlue | #1E90FF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#B22222;vertical-align:middle"></span> | FireBrick | #B22222 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFFAF0;vertical-align:middle"></span> | FloralWhite | #FFFAF0 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#228B22;vertical-align:middle"></span> | ForestGreen | #228B22 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FF00FF;vertical-align:middle"></span> | Fuchsia | #FF00FF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#DCDCDC;vertical-align:middle"></span> | Gainsboro | #DCDCDC |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F8F8FF;vertical-align:middle"></span> | GhostWhite | #F8F8FF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFD700;vertical-align:middle"></span> | Gold | #FFD700 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#DAA520;vertical-align:middle"></span> | GoldenRod | #DAA520 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#808080;vertical-align:middle"></span> | Gray | #808080 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#808080;vertical-align:middle"></span> | Grey | #808080 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#008000;vertical-align:middle"></span> | Green | #008000 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#ADFF2F;vertical-align:middle"></span> | GreenYellow | #ADFF2F |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F0FFF0;vertical-align:middle"></span> | HoneyDew | #F0FFF0 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FF69B4;vertical-align:middle"></span> | HotPink | #FF69B4 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#CD5C5C;vertical-align:middle"></span> | IndianRed | #CD5C5C |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#4B0082;vertical-align:middle"></span> | Indigo | #4B0082 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFFFF0;vertical-align:middle"></span> | Ivory | #FFFFF0 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F0E68C;vertical-align:middle"></span> | Khaki | #F0E68C |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#E6E6FA;vertical-align:middle"></span> | Lavender | #E6E6FA |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFF0F5;vertical-align:middle"></span> | LavenderBlush | #FFF0F5 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#7CFC00;vertical-align:middle"></span> | LawnGreen | #7CFC00 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFFACD;vertical-align:middle"></span> | LemonChiffon | #FFFACD |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#ADD8E6;vertical-align:middle"></span> | LightBlue | #ADD8E6 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F08080;vertical-align:middle"></span> | LightCoral | #F08080 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#E0FFFF;vertical-align:middle"></span> | LightCyan | #E0FFFF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FAFAD2;vertical-align:middle"></span> | LightGoldenRodYellow | #FAFAD2 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#D3D3D3;vertical-align:middle"></span> | LightGray | #D3D3D3 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#D3D3D3;vertical-align:middle"></span> | LightGrey | #D3D3D3 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#90EE90;vertical-align:middle"></span> | LightGreen | #90EE90 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFB6C1;vertical-align:middle"></span> | LightPink | #FFB6C1 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFA07A;vertical-align:middle"></span> | LightSalmon | #FFA07A |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#20B2AA;vertical-align:middle"></span> | LightSeaGreen | #20B2AA |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#87CEFA;vertical-align:middle"></span> | LightSkyBlue | #87CEFA |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#778899;vertical-align:middle"></span> | LightSlateGray | #778899 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#778899;vertical-align:middle"></span> | LightSlateGrey | #778899 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#B0C4DE;vertical-align:middle"></span> | LightSteelBlue | #B0C4DE |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFFFE0;vertical-align:middle"></span> | LightYellow | #FFFFE0 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#00FF00;vertical-align:middle"></span> | Lime | #00FF00 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#32CD32;vertical-align:middle"></span> | LimeGreen | #32CD32 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FAF0E6;vertical-align:middle"></span> | Linen | #FAF0E6 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FF00FF;vertical-align:middle"></span> | Magenta | #FF00FF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#800000;vertical-align:middle"></span> | Maroon | #800000 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#66CDAA;vertical-align:middle"></span> | MediumAquaMarine | #66CDAA |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#0000CD;vertical-align:middle"></span> | MediumBlue | #0000CD |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#BA55D3;vertical-align:middle"></span> | MediumOrchid | #BA55D3 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#9370DB;vertical-align:middle"></span> | MediumPurple | #9370DB |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#3CB371;vertical-align:middle"></span> | MediumSeaGreen | #3CB371 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#7B68EE;vertical-align:middle"></span> | MediumSlateBlue | #7B68EE |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#00FA9A;vertical-align:middle"></span> | MediumSpringGreen | #00FA9A |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#48D1CC;vertical-align:middle"></span> | MediumTurquoise | #48D1CC |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#C71585;vertical-align:middle"></span> | MediumVioletRed | #C71585 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#191970;vertical-align:middle"></span> | MidnightBlue | #191970 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F5FFFA;vertical-align:middle"></span> | MintCream | #F5FFFA |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFE4E1;vertical-align:middle"></span> | MistyRose | #FFE4E1 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFE4B5;vertical-align:middle"></span> | Moccasin | #FFE4B5 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFDEAD;vertical-align:middle"></span> | NavajoWhite | #FFDEAD |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#000080;vertical-align:middle"></span> | Navy | #000080 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FDF5E6;vertical-align:middle"></span> | OldLace | #FDF5E6 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#808000;vertical-align:middle"></span> | Olive | #808000 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#6B8E23;vertical-align:middle"></span> | OliveDrab | #6B8E23 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFA500;vertical-align:middle"></span> | Orange | #FFA500 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FF4500;vertical-align:middle"></span> | OrangeRed | #FF4500 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#DA70D6;vertical-align:middle"></span> | Orchid | #DA70D6 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#EEE8AA;vertical-align:middle"></span> | PaleGoldenRod | #EEE8AA |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#98FB98;vertical-align:middle"></span> | PaleGreen | #98FB98 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#AFEEEE;vertical-align:middle"></span> | PaleTurquoise | #AFEEEE |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#DB7093;vertical-align:middle"></span> | PaleVioletRed | #DB7093 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFEFD5;vertical-align:middle"></span> | PapayaWhip | #FFEFD5 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFDAB9;vertical-align:middle"></span> | PeachPuff | #FFDAB9 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#CD853F;vertical-align:middle"></span> | Peru | #CD853F |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFC0CB;vertical-align:middle"></span> | Pink | #FFC0CB |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#DDA0DD;vertical-align:middle"></span> | Plum | #DDA0DD |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#B0E0E6;vertical-align:middle"></span> | PowderBlue | #B0E0E6 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#800080;vertical-align:middle"></span> | Purple | #800080 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#663399;vertical-align:middle"></span> | RebeccaPurple | #663399 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FF0000;vertical-align:middle"></span> | Red | #FF0000 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#BC8F8F;vertical-align:middle"></span> | RosyBrown | #BC8F8F |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#4169E1;vertical-align:middle"></span> | RoyalBlue | #4169E1 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#8B4513;vertical-align:middle"></span> | SaddleBrown | #8B4513 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FA8072;vertical-align:middle"></span> | Salmon | #FA8072 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F4A460;vertical-align:middle"></span> | SandyBrown | #F4A460 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#2E8B57;vertical-align:middle"></span> | SeaGreen | #2E8B57 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFF5EE;vertical-align:middle"></span> | SeaShell | #FFF5EE |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#A0522D;vertical-align:middle"></span> | Sienna | #A0522D |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#C0C0C0;vertical-align:middle"></span> | Silver | #C0C0C0 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#87CEEB;vertical-align:middle"></span> | SkyBlue | #87CEEB |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#6A5ACD;vertical-align:middle"></span> | SlateBlue | #6A5ACD |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#708090;vertical-align:middle"></span> | SlateGray | #708090 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#708090;vertical-align:middle"></span> | SlateGrey | #708090 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFFAFA;vertical-align:middle"></span> | Snow | #FFFAFA |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#00FF7F;vertical-align:middle"></span> | SpringGreen | #00FF7F |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#4682B4;vertical-align:middle"></span> | SteelBlue | #4682B4 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#D2B48C;vertical-align:middle"></span> | Tan | #D2B48C |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#008080;vertical-align:middle"></span> | Teal | #008080 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#D8BFD8;vertical-align:middle"></span> | Thistle | #D8BFD8 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FF6347;vertical-align:middle"></span> | Tomato | #FF6347 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#40E0D0;vertical-align:middle"></span> | Turquoise | #40E0D0 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#EE82EE;vertical-align:middle"></span> | Violet | #EE82EE |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F5DEB3;vertical-align:middle"></span> | Wheat | #F5DEB3 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFFFFF;vertical-align:middle"></span> | White | #FFFFFF |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#F5F5F5;vertical-align:middle"></span> | WhiteSmoke | #F5F5F5 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#FFFF00;vertical-align:middle"></span> | Yellow | #FFFF00 |
+| <span style="display:inline-block;width:1.2em;height:1.2em;border:1px solid #ccc;background:#9ACD32;vertical-align:middle"></span> | YellowGreen | #9ACD32 |
 
 ## JSON Schema Reference
 
