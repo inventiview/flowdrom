@@ -1099,10 +1099,26 @@ function loadSVGFile(event) {
         }
         
         const compactJson = formatCompactJson(jsonData);
-        document.getElementById('input').value = compactJson;
-        
+
+        // Insert into hidden textarea (kept for compatibility) and into CodeMirror editor if available
+        const textarea = document.getElementById('input');
+        textarea.value = compactJson;
+
+        // If the CodeMirror editor exists on the page, update it so the user can edit the JSON immediately
+        try {
+          if (window.codeMirrorEditor && typeof window.codeMirrorEditor.setValue === 'function') {
+            window.codeMirrorEditor.setValue(compactJson);
+          } else if (typeof updateCodeMirrorContent === 'function') {
+            // fallback to helper defined in index.html
+            updateCodeMirrorContent(compactJson);
+          }
+        } catch (cmErr) {
+          console.warn('Could not update CodeMirror editor:', cmErr);
+        }
+
+        // Re-render graph from the newly loaded config
         renderGraph();
-        
+
         alert("SVG file loaded successfully!");
         console.log("SVG file loaded successfully!");
       } catch (jsonError) {
