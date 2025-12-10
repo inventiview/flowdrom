@@ -18,7 +18,7 @@ Welcome to the Flowdrom documentation site.
 [inventiview.github.io/flowdrom](https://inventiview.github.io/flowdrom/)
 
 The user guide will be at:
-[flowdrom/user-guide](https://inventiview.github.io/flowdrom/user-guide)
+[flowdrom/user-guide](https://inventiview.github.io/flowdrom/docs/user-guide.html)
 
 
 ## Tips for Creating Effective Diagrams
