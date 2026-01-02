@@ -282,6 +282,7 @@ function renderGraph() {
 
     const stateGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     const messageGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    const infoBoxGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
     // Function to calculate label position based on leading/trailing spaces
     function calculateLabelPosition(labelText, fromX, fromY, toX, toY) {
@@ -529,165 +530,27 @@ function renderGraph() {
       stateGroup.appendChild(stateSubGroup);
     });
 
-    // Draw info boxes (unchanged from original)
+    // Draw info boxes with quadrant-based placement
     if (infoBoxes.length > 0) {
-      const occupiedAreas = [];
-      const messageLines = [];
-      const stateAreas = [];
-
-      messages.forEach((msg) => {
-        const [from, to] = msg.path.split("->").map(x => x.trim());
-        const fromX = lanePositions[from] || startX;
-        const toX = lanePositions[to] || startX;
-        const fromY = laneTop + msg.fromTime * timeStep;
-        const toY = laneTop + msg.toTime * timeStep;
-        
-        const buffer = 25;
-        messageLines.push({
-          x: Math.min(fromX, toX) - buffer,
-          y: Math.min(fromY, toY) - buffer,
-          width: Math.abs(toX - fromX) + 2 * buffer,
-          height: Math.abs(toY - fromY) + 2 * buffer
-        });
-      });
-
-      states.forEach((state) => {
-        const laneX = lanePositions[state.lane];
-        if (laneX === undefined) return;
-        
-        const fromY = laneTop + state.fromTime * timeStep;
-        const toY = laneTop + state.toTime * timeStep;
-        
-        const stateFontSize = 11;
-        const stateLines = state.label.split('|');
-        const stateLineHeight = stateFontSize * 1.2;
-        const paddingX = 6;
-        const minStateBoxWidth = 50;
-        
-        const maxLineLength = Math.max(...stateLines.map(line => line.length));
-        const estimatedTextWidth = maxLineLength * stateFontSize * 0.6;
-        const stateBoxWidth = Math.max(estimatedTextWidth + 2 * paddingX, minStateBoxWidth);
-        
-        let stateBoxHeight, stateBoxY;
-        if (state.fromTime === state.toTime) {
-          stateBoxHeight = stateLines.length * stateLineHeight + 8;
-          stateBoxY = fromY;
-        } else {
-          const calculatedHeight = Math.abs(toY - fromY);
-          const minHeight = stateLines.length * stateLineHeight + 8;
-          stateBoxHeight = Math.max(calculatedHeight, minHeight);
-          stateBoxY = Math.min(fromY, toY) - (stateBoxHeight > calculatedHeight ? (stateBoxHeight - calculatedHeight) / 2 : 0);
-        }
-        
-        const stateBoxX = laneX - (stateBoxWidth / 2);
-        
-        const stateBuffer = 10;
-        stateAreas.push({
-          x: stateBoxX - stateBuffer,
-          y: stateBoxY - stateBuffer,
-          width: stateBoxWidth + 2 * stateBuffer,
-          height: stateBoxHeight + 2 * stateBuffer
-        });
-      });
-
-      function rectanglesOverlap(rect1, rect2) {
-        return !(rect1.x + rect1.width < rect2.x || 
-                 rect2.x + rect2.width < rect1.x || 
-                 rect1.y + rect1.height < rect2.y || 
-                 rect2.y + rect2.height < rect1.y);
-      }
-
-      function intersectsMessageLines(rect) {
-        for (const messageLine of messageLines) {
-          if (rectanglesOverlap(rect, messageLine)) {
-            return true;
-          }
-        }
-        return false;
-      }
-
-      function intersectsStateAreas(rect) {
-        for (const stateArea of stateAreas) {
-          if (rectanglesOverlap(rect, stateArea)) {
-            return true;
-          }
-        }
-        return false;
-      }
-
-      function intersectsExistingBoxes(rect) {
-        for (const occupied of occupiedAreas) {
-          if (rectanglesOverlap(rect, occupied)) {
-            return true;
-          }
-        }
-        return false;
-      }
-
-      function findBestPosition(anchorX, anchorY, boxWidth, boxHeight, svgWidth, svgHeight) {
-        const baseDistance = 35;
-        const positions = [];
-        
-        for (let distance = baseDistance; distance <= 150; distance += 15) {
-          positions.push({ x: anchorX + distance, y: anchorY - boxHeight/2 });
-          positions.push({ x: anchorX + distance, y: anchorY - boxHeight - 10 });
-          positions.push({ x: anchorX + distance, y: anchorY + 10 });
-          
-          positions.push({ x: anchorX - boxWidth - distance, y: anchorY - boxHeight/2 });
-          positions.push({ x: anchorX - boxWidth - distance, y: anchorY - boxHeight - 10 });
-          positions.push({ x: anchorX - boxWidth - distance, y: anchorY + 10 });
-          
-          positions.push({ x: anchorX - boxWidth/2, y: anchorY - boxHeight - distance });
-          positions.push({ x: anchorX + 10, y: anchorY - boxHeight - distance });
-          positions.push({ x: anchorX - boxWidth - 10, y: anchorY - boxHeight - distance });
-          
-          positions.push({ x: anchorX - boxWidth/2, y: anchorY + distance });
-          positions.push({ x: anchorX + 10, y: anchorY + distance });
-          positions.push({ x: anchorX - boxWidth - 10, y: anchorY + distance });
-
-          positions.push({ x: anchorX + distance, y: anchorY - boxHeight/2 + distance});
-          positions.push({ x: anchorX + distance, y: anchorY - boxHeight - 10 + distance});
-          positions.push({ x: anchorX + distance, y: anchorY + 10 + distance});
-          
-          positions.push({ x: anchorX - boxWidth - distance, y: anchorY - boxHeight/2 - distance});
-          positions.push({ x: anchorX - boxWidth - distance, y: anchorY - boxHeight - 10 - distance});
-          positions.push({ x: anchorX - boxWidth - distance, y: anchorY + 10 - distance});
-          
-          positions.push({ x: anchorX + distance - boxWidth/2, y: anchorY - boxHeight - distance });
-          positions.push({ x: anchorX + distance + 10, y: anchorY - boxHeight - distance });
-          positions.push({ x: anchorX + distance - boxWidth - 10, y: anchorY - boxHeight - distance });
-          
-          positions.push({ x: anchorX  - distance - boxWidth/2, y: anchorY + distance });
-          positions.push({ x: anchorX - distance  + 10, y: anchorY + distance });
-          positions.push({ x: anchorX  - distance - boxWidth - 10, y: anchorY + distance });
-
-    }
-
-        for (const pos of positions) {
-          const testRect = { x: pos.x, y: pos.y, width: boxWidth, height: boxHeight };
-          
-          if (testRect.x < 0 || testRect.y < laneTop || 
-              testRect.x + testRect.width > svgWidth - 50 || 
-              testRect.y + testRect.height > laneTop + maxTime * timeStep + 100) {
-            continue;
-          }
-          
-          if (!intersectsExistingBoxes(testRect) && 
-              !intersectsMessageLines(testRect) && 
-              !intersectsStateAreas(testRect)) {
-            return pos;
-          }
-        }
-        
-        return { x: anchorX + 180, y: anchorY - boxHeight/2 };
-      }
-
       infoBoxes.forEach((info, index) => {
         const laneX = lanePositions[info.lane];
         if (laneX === undefined) return;
         
         const anchorY = laneTop + info.time * timeStep;
-        const lines = (info.text || '').split('|');
+        let actualText = info.text || '';
+        let xOffset = 50; // default horizontal right
+        let yOffset = -50; // default diagonal upper right
+        
+        // Parse <x,y> offset notation from the start of text
+        const offsetRegex = /^<(-?\d+),(-?\d+)>(.*)$/;
+        const offsetMatch = actualText.match(offsetRegex);
+        if (offsetMatch) {
+          xOffset = parseInt(offsetMatch[1], 10);
+          yOffset = parseInt(offsetMatch[2], 10);
+          actualText = offsetMatch[3];
+        }
+        
+        const lines = actualText.split('|');
         const fontSize = 12;
         const lineHeight = fontSize * 1.2;
         const padding = 8;
@@ -712,11 +575,9 @@ function renderGraph() {
         const boxWidth = Math.max(bbox.width + 2 * padding, 80);
         const boxHeight = bbox.height + 2 * padding;
         
-        const position = findBestPosition(laneX, anchorY, boxWidth, boxHeight, svgWidth, svgHeight);
-        const boxX = position.x;
-        const boxY = position.y;
-        
-        occupiedAreas.push({ x: boxX, y: boxY, width: boxWidth, height: boxHeight });
+        // Use parsed offsets (no quadrant-based placement anymore)
+        const boxX = laneX + xOffset - boxWidth / 2;
+        const boxY = anchorY + yOffset - boxHeight / 2;
         
         const connectLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
         connectLine.setAttribute("x1", laneX);
@@ -724,7 +585,7 @@ function renderGraph() {
         connectLine.setAttribute("x2", boxX + (boxX > laneX ? 0 : boxWidth));
         connectLine.setAttribute("y2", boxY + boxHeight/2);
         connectLine.setAttribute("class", "info-box-line");
-        tempSvg.appendChild(connectLine);
+        infoBoxGroup.appendChild(connectLine);
         
         const infoBox = document.createElementNS("http://www.w3.org/2000/svg", "rect");
         infoBox.setAttribute("x", boxX);
@@ -732,7 +593,7 @@ function renderGraph() {
         infoBox.setAttribute("width", boxWidth);
         infoBox.setAttribute("height", boxHeight);
         infoBox.setAttribute("class", "info-box");
-        tempSvg.appendChild(infoBox);
+        infoBoxGroup.appendChild(infoBox);
         
         const infoText = document.createElementNS("http://www.w3.org/2000/svg", "text");
         infoText.setAttribute("x", boxX + padding);
@@ -747,12 +608,13 @@ function renderGraph() {
           infoText.appendChild(tspan);
         });
         
-        tempSvg.appendChild(infoText);
+        infoBoxGroup.appendChild(infoText);
       });
     }
 
     tempSvg.appendChild(stateGroup);
     tempSvg.appendChild(messageGroup);
+    tempSvg.appendChild(infoBoxGroup);
 
     // Draw legend (unchanged from original)
     if (legend.length > 0) {

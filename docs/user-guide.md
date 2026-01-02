@@ -215,6 +215,23 @@ Add contextual information with info boxes:
 
 Info boxes provide additional context about what's happening at specific points in time. Use `|` for line breaks in the text.
 
+Info box placement
+- The renderer places info boxes using a simple explicit offset mechanism. By default an info box is drawn upper-right of the lane/time anchor using offsets x=50, y=-50 (pixels).
+- To request a specific placement, prefix the info box text with an offset in the form `<x,y>` where x and y are integer pixel offsets. Example:
+```js
+{ lane: 'Server', time: 2, text: '<8,-4>Connection timeout|Retry with backoff' }
+```
+  - Positive x shifts the box to the right; negative x shifts it left.
+  - Positive y shifts the box down; negative y shifts it up.
+- How the offset is applied:
+  - The anchor point is the lane X coordinate and the time Y coordinate (anchorY = laneTop + time * timeStep).
+  - The box center is computed as (laneX + xOffset, anchorY + yOffset) before subtracting half the box width/height.
+  - The connector line is drawn from the lane/time anchor to the nearest vertical edge of the info box (right edge if the box is to the right of the lane, left edge if to the left).
+- If no `<x,y>` prefix is present the renderer uses the default `<50,-50>`.
+- Notes:
+  - The renderer does not currently perform advanced collision avoidance for info boxes — if boxes/labels overlap, adjust offsets manually.
+  - Offsets must be provided as integers in pixels and placed at the very start of the `text` string (no leading spaces).
+
 ### 6. Complex Transactions
 
 Here's an advanced example showing 2 new features of lanes by using a different name syntax:
@@ -491,15 +508,15 @@ You can use any standard HTML/CSS named color in your diagrams (for message colo
   lane: 'LaneName',          // Which lane to attach to
   time: 2,                   // Time position
   text: 'Info text|Line 2'   // Text with | for line breaks
-}
-```
 
-### Legend Entry
-```js
-{
-  label: 'Description',      // Legend text
-  color: 'red',              // Color to show
-  style: 'solid'             // Line style to show
+  // Optional placement (implemented as a text prefix):
+  // Prepend an offset at the start of the text using the format "<x,y>".
+  // Example: "<8,-4>Connection timeout|Retry"  (x: pixels right positive, y: pixels down positive)
+  //
+  // Notes:
+  // - If no prefix is provided the default offset <50,-50> is used.
+  // - The renderer currently does NOT support a separate `position` or numeric `offset` object property;
+  //   use the text prefix method to request placement.
 }
 ```
 
