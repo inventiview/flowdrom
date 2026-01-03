@@ -39,26 +39,44 @@ function renderGraph() {
     let currentMainLaneIndex = 0;
     const mainLanes = new Set();
 
+    // Helper: parse lane name for manual offset
+    function parseLaneNameOffset(lane) {
+      let offset = 0;
+      let cleanLane = lane;
+      const rightMatch = lane.match(/^(>+)(.*)$/);
+      const leftMatch = lane.match(/^(<+)(.*)$/);
+      if (rightMatch) {
+        offset = rightMatch[1].length * 20;
+        cleanLane = rightMatch[2];
+      } else if (leftMatch) {
+        offset = -leftMatch[1].length * 20;
+        cleanLane = leftMatch[2];
+      }
+      return { cleanLane: cleanLane.trim(), offset };
+    }
+
     // Pass 1: Identify and position main lanes
     lanes.forEach(lane => {
-      if (!lane.includes('.')) {
-        mainLanes.add(lane);
-        lanePositions[lane] = startX + currentMainLaneIndex * laneSpacing;
+      const { cleanLane, offset } = parseLaneNameOffset(lane);
+      if (!cleanLane.includes('.')) {
+        mainLanes.add(cleanLane);
+        lanePositions[lane] = (startX + currentMainLaneIndex * laneSpacing) + offset;
         currentMainLaneIndex++;
       }
     });
 
     // Pass 2: Position all lanes (main and sub-lanes)
     lanes.forEach(lane => {
-      const parts = lane.split('.');
+      const { cleanLane, offset } = parseLaneNameOffset(lane);
+      const parts = cleanLane.split('.');
       let x;
       const isSubLane = parts.length === 2 && (mainLanes.has(parts[0]) || mainLanes.has(parts[1]));
-  
+
       if (isSubLane) {
         const [part1, part2] = parts;
         let parentLane = null;
         let isLeftSide = false;
-        
+
         if (mainLanes.has(part1)) {
           parentLane = part1;
           isLeftSide = false;
@@ -66,18 +84,24 @@ function renderGraph() {
           parentLane = part2;
           isLeftSide = true;
         }
-        
-        if (parentLane && lanePositions[parentLane] !== undefined) {
-          const parentX = lanePositions[parentLane];
+
+        if (parentLane) {
+          // Find the original lane string for parent to get its offset
+          const parentLaneKey = lanes.find(l => {
+            const { cleanLane: cl } = parseLaneNameOffset(l);
+            return cl === parentLane;
+          });
+          const parentX = lanePositions[parentLaneKey];
           x = isLeftSide ? parentX - (laneSpacing / 3) : parentX + (laneSpacing / 3);
+          x += offset;
         } else {
           console.warn(`Parent lane for ${lane} not found. Defaulting position.`);
-          x = startX + lanes.indexOf(lane) * laneSpacing;
+          x = startX + lanes.indexOf(lane) * laneSpacing + offset;
         }
       } else {
         x = lanePositions[lane];
       }
-      
+
       lanePositions[lane] = x;
     });
 
@@ -156,10 +180,11 @@ function renderGraph() {
 
     // Draw lanes
     lanes.forEach(lane => {
+      const { cleanLane } = parseLaneNameOffset(lane);
       const x = lanePositions[lane];
-      const parts = lane.split('.');
+      const parts = cleanLane.split('.');
       const isSubLane = parts.length === 2 && (mainLanes.has(parts[0]) || mainLanes.has(parts[1]));
-      const isSpecialLane = lane.startsWith('_') && lane.endsWith('_');
+      const isSpecialLane = cleanLane.startsWith('_') && cleanLane.endsWith('_');
 
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
       line.setAttribute("x1", x);
@@ -178,7 +203,7 @@ function renderGraph() {
       if (isSubLane) {
         text.setAttribute("fill", "#2a5eb2");
       }
-      text.textContent = lane;
+      text.textContent = cleanLane;
       tempSvg.appendChild(text);
     });
 
@@ -187,7 +212,17 @@ function renderGraph() {
       groupHierarchy.forEach((group, groupIndex) => {
         if (group.lanes.length === 0) return;
 
-        const groupPositions = group.lanes.map(lane => lanePositions[lane]).filter(pos => pos !== undefined);
+        // Use the original lane string (with prefix) for lanePositions
+        const groupPositions = group.lanes
+          .map(laneName => {
+            // Find the original lane string in lanes array that matches this group lane (ignoring prefix)
+            const laneKey = lanes.find(l => {
+              const { cleanLane } = parseLaneNameOffset(l);
+              return cleanLane === laneName;
+            });
+            return lanePositions[laneKey];
+          })
+          .filter(pos => pos !== undefined);
         if (groupPositions.length === 0) return;
 
         const leftmostX = Math.min(...groupPositions);
@@ -333,9 +368,18 @@ function renderGraph() {
 
     // Draw messages with space-based label positioning
     messages.forEach((msg, msgIndex) => {
-      const [from, to] = msg.path.split("->").map(x => x.trim());
-      const fromX = lanePositions[from] || startX;
-      const toX = lanePositions[to] || startX;
+      // Find the original lane string (with prefix) for both from and to
+      const [fromRaw, toRaw] = msg.path.split("->").map(x => x.trim());
+      const fromLaneKey = lanes.find(l => {
+        const { cleanLane } = parseLaneNameOffset(l);
+        return cleanLane === fromRaw;
+      });
+      const toLaneKey = lanes.find(l => {
+        const { cleanLane } = parseLaneNameOffset(l);
+        return cleanLane === toRaw;
+      });
+      const fromX = lanePositions[fromLaneKey] ?? startX;
+      const toX = lanePositions[toLaneKey] ?? startX;
       const fromY = laneTop + msg.fromTime * timeStep;
       const toY = laneTop + msg.toTime * timeStep;
 
@@ -427,11 +471,15 @@ function renderGraph() {
     // Draw states (unchanged)
     states.forEach((state, stateIndex) => {
       if (!showStates) return;
-      
-      const laneX = lanePositions[state.lane] || startX;
+      // Find the original lane string (with prefix) for this state
+      const laneKey = lanes.find(l => {
+        const { cleanLane } = parseLaneNameOffset(l);
+        return cleanLane === state.lane;
+      });
+      const laneX = lanePositions[laneKey] ?? startX;
       const fromY = laneTop + state.fromTime * timeStep;
       const toY = laneTop + state.toTime * timeStep;
-      
+
       function getPastelColor(color) {
         const colorMap = {
           'red': '#ffcccc',
@@ -533,7 +581,12 @@ function renderGraph() {
     // Draw info boxes with quadrant-based placement
     if (infoBoxes.length > 0) {
       infoBoxes.forEach((info, index) => {
-        const laneX = lanePositions[info.lane];
+        // Find the original lane string (with prefix) for this info box
+        const laneKey = lanes.find(l => {
+          const { cleanLane } = parseLaneNameOffset(l);
+          return cleanLane === info.lane;
+        });
+        const laneX = lanePositions[laneKey];
         if (laneX === undefined) return;
         
         const anchorY = laneTop + info.time * timeStep;

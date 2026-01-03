@@ -35,6 +35,13 @@ Flowdrom diagrams consist of:
 - **Lane Groups**: Visual grouping of related lanes
 - **Info Boxes**: Annotations explaining specific events
 
+### Lane Positioning and Manual Adjustment
+
+- By default, lanes are spaced evenly.
+- To manually shift a lane horizontally, prefix its name with `>` (right) or `<` (left). Each symbol shifts by 20 pixels.
+  - Example: `>CA0` shifts CA0 right by 20px, `<<CA1` shifts CA1 left by 40px.
+- This affects all diagram elements referencing that lane (messages, states, info boxes, groups).
+
 ## Feature Examples
 
 ### 1. Two-Lane Communication
@@ -92,7 +99,11 @@ Since flowdrom is not just a sequence graph generator but actually has timing pa
 Here source and target sequences are different. 
 
 #### message label syntax
-use '|' to create a multi line message label. In casse of collisions (message label obscures another graph element) you can use prefix '>' or '<' in the label text to shift the message right or left accordingly along its arrow (can also use multiple for bigger distance '>>>label').
+
+use '|' to create a multi line message label. In case of collisions (message label obscures another graph element) you can use prefix '>' or '<' in the label text to shift the message right or left accordingly along its arrow (can also use multiple for bigger distance '>>>label').
+
+- Each `>` at the start of a label moves the label toward the arrow's end; each `<` moves it toward the start.
+- This does not affect the arrow itself, only the label's position.
 
 ```js
 {
@@ -508,15 +519,15 @@ You can use any standard HTML/CSS named color in your diagrams (for message colo
   lane: 'LaneName',          // Which lane to attach to
   time: 2,                   // Time position
   text: 'Info text|Line 2'   // Text with | for line breaks
+}
+```
 
-  // Optional placement (implemented as a text prefix):
-  // Prepend an offset at the start of the text using the format "<x,y>".
-  // Example: "<8,-4>Connection timeout|Retry"  (x: pixels right positive, y: pixels down positive)
-  //
-  // Notes:
-  // - If no prefix is provided the default offset <50,-50> is used.
-  // - The renderer currently does NOT support a separate `position` or numeric `offset` object property;
-  //   use the text prefix method to request placement.
+### Legend Entry
+```js
+{
+  label: 'Description',      // Legend text
+  color: 'red',              // Color to show
+  style: 'solid'             // Line style to show
 }
 ```
 
