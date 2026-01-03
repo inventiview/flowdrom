@@ -208,8 +208,8 @@ Add contextual information with info boxes:
   title: 'Error Handling Example',
   lanes: ['Client', 'Server', 'Database'],
   infoBoxes: [
-    { lane: 'Server', time: 2, text: 'Connection timeout|Retry with |exponential backoff' },
-    { lane: 'Client', time: 4, text: 'Display |error message|to user' }
+    { lane: 'Server', time: 2, text: '<130,30>Connection timeout|Retry with |exponential backoff' },
+    { lane: 'Client', time: 4, text: '<-80,0>Display |error message|to user' }
   ],
   messages: [
     { path: 'Client->Server', label: 'Data Request', color: 'blue', style: 'solid', fromTime: 0, toTime: 1 },
