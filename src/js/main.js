@@ -20,8 +20,10 @@ function renderGraph() {
     const legend = input.legend || [];
     const laneGroups = input.laneGroups || [];
     const infoBoxes = input.infoBoxes || [];
+    const readableMode = document.body.classList.contains('readable-mode');
+    const textScale = readableMode ? 4/3 : 1.0;
     const laneSpacing = 250;
-    const timeStep = 50;
+    const timeStep = Math.round(50 * textScale);
     const showGrid = true;
     const showTimeLabels = true;
     const showStates = true;
@@ -286,7 +288,7 @@ function renderGraph() {
     title.setAttribute("x", (svgWidth / 2) - 80);
     title.setAttribute("y", titleY);
     title.setAttribute("text-anchor", "middle");
-    title.setAttribute("font-size", "24");
+    title.setAttribute("font-size", Math.round(24 * textScale));
     title.setAttribute("font-weight", "bold");
     title.setAttribute("fill", "#2a5eb2");
     title.textContent = input.title || "Enhanced Transaction Graph";
@@ -423,7 +425,7 @@ function renderGraph() {
           angle += 180;
         }
 
-        const fontSize = 15;
+        const fontSize = Math.round(15 * textScale);
         const lines = labelPosition.cleanLabel.split('|');
         const lineHeight = fontSize * 1.2;
         const paddingX = 6;
@@ -495,7 +497,7 @@ function renderGraph() {
       }
       
       const stateSubGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      const stateFontSize = 11;
+      const stateFontSize = readableMode ? 18 : 11;
       const stateLines = state.label.split('|');
       const numberOfLines = stateLines.length;                        
       const stateLineHeight = stateFontSize * 1.2;
@@ -505,6 +507,7 @@ function renderGraph() {
       stateText.setAttribute("x", laneX);
       stateText.setAttribute("y", fromY + 8 + stateLineHeight / 2);
       stateText.setAttribute("class", "state-label");
+      stateText.setAttribute("font-size", stateFontSize);
 
       stateLines.forEach((line, i) => {
         const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
@@ -604,7 +607,7 @@ function renderGraph() {
         }
         
         const lines = actualText.split('|');
-        const fontSize = 12;
+        const fontSize = Math.round(12 * textScale);
         const lineHeight = fontSize * 1.2;
         const padding = 8;
         
@@ -652,6 +655,7 @@ function renderGraph() {
         infoText.setAttribute("x", boxX + padding);
         infoText.setAttribute("y", boxY + padding + fontSize);
         infoText.setAttribute("class", "info-box-text");
+        infoText.setAttribute("font-size", fontSize);
         
         lines.forEach((line, i) => {
           const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
@@ -692,7 +696,7 @@ function renderGraph() {
       legendTitle.setAttribute("y", legendY - 40);
       legendTitle.setAttribute("text-anchor", "middle");
       legendTitle.setAttribute("class", "legend-title");
-      legendTitle.setAttribute("font-size", "24");
+      legendTitle.setAttribute("font-size", Math.round(24 * textScale));
       legendTitle.textContent = "Legend";
       tempSvg.appendChild(legendTitle);
       
@@ -733,7 +737,7 @@ function renderGraph() {
           const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
           
           const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          const fontSize = 27;
+          const fontSize = Math.round(27 * textScale);
           const lines = labelPosition.cleanLabel.split('|');
           const lineHeight = fontSize * 1.2;
           const paddingX = 6;
@@ -745,6 +749,7 @@ function renderGraph() {
           text.setAttribute("x", labelPosition.x);
           text.setAttribute("y", textYPosition);
           text.setAttribute("class", "legend-label");
+          text.setAttribute("font-size", fontSize);
           text.setAttribute("fill", item.color || "black");
           text.setAttribute("text-anchor", "middle");
           

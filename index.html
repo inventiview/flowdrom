@@ -282,6 +282,65 @@
     color: white !important;
     }
 
+    /* Mode toggles */
+    button.mode-active {
+      background: #e65c00;
+    }
+
+    button.mode-active:hover {
+      background: #b34700;
+    }
+
+    body.black-labels .message-label,
+    body.black-labels .legend-label {
+      fill: #000 !important;
+    }
+
+    body.black-labels .legend-label {
+      font-weight: bold !important;
+    }
+
+    body.readable-mode .lane-label {
+      font-size: 24px !important;
+      font-weight: normal !important;
+    }
+
+    body.readable-mode .sub-lane-label {
+      font-size: 16px !important;
+      font-weight: normal !important;
+    }
+
+    body.readable-mode .lane-group-label {
+      font-size: 19px !important;
+      font-weight: normal !important;
+    }
+
+    body.readable-mode .message-label {
+      font-size: 20px !important;
+    }
+
+    body.readable-mode .state-label {
+      font-size: 18px !important;
+    }
+
+    body.readable-mode .legend-title {
+      font-size: 21px !important;
+      font-weight: normal !important;
+    }
+
+    body.readable-mode .legend-label {
+      font-size: 36px !important;
+    }
+
+    body.readable-mode .info-box-text {
+      font-size: 16px !important;
+    }
+
+    body.readable-mode .time-label {
+      font-size: 16px !important;
+    }
+
+
   </style>
 </head>
 <body>
@@ -337,6 +396,8 @@
         <button onclick="exportPNG()">Export PNG</button>
         <input type="file" id="svgFileInput" accept=".svg" style="display: none;" onchange="loadSVGFile(event)">
         <button onclick="document.getElementById('svgFileInput').click()">Load SVG</button>
+        <button id="size-btn" class="secondary" onclick="toggleSizeMode()">Larger Text</button>
+        <button id="black-btn" class="secondary" onclick="toggleBlackLabels()">Black Labels</button>
       </div>
     </div>
 
@@ -489,6 +550,23 @@
 
   <!-- load your renderer -->
   <script src="src/js/main.js"></script>
+
+  <script>
+    function toggleSizeMode() {
+      const active = document.body.classList.toggle('readable-mode');
+      const btn = document.getElementById('size-btn');
+      btn.classList.toggle('mode-active', active);
+      btn.textContent = active ? 'Normal Text' : 'Larger Text';
+      renderGraph();
+    }
+
+    function toggleBlackLabels() {
+      const active = document.body.classList.toggle('black-labels');
+      const btn = document.getElementById('black-btn');
+      btn.classList.toggle('mode-active', active);
+      btn.textContent = active ? 'Color Labels' : 'Black Labels';
+    }
+  </script>
 </body>
 </html>
 
