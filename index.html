@@ -282,7 +282,9 @@
     color: white !important;
     }
 
-    /* Mode toggles */
+    /* Mode toggles. The actual diagram styling for these options now lives in
+       the renderer (buildDiagramCss in main.js), driven by config.options, so
+       it travels with the exported SVG to apps that don't use this page. */
     button.mode-active {
       background: #e65c00;
     }
@@ -290,56 +292,6 @@
     button.mode-active:hover {
       background: #b34700;
     }
-
-    body.black-labels .message-label,
-    body.black-labels .legend-label {
-      fill: #000 !important;
-    }
-
-    body.black-labels .legend-label {
-      font-weight: bold !important;
-    }
-
-    body.readable-mode .lane-label {
-      font-size: 24px !important;
-      font-weight: normal !important;
-    }
-
-    body.readable-mode .sub-lane-label {
-      font-size: 16px !important;
-      font-weight: normal !important;
-    }
-
-    body.readable-mode .lane-group-label {
-      font-size: 19px !important;
-      font-weight: normal !important;
-    }
-
-    body.readable-mode .message-label {
-      font-size: 20px !important;
-    }
-
-    body.readable-mode .state-label {
-      font-size: 18px !important;
-    }
-
-    body.readable-mode .legend-title {
-      font-size: 21px !important;
-      font-weight: normal !important;
-    }
-
-    body.readable-mode .legend-label {
-      font-size: 36px !important;
-    }
-
-    body.readable-mode .info-box-text {
-      font-size: 16px !important;
-    }
-
-    body.readable-mode .time-label {
-      font-size: 16px !important;
-    }
-
 
   </style>
 </head>
@@ -549,23 +501,54 @@
   </script>
 
   <!-- load your renderer -->
-  <script src="src/js/main.js?v=2"></script>
+  <script src="src/js/main.js?v=3"></script>
 
   <script>
-    function toggleSizeMode() {
-      const active = document.body.classList.toggle('readable-mode');
-      const btn = document.getElementById('size-btn');
-      btn.classList.toggle('mode-active', active);
-      btn.textContent = active ? 'Normal Text' : 'Larger Text';
+    // The buttons write display flags into config.options so the setting is the
+    // single source of truth: it re-renders, rounds-trips through Export/Load
+    // SVG, and is what other apps read straight from the config.
+    function setDisplayOption(key) {
+      let cfg;
+      try {
+        cfg = JSON5.parse(codeMirrorEditor.getValue());
+      } catch (e) {
+        alert('Fix the JSON errors before changing display options.');
+        return;
+      }
+      cfg.options = cfg.options || {};
+      cfg.options[key] = !cfg.options[key];
+      // Drop the key/object when everything is off to keep the config tidy.
+      if (!cfg.options[key]) delete cfg.options[key];
+      if (Object.keys(cfg.options).length === 0) delete cfg.options;
+
+      const formatted = formatCompactJson(cfg);
+      codeMirrorEditor.setValue(formatted);
+      document.getElementById('input').value = formatted;
       renderGraph();
+      syncDisplayButtons();
     }
 
-    function toggleBlackLabels() {
-      const active = document.body.classList.toggle('black-labels');
-      const btn = document.getElementById('black-btn');
-      btn.classList.toggle('mode-active', active);
-      btn.textContent = active ? 'Color Labels' : 'Black Labels';
+    function toggleSizeMode() { setDisplayOption('largeText'); }
+    function toggleBlackLabels() { setDisplayOption('blackLabels'); }
+
+    // Reflect the current config.options state on the buttons.
+    function syncDisplayButtons() {
+      let opts = {};
+      try {
+        opts = JSON5.parse(codeMirrorEditor.getValue()).options || {};
+      } catch (e) { /* leave buttons in default state on parse error */ }
+
+      const sizeBtn = document.getElementById('size-btn');
+      sizeBtn.classList.toggle('mode-active', !!opts.largeText);
+      sizeBtn.textContent = opts.largeText ? 'Normal Text' : 'Larger Text';
+
+      const blackBtn = document.getElementById('black-btn');
+      blackBtn.classList.toggle('mode-active', !!opts.blackLabels);
+      blackBtn.textContent = opts.blackLabels ? 'Color Labels' : 'Black Labels';
     }
+
+    // Initialise button state once the editor and renderer are ready.
+    window.addEventListener('load', syncDisplayButtons);
   </script>
 </body>
 </html>

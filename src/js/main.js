@@ -1,5 +1,94 @@
 let currentConfig = {};
 
+// Read display options from the parsed config. These are passed in the same
+// place as every other feature (lanes/messages/...), so any app that drives the
+// renderer with a config object gets them — no dependency on index.html.
+function getDisplayOptions() {
+  try {
+    const cfg = JSON5.parse(document.getElementById("input").value);
+    const o = cfg.options || {};
+    return { largeText: !!o.largeText, blackLabels: !!o.blackLabels };
+  } catch (e) {
+    return { largeText: false, blackLabels: false };
+  }
+}
+
+// Build the stylesheet embedded into every rendered/exported SVG. Driven by the
+// config options so the output is self-contained and looks identical in apps
+// that consume only this renderer (without index.html's CSS).
+function buildDiagramCss(opts = {}) {
+  const readable = !!opts.largeText;
+  const black = !!opts.blackLabels;
+  const fs = readable
+    ? { lane: 24, sub: 16, group: 19, msg: 20, state: 18, legendTitle: 21, legend: 36, info: 16, time: 16 }
+    : { lane: 18, sub: 12, group: 14, msg: 15, state: 11, legendTitle: 16, legend: 27, info: 12, time: 12 };
+  const msgFill = black ? ' fill: #000;' : '';
+  const legendExtra = black ? ' fill: #000; font-weight: bold;' : '';
+  const sans = "font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;";
+  // Large-text mode drops these labels to normal weight for a cleaner look.
+  const labelWeight = readable ? 'normal' : 'bold';
+  return `
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: ${labelWeight}; font-size: ${fs.lane}px; text-anchor: middle; fill: #2a5eb2; ${sans} }
+    .sub-lane-label { font-weight: ${labelWeight}; font-size: ${fs.sub}px; text-anchor: middle; fill: #2a5eb2; ${sans} }
+    .lane-group-label { font-weight: ${labelWeight}; font-size: ${fs.group}px; text-anchor: middle; fill: #6699cc; ${sans} }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: ${fs.msg}px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold;${msgFill} }
+    .state-label { font-size: ${fs.state}px; fill: black; font-family: sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: ${fs.time}px; fill: #666; font-family: sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: ${labelWeight}; font-size: ${fs.legendTitle}px; fill: #2a5eb2; ${sans} }
+    .legend-label { font-size: ${fs.legend}px; font-family: 'Courier New', monospace; dominant-baseline: middle;${legendExtra} }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: ${fs.info}px; font-family: 'Segoe UI', sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+  `;
+}
+
+// Shared pretty-printer for the config (compact one-line objects in arrays).
+function formatCompactJson(obj, indent = 0) {
+  const spaces = '  '.repeat(indent);
+
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return '[]';
+
+    const allSimple = obj.every(item =>
+      typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+    );
+
+    if (allSimple) {
+      return `[${obj.map(item => JSON5.stringify(item)).join(', ')}]`;
+    } else {
+      const items = obj.map(item => {
+        if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+          const pairs = Object.keys(item).map(key =>
+            `${key}: ${JSON5.stringify(item[key])}`
+          );
+          return `${spaces}  { ${pairs.join(', ')} }`;
+        } else {
+          return `${spaces}  ${formatCompactJson(item, indent + 1)}`;
+        }
+      });
+      return `[\n${items.join(',\n')}\n${spaces}]`;
+    }
+  } else if (typeof obj === 'object' && obj !== null) {
+    const keys = Object.keys(obj);
+    if (keys.length === 0) return '{}';
+
+    const items = keys.map(key => {
+      const value = formatCompactJson(obj[key], indent + 1);
+      return `${spaces}  ${key}: ${value}`;
+    });
+    return `{\n${items.join(',\n')}\n${spaces}}`;
+  } else {
+    return JSON5.stringify(obj);
+  }
+}
+
 function renderGraph() {
   const svgContainer = document.getElementById("svg-container");
   
@@ -20,7 +109,8 @@ function renderGraph() {
     const legend = input.legend || [];
     const laneGroups = input.laneGroups || [];
     const infoBoxes = input.infoBoxes || [];
-    const readableMode = document.body.classList.contains('readable-mode');
+    const options = input.options || {};
+    const readableMode = !!options.largeText;
     const textScale = readableMode ? 4/3 : 1.0;
     const laneSpacing = 250;
     const timeStep = Math.round(50 * textScale);
@@ -507,7 +597,9 @@ function renderGraph() {
       stateText.setAttribute("x", laneX);
       stateText.setAttribute("y", fromY + 8 + stateLineHeight / 2);
       stateText.setAttribute("class", "state-label");
-      stateText.setAttribute("font-size", stateFontSize);
+      // Inline style (not attribute) so it wins over any document .state-label
+      // rule and getBBox measures the scaled size correctly.
+      stateText.style.fontSize = stateFontSize + "px";
 
       stateLines.forEach((line, i) => {
         const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
@@ -749,7 +841,8 @@ function renderGraph() {
           text.setAttribute("x", labelPosition.x);
           text.setAttribute("y", textYPosition);
           text.setAttribute("class", "legend-label");
-          text.setAttribute("font-size", fontSize);
+          // Inline style so getBBox measures the scaled size regardless of CSS.
+          text.style.fontSize = fontSize + "px";
           text.setAttribute("fill", item.color || "black");
           text.setAttribute("text-anchor", "middle");
           
@@ -814,27 +907,8 @@ function exportSVG(download = true, svgElement = null) {
   }
 
   const escapedJson = formattedJson.replace(/--/g, '\\-\\-');
-  const cssStyles = `
-    .label-box { fill: white; stroke: none; }
-    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
-    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; }
-    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; }
-    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; }
-    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
-    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
-    .state-label { font-size: 11px; fill: black; font-family: sans-serif; text-anchor: middle; }
-    .arrow { stroke-width: 2; }
-    .dashed { stroke-dasharray: 5,5; }
-    .time-label { font-size: 12px; fill: #666; font-family: sans-serif; }
-    .grid-line { stroke: #eee; stroke-width: 1; }
-    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
-    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; }
-    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
-    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
-    .info-box-text { font-size: 12px; font-family: 'Segoe UI', sans-serif; fill: #333; }
-    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
-  `;
-  
+  const cssStyles = buildDiagramCss(getDisplayOptions());
+
   svgData = svgData.replace(/(<svg[^>]*>)/, `$1<style>${cssStyles}</style>`);
   
   // Add responsive attributes to exported SVG
@@ -891,28 +965,9 @@ function exportPNG() {
     ctx.fillRect(0, 0, svgWidth, svgHeight);
 
     const svgData = new XMLSerializer().serializeToString(svg);
-    
-    const cssStyles = `
-      .label-box { fill: white; stroke: none; }
-      .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
-      .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-      .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-      .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-      .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
-      .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
-      .state-label { font-size: 11px; fill: black; font-family: sans-serif; text-anchor: middle; }
-      .arrow { stroke-width: 2; }
-      .dashed { stroke-dasharray: 5,5; }
-      .time-label { font-size: 12px; fill: #666; font-family: sans-serif; }
-      .grid-line { stroke: #eee; stroke-width: 1; }
-      .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
-      .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-      .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
-      .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
-      .info-box-text { font-size: 12px; font-family: 'Segoe UI', sans-serif; fill: #333; }
-      .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
-    `;
-    
+
+    const cssStyles = buildDiagramCss(getDisplayOptions());
+
     const styledSvgData = svgData.replace(/(<svg[^>]*>)/, `$1<style>${cssStyles}</style>`);
     
     const blob = new Blob([styledSvgData], { type: 'image/svg+xml' });
@@ -978,46 +1033,7 @@ function loadSVGFile(event) {
       
       try {
         const jsonData = JSON5.parse(jsonString);
-        
-        function formatCompactJson(obj, indent = 0) {
-          const spaces = '  '.repeat(indent);
-          
-          if (Array.isArray(obj)) {
-            if (obj.length === 0) return '[]';
-            
-            const allSimple = obj.every(item => 
-              typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
-            );
-            
-            if (allSimple) {
-              return `[${obj.map(item => JSON5.stringify(item)).join(', ')}]`;
-            } else {
-              const items = obj.map(item => {
-                if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-                  const pairs = Object.keys(item).map(key => 
-                    `${key}: ${JSON5.stringify(item[key])}`
-                  );
-                  return `${spaces}  { ${pairs.join(', ')} }`;
-                } else {
-                  return `${spaces}  ${formatCompactJson(item, indent + 1)}`;
-                }
-              });
-              return `[\n${items.join(',\n')}\n${spaces}]`;
-            }
-          } else if (typeof obj === 'object' && obj !== null) {
-            const keys = Object.keys(obj);
-            if (keys.length === 0) return '{}';
-            
-            const items = keys.map(key => {
-              const value = formatCompactJson(obj[key], indent + 1);
-              return `${spaces}  ${key}: ${value}`;
-            });
-            return `{\n${items.join(',\n')}\n${spaces}}`;
-          } else {
-            return JSON5.stringify(obj);
-          }
-        }
-        
+
         const compactJson = formatCompactJson(jsonData);
 
         // Insert into hidden textarea (kept for compatibility) and into CodeMirror editor if available
@@ -1038,6 +1054,9 @@ function loadSVGFile(event) {
 
         // Re-render graph from the newly loaded config
         renderGraph();
+
+        // Reflect any display options from the loaded config on the buttons.
+        if (typeof syncDisplayButtons === 'function') syncDisplayButtons();
 
         alert("SVG file loaded successfully!");
         console.log("SVG file loaded successfully!");
