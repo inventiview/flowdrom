@@ -1,50 +1,78 @@
 let currentConfig = {};
 
-// Read display options from the parsed config. These are passed in the same
-// place as every other feature (lanes/messages/...), so any app that drives the
-// renderer with a config object gets them — no dependency on index.html.
+// Per-entity text defaults. Each entity is configurable in the options section
+// as options.<entity> = { textSize, textColor }. A field that is missing or set
+// to the string 'default' falls back to the value here.
+const TEXT_DEFAULT_SIZES = {
+  lane: 18, subLane: 12, laneGroup: 14, message: 15, state: 11,
+  info: 12, legend: 27, legendTitle: 16, time: 12, title: 24,
+};
+// Default colors. 'item' means "inherit the message's / legend entry's own color".
+const TEXT_DEFAULT_COLORS = {
+  lane: '#2a5eb2', subLane: '#2a5eb2', laneGroup: '#6699cc',
+  message: 'item', state: 'black', info: '#333',
+  legend: 'item', legendTitle: '#2a5eb2', time: '#666', title: '#2a5eb2',
+};
+const TEXT_TYPES = Object.keys(TEXT_DEFAULT_COLORS);
+
+// Resolve the per-entity text config (size + color) from the options section.
+// For each entity, textSize/textColor come straight from options.<entity>; a
+// missing value or the literal 'default' yields the built-in default. This is
+// the single source of truth shared by the renderer (layout math) and
+// buildDiagramCss (the embedded CSS).
+function resolveTextConfig(options) {
+  const o = options || {};
+  const cfg = { timeStep: 50 };
+
+  TEXT_TYPES.forEach(type => {
+    const e = o[type] || {};
+    const size = (typeof e.textSize === 'number') ? e.textSize : TEXT_DEFAULT_SIZES[type];
+    const color = (e.textColor != null && e.textColor !== 'default') ? e.textColor : TEXT_DEFAULT_COLORS[type];
+    cfg[type] = { size, color };
+  });
+
+  return cfg;
+}
+
+// Read + resolve the text config straight from the editor's JSON. Used by the
+// export paths; the renderer resolves from its already-parsed input instead.
 function getDisplayOptions() {
   try {
     const cfg = JSON5.parse(document.getElementById("input").value);
-    const o = cfg.options || {};
-    return { largeText: !!o.largeText, blackLabels: !!o.blackLabels };
+    return resolveTextConfig(cfg.options);
   } catch (e) {
-    return { largeText: false, blackLabels: false };
+    return resolveTextConfig({});
   }
 }
 
 // Build the stylesheet embedded into every rendered/exported SVG. Driven by the
-// config options so the output is self-contained and looks identical in apps
-// that consume only this renderer (without index.html's CSS).
-function buildDiagramCss(opts = {}) {
-  const readable = !!opts.largeText;
-  const black = !!opts.blackLabels;
-  const fs = readable
-    ? { lane: 24, sub: 16, group: 19, msg: 20, state: 18, legendTitle: 21, legend: 36, info: 16, time: 16 }
-    : { lane: 18, sub: 12, group: 14, msg: 15, state: 11, legendTitle: 16, legend: 27, info: 12, time: 12 };
-  const msgFill = black ? ' fill: #000;' : '';
-  const legendExtra = black ? ' fill: #000; font-weight: bold;' : '';
+// resolved text config so the output is self-contained and looks identical in
+// apps that consume only this renderer (without index.html's CSS).
+function buildDiagramCss(cfg) {
+  cfg = cfg || resolveTextConfig({});
   const sans = "font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;";
-  // Large-text mode drops these labels to normal weight for a cleaner look.
-  const labelWeight = readable ? 'normal' : 'bold';
+  // For message/legend, 'item' leaves the per-item fill attribute showing; any
+  // other value overrides every label with that color.
+  const msgFill = cfg.message.color === 'item' ? '' : ` fill: ${cfg.message.color};`;
+  const legendFill = cfg.legend.color === 'item' ? '' : ` fill: ${cfg.legend.color};`;
   return `
     .label-box { fill: white; stroke: none; }
     .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
-    .lane-label { font-weight: ${labelWeight}; font-size: ${fs.lane}px; text-anchor: middle; fill: #2a5eb2; ${sans} }
-    .sub-lane-label { font-weight: ${labelWeight}; font-size: ${fs.sub}px; text-anchor: middle; fill: #2a5eb2; ${sans} }
-    .lane-group-label { font-weight: ${labelWeight}; font-size: ${fs.group}px; text-anchor: middle; fill: #6699cc; ${sans} }
+    .lane-label { font-weight: bold; font-size: ${cfg.lane.size}px; text-anchor: middle; fill: ${cfg.lane.color}; ${sans} }
+    .sub-lane-label { font-weight: bold; font-size: ${cfg.subLane.size}px; text-anchor: middle; fill: ${cfg.subLane.color}; ${sans} }
+    .lane-group-label { font-weight: bold; font-size: ${cfg.laneGroup.size}px; text-anchor: middle; fill: ${cfg.laneGroup.color}; ${sans} }
     .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
-    .message-label { font-size: ${fs.msg}px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold;${msgFill} }
-    .state-label { font-size: ${fs.state}px; fill: black; font-family: sans-serif; text-anchor: middle; }
+    .message-label { font-size: ${cfg.message.size}px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold;${msgFill} }
+    .state-label { font-size: ${cfg.state.size}px; fill: ${cfg.state.color}; font-family: sans-serif; text-anchor: middle; }
     .arrow { stroke-width: 2; }
     .dashed { stroke-dasharray: 5,5; }
-    .time-label { font-size: ${fs.time}px; fill: #666; font-family: sans-serif; }
+    .time-label { font-size: ${cfg.time.size}px; fill: ${cfg.time.color}; font-family: sans-serif; }
     .grid-line { stroke: #eee; stroke-width: 1; }
     .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
-    .legend-title { font-weight: ${labelWeight}; font-size: ${fs.legendTitle}px; fill: #2a5eb2; ${sans} }
-    .legend-label { font-size: ${fs.legend}px; font-family: 'Courier New', monospace; dominant-baseline: middle;${legendExtra} }
+    .legend-title { font-weight: bold; font-size: ${cfg.legendTitle.size}px; fill: ${cfg.legendTitle.color}; ${sans} }
+    .legend-label { font-size: ${cfg.legend.size}px; font-family: 'Courier New', monospace; dominant-baseline: middle;${legendFill} }
     .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
-    .info-box-text { font-size: ${fs.info}px; font-family: 'Segoe UI', sans-serif; fill: #333; }
+    .info-box-text { font-size: ${cfg.info.size}px; font-family: 'Segoe UI', sans-serif; fill: ${cfg.info.color}; }
     .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
   `;
 }
@@ -109,11 +137,9 @@ function renderGraph() {
     const legend = input.legend || [];
     const laneGroups = input.laneGroups || [];
     const infoBoxes = input.infoBoxes || [];
-    const options = input.options || {};
-    const readableMode = !!options.largeText;
-    const textScale = readableMode ? 4/3 : 1.0;
+    const textCfg = resolveTextConfig(input.options);
     const laneSpacing = 250;
-    const timeStep = Math.round(50 * textScale);
+    const timeStep = textCfg.timeStep;
     const showGrid = true;
     const showTimeLabels = true;
     const showStates = true;
@@ -292,9 +318,7 @@ function renderGraph() {
       text.setAttribute("x", x);
       text.setAttribute("y", laneTop - 10);
       text.setAttribute("class", isSubLane ? "sub-lane-label" : "lane-label");
-      if (isSubLane) {
-        text.setAttribute("fill", "#2a5eb2");
-      }
+      // Fill comes from the (configurable) .lane-label / .sub-lane-label CSS.
       text.textContent = cleanLane;
       tempSvg.appendChild(text);
     });
@@ -378,9 +402,9 @@ function renderGraph() {
     title.setAttribute("x", (svgWidth / 2) - 80);
     title.setAttribute("y", titleY);
     title.setAttribute("text-anchor", "middle");
-    title.setAttribute("font-size", Math.round(24 * textScale));
+    title.setAttribute("font-size", textCfg.title.size);
     title.setAttribute("font-weight", "bold");
-    title.setAttribute("fill", "#2a5eb2");
+    title.setAttribute("fill", textCfg.title.color);
     title.textContent = input.title || "Enhanced Transaction Graph";
     tempSvg.appendChild(title);
 
@@ -515,7 +539,7 @@ function renderGraph() {
           angle += 180;
         }
 
-        const fontSize = Math.round(15 * textScale);
+        const fontSize = textCfg.message.size;
         const lines = labelPosition.cleanLabel.split('|');
         const lineHeight = fontSize * 1.2;
         const paddingX = 6;
@@ -587,7 +611,7 @@ function renderGraph() {
       }
       
       const stateSubGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      const stateFontSize = readableMode ? 18 : 11;
+      const stateFontSize = textCfg.state.size;
       const stateLines = state.label.split('|');
       const numberOfLines = stateLines.length;                        
       const stateLineHeight = stateFontSize * 1.2;
@@ -699,7 +723,7 @@ function renderGraph() {
         }
         
         const lines = actualText.split('|');
-        const fontSize = Math.round(12 * textScale);
+        const fontSize = textCfg.info.size;
         const lineHeight = fontSize * 1.2;
         const padding = 8;
         
@@ -788,7 +812,7 @@ function renderGraph() {
       legendTitle.setAttribute("y", legendY - 40);
       legendTitle.setAttribute("text-anchor", "middle");
       legendTitle.setAttribute("class", "legend-title");
-      legendTitle.setAttribute("font-size", Math.round(24 * textScale));
+      legendTitle.setAttribute("font-size", textCfg.legendTitle.size);
       legendTitle.textContent = "Legend";
       tempSvg.appendChild(legendTitle);
       
@@ -829,7 +853,7 @@ function renderGraph() {
           const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
           
           const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          const fontSize = Math.round(27 * textScale);
+          const fontSize = textCfg.legend.size;
           const lines = labelPosition.cleanLabel.split('|');
           const lineHeight = fontSize * 1.2;
           const paddingX = 6;
@@ -1054,9 +1078,6 @@ function loadSVGFile(event) {
 
         // Re-render graph from the newly loaded config
         renderGraph();
-
-        // Reflect any display options from the loaded config on the buttons.
-        if (typeof syncDisplayButtons === 'function') syncDisplayButtons();
 
         alert("SVG file loaded successfully!");
         console.log("SVG file loaded successfully!");

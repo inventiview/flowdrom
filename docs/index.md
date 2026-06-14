@@ -35,7 +35,7 @@ Source code:
 8. **Include Legends**: Always provide legends for diagrams with multiple message types
 9. **Realistic Timing**: Use fractional intervals to show actual relative durations
 10. **State Visibility**: Show important state changes to clarify system behavior
-11. **Boost Readability**: For slides or print, enable `options: { largeText: true, blackLabels: true }` (or the **Larger Text** / **Black Labels** toolbar buttons) to enlarge text and increase contrast — see the [User Guide](user-guide.md#8-display-options)
+11. **Boost Readability**: For slides or print, use `options` to bump up text sizes and contrast per entity, e.g. `options: { message: { textSize: 18, textColor: '#000' } }` — see the [User Guide](user-guide.md#8-display-options)
 
 ## Common Use Cases
 

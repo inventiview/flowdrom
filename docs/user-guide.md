@@ -314,31 +314,50 @@ Legends help readers understand what different colors and line styles represent.
 
 ### 8. Display Options
 
-The optional `options` object controls how the diagram is presented. These flags are part of the diagram definition (just like `lanes` or `messages`), so they are saved with **Export SVG**, restored by **Load SVG**, and respected by any application that renders a Flowdrom config — not just the editor page.
+The optional `options` object controls the **size** and **color** of each kind of text in the diagram. It is part of the diagram definition (just like `lanes` or `messages`), so it is saved with **Export SVG**, restored by **Load SVG**, and respected by any application that renders a Flowdrom config — not just the editor page.
+
+Each configurable text entity is a key under `options`, holding a `textSize` and/or a `textColor`:
+
+```js
+options: {
+  lane:        { textSize: 18, textColor: '#2a5eb2' },  // lane titles
+  subLane:     { textSize: 12, textColor: '#2a5eb2' },  // sub-lane titles (a.b lanes)
+  laneGroup:   { textSize: 14, textColor: '#6699cc' },  // lane group brackets
+  message:     { textSize: 15, textColor: 'default' },  // message labels
+  info:        { textSize: 12, textColor: '#333'    },  // info box text
+  legend:      { textSize: 27, textColor: 'default' },  // legend item labels
+  legendTitle: { textSize: 16, textColor: '#2a5eb2' },  // the word "Legend"
+  state:       { textSize: 11, textColor: 'black'   },  // state box labels
+  time:        { textSize: 12, textColor: '#666'    },  // T0, T1, ... time labels
+  title:       { textSize: 24, textColor: '#2a5eb2' },  // the diagram title
+}
+```
+
+The values above are the **defaults** — the example simply spells them out. You only need to list the entities you want to change.
+
+- **`textSize`** — a number, in pixels. The placement logic re-flows boxes and labels around whatever size you choose, so the diagram stays readable.
+- **`textColor`** — any CSS color (named or hex). For **`message`** and **`legend`**, the default `'default'` keeps each label the same color as its own arrow/entry; set a specific color to recolor them all. The other entities default to the fixed color shown above.
+- Either field may be the literal string **`'default'`** (or simply omitted) to use that entity's built-in default value.
+
+Example — bigger, high-contrast lanes and messages while leaving everything else default:
 
 ```js
 {
-  title: 'Readable Coherency Conflict',
-  options: { largeText: true, blackLabels: true },
-  lanes: ['CA0', 'CA1', 'HN'],
+  title: 'Custom Text Styling',
+  options: {
+    lane:    { textSize: 22, textColor: '#000' },
+    message: { textSize: 18, textColor: 'default' }
+  },
+  lanes: ['CA0', 'HN'],
   messages: [
-    { path: 'CA0->HN', label: 'ReadUnique(A)', color: 'red',   style: 'solid', fromTime: 0, toTime: 1 },
-    { path: 'CA1->HN', label: 'ReadUnique(A)', color: 'blue',  style: 'dashed', fromTime: 1, toTime: 2 },
-    { path: 'HN->CA1', label: 'SnpInvalid(A)', color: 'purple', style: 'solid', fromTime: 2, toTime: 4 }
+    { path: 'CA0->HN', label: 'ReadUnique(A)', color: 'red', style: 'solid', fromTime: 0, toTime: 1 }
   ]
 }
 ```
 
-Available options:
+#### In the editor
 
-- **`largeText`** (`true`/`false`, default `false`) — enlarges all diagram text (lane, message, state, legend, info-box and time labels) and scales the spacing and boxes to match, so nothing overlaps. Useful for slides, print, or projecting. Lane and legend titles also drop to a lighter (non-bold) weight for a cleaner look.
-- **`blackLabels`** (`true`/`false`, default `false`) — renders message labels and legend item labels in solid black (legend labels also become bold), instead of inheriting their arrow's color. Improves contrast and readability when the colored text is hard to read. Arrows, states and the legend title keep their colors.
-
-The two options are independent — use either, both, or neither.
-
-#### From the editor
-
-The toolbar has two toggle buttons, **Larger Text** and **Black Labels**. Clicking a button writes the matching flag into your config's `options` and re-renders. Toggling a flag off again removes it, keeping the config tidy. Because the setting lives in the config, it round-trips through Export/Load SVG.
+Add the `options` object to your config in the JSON panel and click **Render**. Type `options` in the editor for an autocomplete snippet to get started. Because the setting lives in the config, it round-trips through Export/Load SVG.
 
 ## HTML / CSS named colors
 
@@ -512,13 +531,22 @@ You can use any standard HTML/CSS named color in your diagrams (for message colo
 ```
 
 ### Options Object
+Each key is a text entity with an optional `textSize` (number, px) and `textColor` (CSS color). Defaults shown:
 ```js
 {
-  largeText: false,          // Enlarge all text and scale graphics to match
-  blackLabels: false         // Render message & legend labels in black (legend bold)
+  lane:        { textSize: 18, textColor: '#2a5eb2' },
+  subLane:     { textSize: 12, textColor: '#2a5eb2' },
+  laneGroup:   { textSize: 14, textColor: '#6699cc' },
+  message:     { textSize: 15, textColor: 'default' },  // 'default' = each arrow's color
+  info:        { textSize: 12, textColor: '#333' },
+  legend:      { textSize: 27, textColor: 'default' },  // 'default' = each entry's color
+  legendTitle: { textSize: 16, textColor: '#2a5eb2' },
+  state:       { textSize: 11, textColor: 'black' },
+  time:        { textSize: 12, textColor: '#666' },
+  title:       { textSize: 24, textColor: '#2a5eb2' }
 }
 ```
-> All fields are optional and default to `false`. Omit the whole `options` object for the standard look.
+> Everything is optional. Omit `options` entirely for the standard look. Any `textSize`/`textColor` may be the string `'default'` (or omitted) to use that entity's built-in default.
 
 ### Message Object
 ```js
