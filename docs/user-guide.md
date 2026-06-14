@@ -15,6 +15,7 @@
   - [5. Information Boxes](#5-information-boxes)
   - [6. Complex Transactions](#6-complex-transactions)
   - [7. Legends](#7-legends)
+  - [8. Display Options](#8-display-options)
 - [JSON Schema Reference](#json-schema-reference)
 
 ## Getting Started
@@ -311,6 +312,34 @@ Add legends to explain your color coding:
 
 Legends help readers understand what different colors and line styles represent.
 
+### 8. Display Options
+
+The optional `options` object controls how the diagram is presented. These flags are part of the diagram definition (just like `lanes` or `messages`), so they are saved with **Export SVG**, restored by **Load SVG**, and respected by any application that renders a Flowdrom config — not just the editor page.
+
+```js
+{
+  title: 'Readable Coherency Conflict',
+  options: { largeText: true, blackLabels: true },
+  lanes: ['CA0', 'CA1', 'HN'],
+  messages: [
+    { path: 'CA0->HN', label: 'ReadUnique(A)', color: 'red',   style: 'solid', fromTime: 0, toTime: 1 },
+    { path: 'CA1->HN', label: 'ReadUnique(A)', color: 'blue',  style: 'dashed', fromTime: 1, toTime: 2 },
+    { path: 'HN->CA1', label: 'SnpInvalid(A)', color: 'purple', style: 'solid', fromTime: 2, toTime: 4 }
+  ]
+}
+```
+
+Available options:
+
+- **`largeText`** (`true`/`false`, default `false`) — enlarges all diagram text (lane, message, state, legend, info-box and time labels) and scales the spacing and boxes to match, so nothing overlaps. Useful for slides, print, or projecting. Lane and legend titles also drop to a lighter (non-bold) weight for a cleaner look.
+- **`blackLabels`** (`true`/`false`, default `false`) — renders message labels and legend item labels in solid black (legend labels also become bold), instead of inheriting their arrow's color. Improves contrast and readability when the colored text is hard to read. Arrows, states and the legend title keep their colors.
+
+The two options are independent — use either, both, or neither.
+
+#### From the editor
+
+The toolbar has two toggle buttons, **Larger Text** and **Black Labels**. Clicking a button writes the matching flag into your config's `options` and re-renders. Toggling a flag off again removes it, keeping the config tidy. Because the setting lives in the config, it round-trips through Export/Load SVG.
+
 ## HTML / CSS named colors
 
 You can use any standard HTML/CSS named color in your diagrams (for message colors, state backgrounds, legends, etc.). Below is the complete list of named colors and their hexadecimal values — copy the color name (for example `red` or `RebeccaPurple`) into your diagram JSON's `color` field. On GitHub Pages the table will also display a small color swatch for each name.
@@ -472,6 +501,7 @@ You can use any standard HTML/CSS named color in your diagrams (for message colo
 ```js
 {
   title: 'string',           // Diagram title
+  options: {...},            // Optional display options (see below)
   lanes: ['string'],         // Array of lane names
   laneGroups: [...],         // Optional lane groupings
   messages: [...],           // Message arrows
@@ -480,6 +510,15 @@ You can use any standard HTML/CSS named color in your diagrams (for message colo
   legend: [...]              // Legend entries
 }
 ```
+
+### Options Object
+```js
+{
+  largeText: false,          // Enlarge all text and scale graphics to match
+  blackLabels: false         // Render message & legend labels in black (legend bold)
+}
+```
+> All fields are optional and default to `false`. Omit the whole `options` object for the standard look.
 
 ### Message Object
 ```js
