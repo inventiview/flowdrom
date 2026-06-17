@@ -4,6 +4,7 @@
 
 ## Table of Contents
 - [Getting Started](#getting-started)
+- [The Graphical Editor](#the-graphical-editor)
 - [Basic Concepts](#basic-concepts)
 - [Feature Examples](#feature-examples)
   - [1. Two-Lane Communication](#1-two-lane-communication)
@@ -25,6 +26,54 @@
 3. Click **"Render"** to generate the visual diagram
 4. Use **"Export SVG"** or **"Export PNG"** to save your diagram
 5. Use **"Load SVG"** to edit existing diagrams
+
+## The Graphical Editor
+
+The rendered diagram is **interactive** — you can build and edit it directly on the canvas, and every change is written back to the JSON (and vice-versa). The diagram looks exactly like a normal render until you interact with it.
+
+> Tip: you don't have to choose between the two — mix graphical edits and JSON editing freely. Use the JSON panel's normal **Undo** (Ctrl/Cmd-Z) to revert a graphical change.
+
+### Start a new diagram
+
+Click **New** to replace the editor with a minimal starter (two lanes and one message), then build on it. (You can also just type JSON, or **Load SVG**.)
+
+### Select an item
+
+- **Left-click** an element — a message, state, info box, lane, lane group, legend entry, or the title — to open a small menu of actions for it.
+- If several items overlap where you clicked, the menu first lists them so you can **pick which one** you meant; it then shows that item's actions.
+- **Left-click empty space** clears the menu. **Esc** cancels any open menu, drag, or pending action.
+
+### Move and edit existing items
+
+Most items offer a **Drag** action that reveals draggable handles:
+
+- **Message** — drag an endpoint to change its **time** (move vertically) or send it to **another lane** (move horizontally). Drag the small orange handle to slide the **label** along the arrow.
+- **State** — drag the **top/bottom** handles to resize (change start/end time) or the **middle** handle to move the whole box; drag sideways to change lane.
+- **Info box** — drag the pink handle to **reposition the box**; drag the blue handle to change **which lane/time** it points at.
+- **Lane** — *Drag (shift position)* nudges it sideways; *Drag (reorder)* changes its order.
+
+Times **snap to 0.1** steps while dragging — hold **Alt** for free placement.
+
+Other actions in an item's menu:
+
+- **Edit text** — label, info text, or the diagram title.
+- **Change color** and **Make dashed / Make solid** — for messages and legend entries (color is also available for states).
+- **Go to JSON definition** — selects that element in the JSON panel.
+- **Delete**.
+- For **lanes**: **Rename** (updates every reference automatically), **Make sub-lane of…**, **Make medium lane**, and **Delete lane** (also removes elements that referenced it).
+
+### Add items
+
+**Right-click** anywhere on the canvas to open the **Add** menu:
+
+- **Message** / **State** — pick it, then **drag** on the canvas to draw it (between lanes, or down a lane).
+- **Info box** — pick it, then **click a lane** at the time you want.
+- **Lane** — adds a lane at the clicked position (you give it a name).
+- **Legend entry** — adds a legend line (you give it a label).
+- **Lane group (select lanes)** — then click the lanes to include and press **Create**.
+- **Text styling…** — opens a panel to set font size/color per element type (this edits the `options` block; see [Display Options](#8-display-options)).
+
+> Note: JSON **comments are not supported**. Graphical edits may not behave correctly if the JSON in the editor contains comments.
 
 ## Basic Concepts
 
