@@ -333,6 +333,7 @@
       <div id="codemirror-container"></div>
 
       <div class="button-group">
+        <button onclick="newBasicDiagram()">New</button>
         <button onclick="renderGraph()">Render</button>
         <button onclick="exportSVG(true)">Export SVG</button>
         <button onclick="exportPNG()">Export PNG</button>
@@ -490,10 +491,31 @@
         codeMirrorEditor.setValue(content);
       }
     }
+
+    // Replace the editor with a minimal valid diagram (2 lanes + 1 message) so
+    // the user can start a new diagram and build on it graphically. Replaces
+    // current content immediately (use the editor's undo to revert).
+    function newBasicDiagram() {
+      const tpl = [
+        '{',
+        "  title: 'New Diagram',",
+        "  lanes: ['A', 'B'],",
+        '  messages: [',
+        "    { path: 'A->B', label: 'message', color: 'blue', style: 'solid', fromTime: 0, toTime: 1 },",
+        '  ],',
+        '}'
+      ].join('\n');
+      document.getElementById('input').value = tpl;
+      if (codeMirrorEditor) codeMirrorEditor.setValue(tpl);
+      renderGraph();
+    }
   </script>
 
   <!-- load your renderer -->
   <script src="src/js/main.js?v=6"></script>
+
+  <!-- graphical editor layer (browser-only; never loaded by the headless engine/extension) -->
+  <script src="src/js/editor.js?v=13"></script>
 </body>
 </html>
 

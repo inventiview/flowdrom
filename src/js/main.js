@@ -150,7 +150,7 @@ function renderGraph() {
     const maxInfoBoxTime = Math.max(...infoBoxes.map(i => i.time));
 
     // Calculate the overall maximum time
-    const maxTime = Math.max(maxMessageTime, maxStateTime, maxInfoBoxTime);   
+    const maxTime = Math.max(maxMessageTime, maxStateTime, maxInfoBoxTime);
     
     // Lane Positioning Logic
     const lanePositions = {};
@@ -297,7 +297,7 @@ function renderGraph() {
     const svgHeight = laneTop + (maxTime + 1) * timeStep + bottomPadding;
 
     // Draw lanes
-    lanes.forEach(lane => {
+    lanes.forEach((lane, laneIndex) => {
       const { cleanLane } = parseLaneNameOffset(lane);
       const x = lanePositions[lane];
       const parts = cleanLane.split('.');
@@ -309,15 +309,22 @@ function renderGraph() {
       line.setAttribute("y1", laneTop);
       line.setAttribute("x2", x);
       line.setAttribute("y2", laneTop + maxTime * timeStep);
-      
+
       line.setAttribute("stroke", isSubLane ? "#666" :  isSpecialLane ? "LightGray" : "#333");
       line.setAttribute("stroke-width", isSubLane ? "2" :  isSpecialLane ? "16" :"3");
+      // Editor identity tags (inert; used only by editor.js, ignored by the engine/extension).
+      line.setAttribute("data-kind", "lane");
+      line.setAttribute("data-index", laneIndex);
+      line.setAttribute("data-role", "line");
       tempSvg.appendChild(line);
 
       const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
       text.setAttribute("x", x);
       text.setAttribute("y", laneTop - 10);
       text.setAttribute("class", isSubLane ? "sub-lane-label" : "lane-label");
+      text.setAttribute("data-kind", "lane");
+      text.setAttribute("data-index", laneIndex);
+      text.setAttribute("data-role", "label");
       // Fill comes from the (configurable) .lane-label / .sub-lane-label CSS.
       text.textContent = cleanLane;
       tempSvg.appendChild(text);
@@ -354,6 +361,9 @@ function renderGraph() {
         groupLabel.setAttribute("x", centerX);
         groupLabel.setAttribute("y", groupLabelY);
         groupLabel.setAttribute("class", "lane-group-label");
+        groupLabel.setAttribute("data-kind", "laneGroup");
+        groupLabel.setAttribute("data-index", groupIndex);
+        groupLabel.setAttribute("data-role", "label");
         groupLabel.textContent = group.label;
         tempSvg.appendChild(groupLabel);
 
@@ -370,7 +380,10 @@ function renderGraph() {
         `;
         bracket.setAttribute("d", bracketPath);
         bracket.setAttribute("class", "lane-group-bracket");
-        
+        bracket.setAttribute("data-kind", "laneGroup");
+        bracket.setAttribute("data-index", groupIndex);
+        bracket.setAttribute("data-role", "bracket");
+
         const opacity = 1 - (group.level * 0.15);
         bracket.setAttribute("opacity", Math.max(opacity, 0.4));
         groupLabel.setAttribute("opacity", Math.max(opacity, 0.4));
@@ -405,6 +418,8 @@ function renderGraph() {
     title.setAttribute("font-size", textCfg.title.size);
     title.setAttribute("font-weight", "bold");
     title.setAttribute("fill", textCfg.title.color);
+    title.setAttribute("data-kind", "title");
+    title.setAttribute("data-index", 0);
     title.textContent = input.title || "Enhanced Transaction Graph";
     tempSvg.appendChild(title);
 
@@ -507,6 +522,9 @@ function renderGraph() {
       line.setAttribute("y2", toY);
       line.setAttribute("stroke", msg.color || "black");
       line.setAttribute("class", "arrow" + (msg.style === "dashed" ? " dashed" : ""));
+      line.setAttribute("data-kind", "message");
+      line.setAttribute("data-index", msgIndex);
+      line.setAttribute("data-role", "line");
       messageGroup.appendChild(line);
 
       const arrowId = `arrowhead-${(msg.color || 'black').replace('#', '')}`;
@@ -549,6 +567,9 @@ function renderGraph() {
         // Create label group with rotation
         const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
         group.setAttribute("transform", `rotate(${angle}, ${labelPosition.x}, ${labelPosition.y})`);
+        group.setAttribute("data-kind", "message");
+        group.setAttribute("data-index", msgIndex);
+        group.setAttribute("data-role", "label");
 
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", labelPosition.x);
@@ -611,6 +632,8 @@ function renderGraph() {
       }
       
       const stateSubGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      stateSubGroup.setAttribute("data-kind", "state");
+      stateSubGroup.setAttribute("data-index", stateIndex);
       const stateFontSize = textCfg.state.size;
       const stateLines = state.label.split('|');
       const numberOfLines = stateLines.length;                        
@@ -765,13 +788,19 @@ function renderGraph() {
         infoBox.setAttribute("width", boxWidth);
         infoBox.setAttribute("height", boxHeight);
         infoBox.setAttribute("class", "info-box");
+        infoBox.setAttribute("data-kind", "infoBox");
+        infoBox.setAttribute("data-index", index);
+        infoBox.setAttribute("data-role", "box");
         infoBoxGroup.appendChild(infoBox);
-        
+
         const infoText = document.createElementNS("http://www.w3.org/2000/svg", "text");
         infoText.setAttribute("x", boxX + padding);
         infoText.setAttribute("y", boxY + padding + fontSize);
         infoText.setAttribute("class", "info-box-text");
         infoText.setAttribute("font-size", fontSize);
+        infoText.setAttribute("data-kind", "infoBox");
+        infoText.setAttribute("data-index", index);
+        infoText.setAttribute("data-role", "label");
         
         lines.forEach((line, i) => {
           const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
@@ -829,7 +858,10 @@ function renderGraph() {
         arrow.setAttribute("y2", itemY);
         arrow.setAttribute("stroke", item.color || "black");
         arrow.setAttribute("class", "arrow" + (item.style === "dashed" ? " dashed" : ""));
-        
+        arrow.setAttribute("data-kind", "legend");
+        arrow.setAttribute("data-index", index);
+        arrow.setAttribute("data-role", "line");
+
         const arrowId = `legend-arrowhead-${index}-${(item.color || 'black').replace('#', '')}`;
         if (!tempSvg.querySelector(`#${arrowId}`)) {
           const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
@@ -851,7 +883,10 @@ function renderGraph() {
         // Only create legend label if there's actual text content
         if (labelPosition.cleanLabel) {
           const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-          
+          group.setAttribute("data-kind", "legend");
+          group.setAttribute("data-index", index);
+          group.setAttribute("data-role", "label");
+
           const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
           const fontSize = textCfg.legend.size;
           const lines = labelPosition.cleanLabel.split('|');
@@ -901,6 +936,25 @@ function renderGraph() {
     const exportedSvg = exportSVG(false, tempSvg);
     svgContainer.innerHTML = exportedSvg;
     document.body.removeChild(tempSvg);
+
+    // Expose layout metadata for the browser editor (editor.js) to map pixels
+    // back to model values. Inert for the headless engine/extension and does
+    // not affect the rendered SVG in any way.
+    if (typeof window !== 'undefined') {
+      window.flowdromLayout = {
+        laneTop: laneTop,
+        timeStep: timeStep,
+        startX: startX,
+        laneSpacing: laneSpacing,
+        maxTime: maxTime,
+        lanes: lanes.map((laneStr, i) => ({
+          index: i,
+          key: laneStr,
+          clean: parseLaneNameOffset(laneStr).cleanLane,
+          x: lanePositions[laneStr],
+        })),
+      };
+    }
 
   } catch (e) {
     console.error("Error parsing JSON: " + e.message);
