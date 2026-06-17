@@ -77,44 +77,97 @@ function buildDiagramCss(cfg) {
   `;
 }
 
-// Shared pretty-printer for the config (compact one-line objects in arrays).
-function formatCompactJson(obj, indent = 0) {
-  const spaces = '  '.repeat(indent);
+// ===========================================================================
+// Canonical config formatter — the single source of truth for "tidy" JSON.
+// Used by the Canonize button, the graphical editor (after every edit), and
+// Load SVG. Produces guide-style output: top-level keys in a fixed order, one
+// element per line for array-of-object sections, and small objects (title,
+// lanes, options) rendered inline. Single-quoted strings + bare identifier keys.
+// ===========================================================================
 
-  if (Array.isArray(obj)) {
-    if (obj.length === 0) return '[]';
+// Fixed top-level key order. Keys not listed are appended in original order.
+const TOP_LEVEL_ORDER = ['title', 'options', 'lanes', 'laneGroups', 'infoBoxes', 'messages', 'states', 'legend'];
+// Preferred key order within each array section's element objects.
+const SECTION_KEY_ORDER = {
+  laneGroups: ['label', 'lanes'],
+  infoBoxes: ['lane', 'time', 'text'],
+  messages: ['path', 'label', 'color', 'style', 'fromTime', 'toTime'],
+  states: ['lane', 'label', 'color', 'fromTime', 'toTime'],
+  legend: ['label', 'color', 'style'],
+};
 
-    const allSimple = obj.every(item =>
-      typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
-    );
+// Emit a key bare when it's a valid identifier, else single-quoted.
+function formatKey(k) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? k : "'" + String(k).replace(/'/g, "\\'") + "'";
+}
 
-    if (allSimple) {
-      return `[${obj.map(item => JSON5.stringify(item)).join(', ')}]`;
-    } else {
-      const items = obj.map(item => {
-        if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-          const pairs = Object.keys(item).map(key =>
-            `${key}: ${JSON5.stringify(item[key])}`
-          );
-          return `${spaces}  { ${pairs.join(', ')} }`;
-        } else {
-          return `${spaces}  ${formatCompactJson(item, indent + 1)}`;
-        }
-      });
-      return `[\n${items.join(',\n')}\n${spaces}]`;
-    }
-  } else if (typeof obj === 'object' && obj !== null) {
-    const keys = Object.keys(obj);
-    if (keys.length === 0) return '{}';
-
-    const items = keys.map(key => {
-      const value = formatCompactJson(obj[key], indent + 1);
-      return `${spaces}  ${key}: ${value}`;
-    });
-    return `{\n${items.join(',\n')}\n${spaces}}`;
-  } else {
-    return JSON5.stringify(obj);
+// Serialize any scalar / inline array / inline object as a one-line JSON5 literal.
+function jsonLiteral(value) {
+  if (value === null) return 'null';
+  const t = typeof value;
+  if (t === 'number' || t === 'boolean') return String(value);
+  if (t === 'string') return "'" + value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n') + "'";
+  if (Array.isArray(value)) return value.length ? '[' + value.map(jsonLiteral).join(', ') + ']' : '[]';
+  if (t === 'object') {
+    const ks = Object.keys(value);
+    if (!ks.length) return '{}';
+    return '{ ' + ks.map(k => formatKey(k) + ': ' + jsonLiteral(value[k])).join(', ') + ' }';
   }
+  return JSON.stringify(value);
+}
+
+// Order an object's keys by a preferred list, then append any extras (original order).
+function orderedKeys(obj, preferred) {
+  const keys = Object.keys(obj);
+  return preferred.filter(k => keys.includes(k)).concat(keys.filter(k => preferred.indexOf(k) === -1));
+}
+
+// Format a parsed config model into canonical, guide-style text.
+function formatConfig(model) {
+  if (model == null || typeof model !== 'object' || Array.isArray(model)) return jsonLiteral(model);
+  const lines = orderedKeys(model, TOP_LEVEL_ORDER).map(key => {
+    const value = model[key];
+    const isObjArray = Array.isArray(value) && value.length > 0 &&
+      value.every(v => v && typeof v === 'object' && !Array.isArray(v));
+    if (isObjArray) {
+      const order = SECTION_KEY_ORDER[key] || [];
+      const elems = value.map(item =>
+        '    { ' + orderedKeys(item, order).map(k => formatKey(k) + ': ' + jsonLiteral(item[k])).join(', ') + ' }'
+      );
+      return '  ' + key + ': [\n' + elems.join(',\n') + '\n  ]';
+    }
+    return '  ' + key + ': ' + jsonLiteral(value);
+  });
+  return '{\n' + lines.join(',\n') + '\n}';
+}
+
+// Resolve a raw lane token to its clean name (strip the >/< shift prefix).
+function cleanLaneName(raw) {
+  const s = String(raw == null ? '' : raw);
+  const m = /^([<>]+)([\s\S]*)$/.exec(s);
+  return (m ? m[2] : s).trim();
+}
+
+// Pure: compute each lane group's resolved member lanes + horizontal extent.
+// `lanes` are RAW lane strings (may carry >/< shift prefixes) and `lanePositions`
+// is keyed by those raw strings, but a group's lane names are CLEAN — so we map
+// clean -> raw before the membership/position lookups. This is what keeps a
+// shifted lane (e.g. '>CA0') inside its group instead of being dropped.
+function computeGroupExtents(lanes, laneGroups, lanePositions) {
+  const rawByClean = {};
+  (lanes || []).forEach(raw => { rawByClean[cleanLaneName(raw)] = raw; });
+  return (laneGroups || []).map(group => {
+    const members = (group.lanes || []).filter(name => Object.prototype.hasOwnProperty.call(rawByClean, name));
+    const positions = members
+      .map(name => lanePositions[rawByClean[name]])
+      .filter(pos => pos !== undefined);
+    const ext = Object.assign({}, group, { level: 0, lanes: members, leftmostX: 0, rightmostX: 0 });
+    if (positions.length > 0) {
+      ext.leftmostX = Math.min(...positions);
+      ext.rightmostX = Math.max(...positions);
+    }
+    return ext;
+  });
 }
 
 function renderGraph() {
@@ -228,24 +281,10 @@ function renderGraph() {
     let groupHierarchy = [];
     
     if (laneGroups.length > 0) {
-      groupHierarchy = laneGroups.map(group => ({
-        ...group,
-        level: 0,
-        lanes: group.lanes.filter(lane => lanes.includes(lane)),
-        leftmostX: 0,
-        rightmostX: 0
-      }));
-      
-      groupHierarchy.forEach(group => {
-        if (group.lanes.length > 0) {
-          const groupPositions = group.lanes.map(lane => lanePositions[lane]).filter(pos => pos !== undefined);
-          if (groupPositions.length > 0) {
-            group.leftmostX = Math.min(...groupPositions);
-            group.rightmostX = Math.max(...groupPositions);
-          }
-        }
-      });
-      
+      // Resolve membership + extent through clean<->raw mapping so shifted lanes
+      // (e.g. '>CA0') stay in their group. See computeGroupExtents.
+      groupHierarchy = computeGroupExtents(lanes, laneGroups, lanePositions);
+
       groupHierarchy.forEach((currentGroup, index) => {
         if (currentGroup.lanes.length === 0) return;
         
@@ -285,12 +324,16 @@ function renderGraph() {
       laneGroupLevels = Math.max(...groupHierarchy.map(g => g.level)) + 1;
     }
     
-    // FIXED: Much more compact spacing calculation
+    // Vertical layout. laneGroupPitch is the per-level band height; it's shared
+    // with the lane-group drawing below so labels/brackets stay aligned. The
+    // title↔group and group↔lane gaps give the bracket label room to breathe
+    // (it must clear both the title above and the lane labels below).
     const titleHeight = 40;
-    const laneGroupHeight = laneGroupLevels * 30;
-    const spaceBetweenTitleAndGroups = 10;
-    const spaceBetweenGroupsAndLanes = 20;
-    
+    const laneGroupPitch = 34;
+    const laneGroupHeight = laneGroupLevels * laneGroupPitch;
+    const spaceBetweenTitleAndGroups = 24;
+    const spaceBetweenGroupsAndLanes = 38;
+
     const laneTop = titleHeight + spaceBetweenTitleAndGroups + laneGroupHeight + spaceBetweenGroupsAndLanes;
     
     const bottomPadding = 30;
@@ -353,8 +396,8 @@ function renderGraph() {
         const centerX = (leftmostX + rightmostX) / 2;
 
         const levelFromBottom = laneGroupLevels - 1 - group.level;
-        const groupLabelY = laneTop - spaceBetweenGroupsAndLanes - (levelFromBottom * 30) - 20;
-        const bracketY = laneTop - spaceBetweenGroupsAndLanes - (levelFromBottom * 30);
+        const groupLabelY = laneTop - spaceBetweenGroupsAndLanes - (levelFromBottom * laneGroupPitch) - 20;
+        const bracketY = laneTop - spaceBetweenGroupsAndLanes - (levelFromBottom * laneGroupPitch);
         const bracketHeight = 15;
 
         const groupLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -834,13 +877,21 @@ function renderGraph() {
       legendBox.setAttribute("width", arrowLength + 2 * arrowMargin);
       legendBox.setAttribute("height", legend.length * legendItemHeight + 50);
       legendBox.setAttribute("class", "legend-box");
+      // Editor identity tags so the legend can be selected/deleted as a whole
+      // (inert for the engine/extension; used only by editor.js).
+      legendBox.setAttribute("data-kind", "legendBox");
+      legendBox.setAttribute("data-index", 0);
+      legendBox.setAttribute("data-role", "box");
       tempSvg.appendChild(legendBox);
-      
+
       const legendTitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
       legendTitle.setAttribute("x", legendX + (arrowLength + 2 * arrowMargin) / 2);
       legendTitle.setAttribute("y", legendY - 40);
       legendTitle.setAttribute("text-anchor", "middle");
       legendTitle.setAttribute("class", "legend-title");
+      legendTitle.setAttribute("data-kind", "legendBox");
+      legendTitle.setAttribute("data-index", 0);
+      legendTitle.setAttribute("data-role", "title");
       legendTitle.setAttribute("font-size", textCfg.legendTitle.size);
       legendTitle.textContent = "Legend";
       tempSvg.appendChild(legendTitle);
@@ -1112,7 +1163,7 @@ function loadSVGFile(event) {
       try {
         const jsonData = JSON5.parse(jsonString);
 
-        const compactJson = formatCompactJson(jsonData);
+        const compactJson = formatConfig(jsonData);
 
         // Insert into hidden textarea (kept for compatibility) and into CodeMirror editor if available
         const textarea = document.getElementById('input');
@@ -1151,6 +1202,16 @@ function loadSVGFile(event) {
   };
   
   reader.readAsText(file);
-  
+
   event.target.value = '';
+}
+
+// Headless export for the Node regression harness (no DOM is touched at require
+// time — these are all pure). Ignored in the browser.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    formatConfig, jsonLiteral, formatKey, orderedKeys,
+    cleanLaneName, computeGroupExtents, resolveTextConfig,
+    TOP_LEVEL_ORDER, SECTION_KEY_ORDER,
+  };
 }

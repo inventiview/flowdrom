@@ -103,9 +103,17 @@
         if (depth === 0) { if (count === index) return { start: elemStart, end: i + 1 }; count++; elemStart = -1; }
         continue;
       }
-      if (c === ',' && depth === 0 && elemStart !== -1) {
-        if (count === index) return { start: elemStart, end: i };
-        count++; elemStart = -1; continue;
+      if (c === ',' && depth === 0) {
+        // A depth-0 comma is always a separator — consume it. When it closes a
+        // pending element (scalars), return/advance; otherwise (the comma that
+        // follows an object's '}') just skip it. Critically we MUST `continue`
+        // so the catch-all below never mistakes this comma for element content
+        // (that bug left the leading comma inside the span and broke deletes).
+        if (elemStart !== -1) {
+          if (count === index) return { start: elemStart, end: i };
+          count++; elemStart = -1;
+        }
+        continue;
       }
       if (depth === 0 && elemStart === -1 && !/\s/.test(c)) elemStart = i;
     }
@@ -422,6 +430,25 @@
     return text.slice(0, s) + text.slice(e);
   }
 
+  // Remove an entire top-level array-valued key (e.g. `legend: [...]`) plus one
+  // adjacent comma. Returns new text or null if the key isn't found.
+  function deleteTopLevelKey(text, key) {
+    if (text == null) return null;
+    const arr = locateArray(text, key);
+    if (!arr) return null;
+    let s = arr.open, e = arr.close + 1;
+    // extend the start back over the `key:` (bare or quoted, with surrounding ws)
+    const before = text.slice(0, s);
+    const km = /(["']?)([A-Za-z0-9_$]+)\1\s*:\s*$/.exec(before);
+    if (km && km[2] === key) s = before.length - km[0].length;
+    // drop one adjacent comma — prefer the trailing one, else the leading one
+    let k = e;
+    while (k < text.length && /\s/.test(text[k])) k++;
+    if (text[k] === ',') { e = k + 1; }
+    else { let p = s - 1; while (p >= 0 && /\s/.test(text[p])) p--; if (text[p] === ',') s = p; }
+    return text.slice(0, s) + text.slice(e);
+  }
+
   // Replace the lanes array with a fresh formatted list (used for add/reorder,
   // since lane order encodes horizontal position).
   function setLanes(text, lanesArray) {
@@ -486,6 +513,8 @@
   let groupSelecting = null; // Set of lane indices while building a lane group
   let groupBanner = null;    // the floating group-select confirm bar
   let groupEditIndex = null; // index of the group being edited (null = creating new)
+  let selection = [];        // multi-select: [{kind,index}] toggled via ctrl+click
+  let groupDrag = null;      // in-progress group time-shift drag
 
   // ========================================================================
   // Selection box (sibling div over the container) + item labelling.
@@ -503,6 +532,129 @@
     return ov;
   }
   function clearSelBox() { const c = getContainer(); const ov = c && c.querySelector(':scope > .flowdrom-sel-overlay'); if (ov) ov.style.display = 'none'; }
+
+  // ---- multi-selection (ctrl+click) -------------------------------------
+  // Only time-bearing kinds can take part in a shared time shift.
+  const SHIFTABLE = { message: true, state: true, infoBox: true };
+
+  function inSelection(it) { return selection.some((s) => s.kind === it.kind && s.index === it.index); }
+  function toggleSelection(it) {
+    const i = selection.findIndex((s) => s.kind === it.kind && s.index === it.index);
+    if (i >= 0) selection.splice(i, 1); else selection.push({ kind: it.kind, index: it.index });
+  }
+  function clearSelection() { selection = []; renderSelectionBoxes(); }
+
+  // One dashed box per selected item (separate from the single-item selBox).
+  function renderSelectionBoxes(pixelDY) {
+    const container = getContainer(); if (!container) return;
+    container.querySelectorAll(':scope > .flowdrom-sel-multi').forEach((n) => n.remove());
+    const dy = pixelDY || 0;
+    const c = container.getBoundingClientRect(); const pad = 4;
+    selection.forEach((it) => {
+      const els = itemElements(it.kind, it.index);
+      if (!els.length) return;
+      let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+      for (const e of els) { const cr = e.getBoundingClientRect(); l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
+      if (!isFinite(l)) return;
+      const box = document.createElement('div');
+      box.className = 'flowdrom-sel-multi';
+      box.style.cssText = 'position:absolute;pointer-events:none;border:2px dashed #e6007a;border-radius:3px;background:rgba(230,0,122,0.10);z-index:5;';
+      box.style.left = l - c.left + container.scrollLeft - pad + 'px';
+      box.style.top = t - c.top + container.scrollTop - pad + dy + 'px';
+      box.style.width = r - l + 2 * pad + 'px';
+      box.style.height = b - t + 2 * pad + 'px';
+      container.appendChild(box);
+    });
+  }
+
+  // Smallest time value across the selection (the binding constraint when
+  // shifting down — we never let any time go below 0).
+  function selectionMinTime(model) {
+    let min = Infinity;
+    selection.forEach((it) => {
+      try {
+        if (it.kind === 'message') { const m = model.messages[it.index]; min = Math.min(min, m.fromTime, m.toTime); }
+        else if (it.kind === 'state') { const s = model.states[it.index]; min = Math.min(min, s.fromTime, s.toTime != null ? s.toTime : s.fromTime); }
+        else if (it.kind === 'infoBox') { min = Math.min(min, model.infoBoxes[it.index].time); }
+      } catch (e) { /* ignore */ }
+    });
+    return isFinite(min) ? min : 0;
+  }
+
+  // Apply a single time delta to every selected (time-bearing) item.
+  function commitGroupShift(dt) {
+    const ed = getEditor(); const model = parseModel();
+    if (!ed || !model || !dt) return;
+    let text = ed.getValue();
+    selection.forEach((it) => {
+      if (it.kind === 'message') {
+        const m = model.messages[it.index]; if (!m) return;
+        text = setElementFields(text, 'messages', it.index, [
+          { field: 'fromTime', literal: numLiteral(m.fromTime + dt) },
+          { field: 'toTime', literal: numLiteral(m.toTime + dt) },
+        ]) || text;
+      } else if (it.kind === 'state') {
+        const s = model.states[it.index]; if (!s) return;
+        const to = (s.toTime != null ? s.toTime : s.fromTime) + dt;
+        text = setOrInsertField(text, 'states', it.index, 'fromTime', numLiteral(s.fromTime + dt)) || text;
+        text = setOrInsertField(text, 'states', it.index, 'toTime', numLiteral(to)) || text;
+      } else if (it.kind === 'infoBox') {
+        const b = model.infoBoxes[it.index]; if (!b) return;
+        text = setOrInsertField(text, 'infoBoxes', it.index, 'time', numLiteral(b.time + dt)) || text;
+      }
+    });
+    applyText(text);
+    renderSelectionBoxes(); // indices are stable across a time shift
+  }
+
+  // Floating "Δt = …" badge shown while dragging a multi-selection.
+  function shiftBadge() {
+    let b = document.querySelector('.flowdrom-shift-badge');
+    if (!b) {
+      b = document.createElement('div');
+      b.className = 'flowdrom-shift-badge';
+      b.style.cssText = 'position:fixed;z-index:10002;background:#e6007a;color:#fff;padding:4px 8px;border-radius:4px;font:12px "Segoe UI",sans-serif;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.25);';
+      document.body.appendChild(b);
+    }
+    return b;
+  }
+  function removeShiftBadge() { const b = document.querySelector('.flowdrom-shift-badge'); if (b) b.remove(); }
+
+  function startGroupDrag(ev) {
+    const svg = diagramSvg();
+    let scale = 1;
+    if (svg && svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width) {
+      scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+    }
+    groupDrag = { startClientY: ev.clientY, minTime: selectionMinTime(parseModel() || {}), moved: false, dt: 0, scale: scale };
+    window.addEventListener('pointermove', onGroupDragMove, true);
+    window.addEventListener('pointerup', onGroupDragUp, true);
+  }
+  function onGroupDragMove(ev) {
+    if (!groupDrag) return;
+    const startD = clientToDiagram(ev.clientX, groupDrag.startClientY);
+    const curD = clientToDiagram(ev.clientX, ev.clientY);
+    if (!startD || !curD) return;
+    const rawDt = yToTime(curD.y) - yToTime(startD.y);
+    let dt = ev.altKey ? rawDt : Math.round(rawDt / SNAP_TIME) * SNAP_TIME;
+    dt = Math.max(dt, -groupDrag.minTime); // never push a time below 0
+    groupDrag.dt = dt;
+    if (Math.abs(ev.clientY - groupDrag.startClientY) > 3) groupDrag.moved = true;
+    const L = layout();
+    renderSelectionBoxes(dt * (L ? L.timeStep : 50) * groupDrag.scale);
+    const b = shiftBadge();
+    b.textContent = 'Δt = ' + (dt >= 0 ? '+' : '') + numLiteral(dt);
+    b.style.left = (ev.clientX + 14) + 'px';
+    b.style.top = (ev.clientY + 14) + 'px';
+  }
+  function onGroupDragUp() {
+    window.removeEventListener('pointermove', onGroupDragMove, true);
+    window.removeEventListener('pointerup', onGroupDragUp, true);
+    const d = groupDrag; groupDrag = null;
+    removeShiftBadge();
+    if (d && d.moved && d.dt) { ignoreNextClick = true; commitGroupShift(d.dt); }
+    else { renderSelectionBoxes(); }
+  }
 
   function itemElements(kind, index) {
     const svg = diagramSvg();
@@ -532,6 +684,7 @@
       if (item.kind === 'lane') { return 'Lane  ' + m.lanes[item.index]; }
       if (item.kind === 'laneGroup') { return 'Group  ' + m.laneGroups[item.index].label; }
       if (item.kind === 'legend') { const x = m.legend[item.index]; return 'Legend  “' + (x.label || '') + '”'; }
+      if (item.kind === 'legendBox') { return 'Legend (whole)  ' + ((m.legend || []).length) + ' entries'; }
       if (item.kind === 'title') { return 'Title  “' + (m.title || '') + '”'; }
     } catch (e) { /* fall through */ }
     return item.kind + '[' + item.index + ']';
@@ -636,6 +789,13 @@
     const menu = buildMenu(clientX, clientY);
     addHeader(menu, labelFor(item, model));
 
+    // The legend as a whole (its box/title) — only action is removing it entirely.
+    if (item.kind === 'legendBox') {
+      addRow(menu, '⟶  Go to JSON definition', () => { closeMenu(); gotoLegend(); });
+      addRow(menu, '🗑  Delete entire legend', () => { closeMenu(); deleteLegend(); });
+      return;
+    }
+
     if (item.kind === 'lane') {
       addRow(menu, '↔  Drag (shift position)', () => { closeMenu(); enterDrag(item, 'shift'); });
       addRow(menu, '⇄  Drag (reorder)', () => { closeMenu(); enterDrag(item, 'reorder'); });
@@ -705,15 +865,42 @@
     if (text != null) applyText(text);
   }
 
+  // Colors already used in the diagram, most-frequent first. So the picker can
+  // offer "reuse a color you already have" before the generic palette.
+  function usedColors(model) {
+    const counts = new Map();
+    const bump = (c) => { if (c && typeof c === 'string') counts.set(c, (counts.get(c) || 0) + 1); };
+    if (model) {
+      (model.messages || []).forEach((m) => bump(m.color));
+      (model.legend || []).forEach((l) => bump(l.color));
+      (model.states || []).forEach((s) => bump(s.color));
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map((e) => e[0]);
+  }
+
   function showColorMenu(item, clientX, clientY) {
+    const model = parseModel();
+    const base = (item.kind === 'state' ? STATE_PALETTE : PALETTE);
     const menu = buildMenu(clientX, clientY);
-    addHeader(menu, 'Color:');
-    (item.kind === 'state' ? STATE_PALETTE : PALETTE).forEach((c) => {
+
+    const swatch = (c) => {
       const row = addRow(menu, '   ' + c, () => { closeMenu(); setItemField(item, 'color', quote(c)); });
       row.style.borderLeft = '14px solid ' + c;
-    });
+    };
+
+    // 1) colors already in use (top), 2) the rest of the palette, 3) custom.
+    const used = usedColors(model);
+    if (used.length) {
+      addHeader(menu, 'Used in diagram:');
+      used.forEach(swatch);
+      addHeader(menu, 'Palette:');
+    } else {
+      addHeader(menu, 'Color:');
+    }
+    base.filter((c) => used.indexOf(c) === -1).forEach(swatch);
+
     addRow(menu, 'Custom…', () => {
-      const ed = getEditor(); const cur = currentField(parseModel(), item, 'color') || '';
+      const cur = currentField(model, item, 'color') || '';
       showTextInput(clientX, clientY, cur, (v) => { if (v && v.trim()) setItemField(item, 'color', quote(v.trim())); });
     });
   }
@@ -737,6 +924,26 @@
     if (text == null) return;
     exitDrag();
     applyText(text);
+  }
+
+  // Remove the whole legend section (the box/title selection).
+  function deleteLegend() {
+    const ed = getEditor();
+    if (!ed) return;
+    const text = deleteTopLevelKey(ed.getValue(), 'legend');
+    if (text == null) return;
+    exitDrag();
+    applyText(text);
+  }
+  function gotoLegend() {
+    const ed = getEditor();
+    if (!ed) return;
+    const arr = locateArray(ed.getValue(), 'legend');
+    if (!arr) return;
+    const from = ed.posFromIndex(arr.open), to = ed.posFromIndex(arr.close + 1);
+    ed.setSelection(from, to);
+    ed.scrollIntoView({ from: from, to: to }, 60);
+    ed.focus();
   }
 
   function gotoDefinition(item) {
@@ -1067,9 +1274,19 @@
 
   function applyText(text) {
     const ed = getEditor();
-    if (ed) ed.setValue(text);
+    // Re-emit in canonical guide-style order so every graphical edit produces
+    // tidy, ordered JSON (and a compact options block). Fall back to the raw
+    // text if it can't be parsed/formatted — never break the editor.
+    let out = text;
+    try {
+      const J = getJSON5();
+      if (J && typeof window !== 'undefined' && typeof window.formatConfig === 'function') {
+        out = window.formatConfig(J.parse(text));
+      }
+    } catch (e) { out = text; }
+    if (ed) ed.setValue(out);
     const ta = document.getElementById('input');
-    if (ta) ta.value = text;
+    if (ta) ta.value = out;
     if (typeof window.renderGraph === 'function') window.renderGraph();
   }
 
@@ -1086,9 +1303,20 @@
       return;
     }
     if (creating) return; // a draw gesture is pending; ignore plain clicks
+
+    // Ctrl/Cmd+click: build a multi-selection of time-bearing items (to shift
+    // them together later). Does not open a menu.
+    if (e.ctrlKey || e.metaKey) {
+      const cands = candidatesAt(e.clientX, e.clientY);
+      const top = cands.find((c) => SHIFTABLE[c.kind]);
+      if (top) { closeMenu(); exitDrag(); toggleSelection(top); renderSelectionBoxes(); }
+      return;
+    }
+
     const candidates = candidatesAt(e.clientX, e.clientY);
     if (candidates.length) {
       closeMenu();
+      clearSelection(); // a plain click moves on from any multi-selection
       if (candidates.length === 1) showActions(candidates[0], e.clientX, e.clientY);
       else showPicker(candidates, e.clientX, e.clientY);
       return;
@@ -1096,6 +1324,7 @@
     // Empty space (left click): dismiss any menu / selection. Add is on right-click.
     closeMenu();
     exitDrag();
+    clearSelection();
   }
 
   // ---- creation ----
@@ -1327,7 +1556,12 @@
     container.addEventListener('pointerdown', function (e) {
       ignoreNextClick = false; // a new gesture starts; never let a stale flag eat its click
       if (e.target && e.target.getAttribute && e.target.getAttribute('data-h')) { onHandleDown(e); return; }
-      if (creating) onCreateDown(e);
+      if (creating) { onCreateDown(e); return; }
+      // Drag on a member of a multi-selection (no modifier) → shift them all in time.
+      if (e.button === 0 && !(e.ctrlKey || e.metaKey) && selection.length >= 2) {
+        const hit = candidatesAt(e.clientX, e.clientY).find((c) => inSelection(c) && SHIFTABLE[c.kind]);
+        if (hit) { e.preventDefault(); startGroupDrag(e); }
+      }
     }, true);
     container.addEventListener('scroll', function () { clearSelBox(); });
     // Right-click opens the Add menu (left-click empty is reserved for dismiss).
@@ -1340,7 +1574,7 @@
     document.addEventListener('pointerdown', function (e) {
       if (menuEl && !menuEl.contains(e.target) && !container.contains(e.target)) { closeMenu(); }
     }, true);
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeMenu(); exitDrag(); cancelCreating(); endGroupSelect(); } });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeMenu(); exitDrag(); cancelCreating(); endGroupSelect(); clearSelection(); } });
     container.__flowdromEditorBound = true;
   }
 
@@ -1357,7 +1591,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption };
+    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption };
   }
 
   if (typeof document !== 'undefined') {
