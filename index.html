@@ -5,9 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flowdrom</title>
   
-  <!-- CodeMirror CSS -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/default.min.css">
+  <!-- CodeMirror CSS (vendored locally — no external CDN) -->
+  <link rel="stylesheet" href="src/vendor/codemirror/codemirror.min.css">
   
   <style>
     body {
@@ -67,6 +66,31 @@
     .input-section {
       width: 100%;
       margin-bottom: 20px;
+    }
+
+    /* Editor wrapper + copy button (top-right of the editor) */
+    .editor-wrap {
+      position: relative;
+    }
+
+    .copy-json-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 10;
+      padding: 5px 10px;
+      font-size: 12px;
+      background: rgba(42, 94, 178, 0.9);
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      opacity: 0.85;
+    }
+
+    .copy-json-btn:hover {
+      opacity: 1;
+      background: #1a4a8a;
     }
 
     /* CodeMirror styling */
@@ -330,11 +354,15 @@
 }</textarea>
 
       <!-- CodeMirror editor container -->
-      <div id="codemirror-container"></div>
+      <div class="editor-wrap">
+        <button type="button" class="copy-json-btn" title="Copy JSON to clipboard" onclick="copyEditorJson(this)">⧉ Copy</button>
+        <div id="codemirror-container"></div>
+      </div>
 
       <div class="button-group">
         <button onclick="newBasicDiagram()">New</button>
         <button onclick="renderGraph()">Render</button>
+        <button class="secondary" onclick="canonizeJson()" title="Sort, order and compact the JSON to the canonical guide style">Canonize JSON</button>
         <button onclick="exportSVG(true)">Export SVG</button>
         <button onclick="exportPNG()">Export PNG</button>
         <input type="file" id="svgFileInput" accept=".svg" style="display: none;" onchange="loadSVGFile(event)">
@@ -346,19 +374,19 @@
     <div id="svg-container"></div>
   </div>
 
-  <!-- CodeMirror Core -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
-  
+  <!-- CodeMirror Core (vendored locally) -->
+  <script src="src/vendor/codemirror/codemirror.min.js"></script>
+
   <!-- CodeMirror JavaScript Mode -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
-  
+  <script src="src/vendor/codemirror/mode/javascript/javascript.min.js"></script>
+
   <!-- CodeMirror Addons for dynamic features -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
-  
+  <script src="src/vendor/codemirror/addon/edit/closebrackets.min.js"></script>
+  <script src="src/vendor/codemirror/addon/edit/matchbrackets.min.js"></script>
+  <script src="src/vendor/codemirror/addon/hint/show-hint.min.js"></script>
+
   <!-- CodeMirror Hint CSS -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+  <link rel="stylesheet" href="src/vendor/codemirror/addon/hint/show-hint.min.css">
   
   <script src="src/js/json5.min.js"></script>
   
@@ -509,13 +537,53 @@
       if (codeMirrorEditor) codeMirrorEditor.setValue(tpl);
       renderGraph();
     }
+
+    // Tidy the current JSON: parse it and re-emit through the canonical formatter
+    // (sorted/ordered keys, compact one-line elements, inline options). On a
+    // parse error, leave the text untouched and let renderGraph surface it.
+    function canonizeJson() {
+      const ta = document.getElementById('input');
+      try {
+        const formatted = formatConfig(JSON5.parse(ta.value));
+        ta.value = formatted;
+        if (codeMirrorEditor) codeMirrorEditor.setValue(formatted);
+        renderGraph();
+      } catch (e) {
+        renderGraph(); // shows the JSON error box
+      }
+    }
+
+    // Copy the editor's JSON to the clipboard; briefly flips the button label.
+    function copyEditorJson(btn) {
+      const text = codeMirrorEditor ? codeMirrorEditor.getValue() : document.getElementById('input').value;
+      const flash = () => {
+        if (!btn) return;
+        const prev = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = prev; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(flash).catch(() => fallbackCopy(text, flash));
+      } else {
+        fallbackCopy(text, flash);
+      }
+    }
+    function fallbackCopy(text, done) {
+      const t = document.createElement('textarea');
+      t.value = text;
+      t.style.cssText = 'position:fixed;top:-1000px;left:-1000px;';
+      document.body.appendChild(t);
+      t.focus(); t.select();
+      try { document.execCommand('copy'); done && done(); } catch (e) { /* ignore */ }
+      document.body.removeChild(t);
+    }
   </script>
 
   <!-- load your renderer -->
-  <script src="src/js/main.js?v=6"></script>
+  <script src="src/js/main.js?v=7"></script>
 
   <!-- graphical editor layer (browser-only; never loaded by the headless engine/extension) -->
-  <script src="src/js/editor.js?v=13"></script>
+  <script src="src/js/editor.js?v=14"></script>
 </body>
 </html>
 

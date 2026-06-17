@@ -1,0 +1,231 @@
+'use strict';
+/*
+ * Flowdrom headless regression harness (plain Node, no framework, no deps beyond
+ * the vendored json5). Run with:  node test/regression.js   (or: npm test)
+ *
+ * It exercises the pure text-surgery functions exported by editor.js and the
+ * canonical formatter exported by main.js against a real corpus: the default
+ * config embedded in index.html plus every JSON block in docs/user-guide.md.
+ *
+ * Each invariant maps to a class of bug these checks are meant to catch:
+ *   1. deleteArrayElement always leaves valid JSON5 (the missing-comma bug).
+ *   2. insert/set/move/rename/delete operations re-parse + mutate correctly.
+ *   3. formatConfig is valid, idempotent, model-preserving, canonically ordered,
+ *      and renders options inline (the unordered/non-compact JSON bug).
+ *   4. lane-group membership survives a shifted ('>'/'<') member lane.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const JSON5 = require('../src/js/json5.min.js');
+global.JSON5 = JSON5; // editor.js getJSON5() falls back to the global
+const E = require('../src/js/editor.js');
+const M = require('../src/js/main.js');
+
+// ---------------------------------------------------------------------------
+// tiny assert helpers
+// ---------------------------------------------------------------------------
+let pass = 0, fail = 0;
+const failures = [];
+function ok(cond, msg) {
+  if (cond) { pass++; } else { fail++; failures.push(msg); console.error('  FAIL: ' + msg); }
+  return cond; // callers use `if (!ok(...)) continue;`
+}
+// Recursively sort object keys so two structures compare equal regardless of key
+// order (formatConfig intentionally reorders keys — content is what must match).
+function canon(x) {
+  if (Array.isArray(x)) return x.map(canon);
+  if (x && typeof x === 'object') {
+    const o = {};
+    Object.keys(x).sort().forEach(k => { o[k] = canon(x[k]); });
+    return o;
+  }
+  return x;
+}
+function eq(actual, expected, msg) {
+  const a = JSON.stringify(actual), b = JSON.stringify(expected);
+  ok(a === b, msg + (a === b ? '' : `\n        got:  ${a}\n        want: ${b}`));
+}
+function parses(text, msg) {
+  try { JSON5.parse(text); return true; } catch (e) { ok(false, msg + ' — JSON5 error: ' + e.message); return false; }
+}
+function section(name) { console.log('\n# ' + name); }
+
+// ---------------------------------------------------------------------------
+// corpus
+// ---------------------------------------------------------------------------
+function readDefaultConfig() {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const m = /<textarea id="input"[^>]*>([\s\S]*?)<\/textarea>/.exec(html);
+  return m ? { name: 'index.html default', text: m[1].trim() } : null;
+}
+function readGuideBlocks() {
+  const md = fs.readFileSync(path.join(__dirname, '..', 'docs', 'user-guide.md'), 'utf8');
+  const out = [];
+  const re = /```(?:js|json5?)?\s*\n([\s\S]*?)```/g;
+  let m, n = 0;
+  while ((m = re.exec(md))) {
+    const body = m[1].trim();
+    if (!body.startsWith('{')) continue;
+    try { JSON5.parse(body); out.push({ name: 'guide block #' + (++n), text: body }); } catch (e) { /* skip prose/snippets */ }
+  }
+  return out;
+}
+
+const corpus = [readDefaultConfig()].filter(Boolean).concat(readGuideBlocks());
+const ARRAY_SECTIONS = ['lanes', 'laneGroups', 'infoBoxes', 'messages', 'states', 'legend'];
+
+// ---------------------------------------------------------------------------
+section('corpus');
+ok(corpus.length > 1, 'corpus has default + guide blocks (got ' + corpus.length + ')');
+
+// ---------------------------------------------------------------------------
+section('Invariant 1 — deleteArrayElement leaves valid JSON5 + removes the element');
+corpus.forEach(({ name, text }) => {
+  const model = JSON5.parse(text);
+  ARRAY_SECTIONS.forEach(key => {
+    const arr = model[key];
+    if (!Array.isArray(arr)) return;
+    for (let i = 0; i < arr.length; i++) {
+      const out = E.deleteArrayElement(text, key, i);
+      if (!ok(out != null, `${name}: delete ${key}[${i}] returns text`)) continue;
+      if (!parses(out, `${name}: delete ${key}[${i}] -> valid JSON5`)) continue;
+      const expect = arr.slice(0, i).concat(arr.slice(i + 1));
+      eq(JSON5.parse(out)[key] || [], expect, `${name}: delete ${key}[${i}] removed the right element`);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+section('Invariant 2 — insert / setOrInsertField / setLanes / moveLane / rename / deleteLane');
+corpus.forEach(({ name, text }) => {
+  const model = JSON5.parse(text);
+
+  // insert a message
+  if (Array.isArray(model.messages)) {
+    const out = E.insertArrayElement(text, 'messages', "{ path: 'X->Y', label: 'z', fromTime: 0, toTime: 1 }");
+    if (out != null && parses(out, `${name}: insert message -> valid JSON5`)) {
+      eq(JSON5.parse(out).messages.length, model.messages.length + 1, `${name}: insert message grows array`);
+    }
+  }
+  // set a field on the first message
+  if (Array.isArray(model.messages) && model.messages.length) {
+    const out = E.setOrInsertField(text, 'messages', 0, 'color', "'teal'");
+    if (out != null && parses(out, `${name}: set message[0].color -> valid JSON5`)) {
+      eq(JSON5.parse(out).messages[0].color, 'teal', `${name}: set message[0].color value`);
+    }
+  }
+  // reorder lanes
+  if (Array.isArray(model.lanes) && model.lanes.length >= 2) {
+    const out = E.moveLane(text, 0, 1);
+    if (out != null && parses(out, `${name}: moveLane(0,1) -> valid JSON5`)) {
+      const want = model.lanes.slice(); const [x] = want.splice(0, 1); want.splice(1, 0, x);
+      eq(JSON5.parse(out).lanes, want, `${name}: moveLane(0,1) reorders`);
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+section('Invariant 3 — formatConfig: valid, idempotent, model-preserving, ordered, inline options');
+corpus.forEach(({ name, text }) => {
+  const model = JSON5.parse(text);
+  const f1 = M.formatConfig(model);
+  if (!parses(f1, `${name}: formatConfig -> valid JSON5`)) return;
+  eq(canon(JSON5.parse(f1)), canon(model), `${name}: formatConfig preserves the model (content)`);
+  const f2 = M.formatConfig(JSON5.parse(f1));
+  ok(f1 === f2, `${name}: formatConfig is idempotent`);
+
+  // canonical top-level order
+  const present = M.TOP_LEVEL_ORDER.filter(k => k in model);
+  const emitted = Object.keys(JSON5.parse(f1));
+  eq(emitted.filter(k => M.TOP_LEVEL_ORDER.includes(k)), present, `${name}: canonical key order`);
+
+  // options inline (single line) when present — may carry a trailing comma
+  if (model.options && typeof model.options === 'object' && !Array.isArray(model.options)) {
+    const line = f1.split('\n').find(l => /^\s*options\s*:/.test(l));
+    ok(line && /\}\,?\s*$/.test(line.trim()), `${name}: options is rendered inline`);
+  }
+  // array-of-object sections: one compact element per line (trailing comma allowed)
+  ARRAY_SECTIONS.forEach(key => {
+    if (!Array.isArray(model[key]) || !model[key].length) return;
+    if (key === 'lanes') return; // lanes is an inline string array
+    if (!model[key].every(v => v && typeof v === 'object')) return;
+    const elementLines = f1.split('\n').filter(l => /^\s{4}\{.*\}\,?$/.test(l));
+    ok(elementLines.length >= model[key].length, `${name}: ${key} elements are one-per-line compact`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+section('Invariant 4 — lane groups keep shifted ("<"/">") member lanes');
+{
+  const lanes = ['>CA0', 'CA1', 'HN'];
+  const laneGroups = [{ label: 'Caching Agents', lanes: ['CA0', 'CA1'] }];
+  const lanePositions = { '>CA0': 170, 'CA1': 400, 'HN': 650 };
+  const ext = M.computeGroupExtents(lanes, laneGroups, lanePositions);
+  eq(ext[0].lanes, ['CA0', 'CA1'], 'shifted lane CA0 stays a group member');
+  eq(ext[0].leftmostX, 170, 'group leftmostX resolves through the shifted raw key');
+  eq(ext[0].rightmostX, 400, 'group rightmostX correct');
+  // cleanLaneName helper
+  eq(M.cleanLaneName('>>CA0'), 'CA0', 'cleanLaneName strips > prefix');
+  eq(M.cleanLaneName('<HN'), 'HN', 'cleanLaneName strips < prefix');
+  eq(M.cleanLaneName('HN.MEM'), 'HN.MEM', 'cleanLaneName keeps sub-lane dot');
+}
+
+// ---------------------------------------------------------------------------
+section('Feature 4 — deleteTopLevelKey removes the whole legend, leaves valid JSON5');
+corpus.forEach(({ name, text }) => {
+  const model = JSON5.parse(text);
+  if (!Array.isArray(model.legend)) return;
+  const out = E.deleteTopLevelKey(text, 'legend');
+  if (out != null && parses(out, `${name}: delete legend -> valid JSON5`)) {
+    ok(!('legend' in JSON5.parse(out)), `${name}: legend key removed`);
+    const m2 = JSON5.parse(out);
+    eq(m2.lanes, model.lanes, `${name}: other sections intact after legend delete`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+section('Feature 3 — group time-shift edits stay valid and apply the same delta');
+corpus.forEach(({ name, text }) => {
+  const model = JSON5.parse(text);
+  if (!Array.isArray(model.messages) || model.messages.length < 2) return;
+  const dt = 1.0;
+  let out = text;
+  [0, 1].forEach(i => {
+    const m = model.messages[i];
+    out = E.setElementFields(out, 'messages', i, [
+      { field: 'fromTime', literal: E.numLiteral(m.fromTime + dt) },
+      { field: 'toTime', literal: E.numLiteral(m.toTime + dt) },
+    ]);
+  });
+  if (out != null && parses(out, `${name}: group shift -> valid JSON5`)) {
+    const m2 = JSON5.parse(out);
+    eq([m2.messages[0].fromTime, m2.messages[1].fromTime],
+       [model.messages[0].fromTime + dt, model.messages[1].fromTime + dt],
+       `${name}: both messages shifted by +${dt}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+section('Regression — Bug 2: deleting a middle element must keep the separators');
+{
+  // Minimal reproducer: deleting the middle of three objects used to drop BOTH
+  // commas, yielding "{...} {...}" (invalid). Cover one-line + multiline shapes.
+  const cases = [
+    `{ messages: [{ path: 'A' }, { path: 'C' }, { path: 'E' }] }`,
+    `{\n  messages: [\n    { path: 'A' },\n    { path: 'C' },\n    { path: 'E' }\n  ]\n}`,
+    `{ messages: [ { path: 'A' }, { path: 'C' }, { path: 'E' }, ] }`, // trailing comma
+  ];
+  cases.forEach((t, n) => {
+    const out = E.deleteArrayElement(t, 'messages', 1);
+    if (parses(out, `bug2 case ${n}: middle delete -> valid JSON5`)) {
+      eq(JSON5.parse(out).messages.map(m => m.path), ['A', 'E'], `bug2 case ${n}: kept A + E`);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+console.log(`\n${'='.repeat(60)}\n${pass} passed, ${fail} failed`);
+if (fail) { console.error('\nFAILURES:\n - ' + failures.join('\n - ')); process.exit(1); }
+console.log('All green.');
