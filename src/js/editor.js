@@ -526,7 +526,7 @@
     if (!ov) {
       ov = document.createElement('div');
       ov.className = 'flowdrom-sel-overlay';
-      ov.style.cssText = 'position:absolute;pointer-events:none;border:2px dashed #e6007a;border-radius:3px;background:rgba(230,0,122,0.07);display:none;z-index:5;';
+      ov.style.cssText = 'position:absolute;pointer-events:none;border:1.5px solid var(--edit-accent);border-radius:var(--radius-xs);background:var(--edit-accent-soft);display:none;z-index:5;';
       container.appendChild(ov);
     }
     return ov;
@@ -557,7 +557,7 @@
       if (!isFinite(l)) return;
       const box = document.createElement('div');
       box.className = 'flowdrom-sel-multi';
-      box.style.cssText = 'position:absolute;pointer-events:none;border:2px dashed #e6007a;border-radius:3px;background:rgba(230,0,122,0.10);z-index:5;';
+      box.style.cssText = 'position:absolute;pointer-events:none;border:1.5px solid var(--edit-accent);border-radius:var(--radius-xs);background:var(--edit-accent-soft);z-index:5;';
       box.style.left = l - c.left + container.scrollLeft - pad + 'px';
       box.style.top = t - c.top + container.scrollTop - pad + dy + 'px';
       box.style.width = r - l + 2 * pad + 'px';
@@ -628,7 +628,6 @@
     if (!b) {
       b = document.createElement('div');
       b.className = 'flowdrom-shift-badge';
-      b.style.cssText = 'position:fixed;z-index:10002;background:#e6007a;color:#fff;padding:4px 8px;border-radius:4px;font:12px "Segoe UI",sans-serif;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.25);';
       document.body.appendChild(b);
     }
     return b;
@@ -753,10 +752,6 @@
     closeMenu();
     const el = document.createElement('div');
     el.className = 'flowdrom-menu';
-    el.style.cssText =
-      'position:fixed;z-index:9999;background:#fff;border:1px solid #bbb;border-radius:6px;' +
-      'box-shadow:0 4px 16px rgba(0,0,0,0.18);font:13px "Segoe UI",sans-serif;min-width:190px;' +
-      'padding:4px 0;user-select:none;';
     document.body.appendChild(el);
     menuEl = el;
     // Position now; clamp after it has a size.
@@ -772,16 +767,14 @@
   function addHeader(menu, text) {
     const h = document.createElement('div');
     h.textContent = text;
-    h.style.cssText = 'padding:6px 12px;color:#555;font-weight:600;border-bottom:1px solid #eee;white-space:nowrap;';
+    h.className = 'flowdrom-menu-header';
     menu.appendChild(h);
   }
   function addRow(menu, text, onClick, opts) {
     opts = opts || {};
     const row = document.createElement('div');
     row.textContent = text;
-    row.style.cssText = 'padding:7px 12px;cursor:pointer;white-space:nowrap;' + (opts.muted ? 'color:#999;' : 'color:#1a1a1a;');
-    row.addEventListener('mouseenter', () => { row.style.background = '#2a5eb2'; row.style.color = '#fff'; });
-    row.addEventListener('mouseleave', () => { row.style.background = ''; row.style.color = opts.muted ? '#999' : '#1a1a1a'; });
+    row.className = 'flowdrom-menu-row' + (opts.muted ? ' muted' : '');
     row.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
     menu.appendChild(row);
     return row;
@@ -981,9 +974,6 @@
     inp.type = 'text';
     inp.value = initial || '';
     inp.className = 'flowdrom-textedit';
-    inp.style.cssText =
-      'position:fixed;z-index:10000;font:13px "Segoe UI",sans-serif;padding:6px 8px;' +
-      'border:1px solid #2a5eb2;border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,0.2);min-width:220px;';
     inp.style.left = clientX + 'px';
     inp.style.top = clientY + 'px';
     document.body.appendChild(inp);
@@ -1086,7 +1076,7 @@
       if (cx == null || cy == null || isNaN(cx) || isNaN(cy)) return;
       const h = document.createElementNS(SVGNS, 'circle');
       h.setAttribute('cx', cx); h.setAttribute('cy', cy); h.setAttribute('r', r);
-      h.setAttribute('fill', '#fff'); h.setAttribute('stroke', stroke || '#e6007a'); h.setAttribute('stroke-width', 2 / scale);
+      h.setAttribute('fill', '#fff'); h.setAttribute('stroke', stroke || '#0071e3'); h.setAttribute('stroke-width', 2 / scale);
       h.style.pointerEvents = 'all'; h.style.cursor = 'move';
       for (const k in data) h.setAttribute(k, data[k]);
       ov.appendChild(h);
@@ -1098,7 +1088,7 @@
         const band = document.createElementNS(SVGNS, 'rect');
         band.setAttribute('x', ln.x - 12); band.setAttribute('y', L.laneTop - 30);
         band.setAttribute('width', 24); band.setAttribute('height', L.maxTime * L.timeStep + 40);
-        band.setAttribute('fill', 'rgba(42,94,178,0.18)'); band.setAttribute('stroke', '#2a5eb2'); band.setAttribute('stroke-dasharray', '3,3');
+        band.setAttribute('fill', 'rgba(0,113,227,0.14)'); band.setAttribute('stroke', '#0071e3'); band.setAttribute('stroke-dasharray', '3,3');
         ov.appendChild(band);
       });
     }
@@ -1118,7 +1108,7 @@
           const len = Math.hypot(x2 - x1, y2 - y1) || 1;
           const ratio = ratioFromMarkers(pm.markers);
           const lx = (x1 + x2) / 2 + ratio * (x2 - x1), ly = (y1 + y2) / 2 + ratio * (y2 - y1);
-          addHandle(lx, ly, { 'data-h': 'msglabel', 'data-i': dragItem.index }, '#e67e00');
+          addHandle(lx, ly, { 'data-h': 'msglabel', 'data-i': dragItem.index }, '#0071e3');
         }
       }
     } else if (dragItem.kind === 'state') {
@@ -1126,16 +1116,16 @@
       if (st) {
         const x = laneX(st.lane);
         const to = st.toTime != null ? st.toTime : st.fromTime;
-        addHandle(x, timeToY(st.fromTime), { 'data-h': 'state', 'data-i': dragItem.index, 'data-end': 'from' }, '#1769aa');
+        addHandle(x, timeToY(st.fromTime), { 'data-h': 'state', 'data-i': dragItem.index, 'data-end': 'from' }, '#0071e3');
         addHandle(x, timeToY((st.fromTime + to) / 2), { 'data-h': 'state', 'data-i': dragItem.index, 'data-end': 'move' });
-        addHandle(x, timeToY(to), { 'data-h': 'state', 'data-i': dragItem.index, 'data-end': 'to' }, '#1769aa');
+        addHandle(x, timeToY(to), { 'data-h': 'state', 'data-i': dragItem.index, 'data-end': 'to' }, '#0071e3');
       }
     } else if (dragItem.kind === 'infoBox') {
       const info = (model.infoBoxes || [])[dragItem.index];
       if (info) {
         const x = laneX(info.lane); const off = parseInfoOffset(info.text);
         addHandle(x + off.x, timeToY(info.time) + off.y, { 'data-h': 'info', 'data-i': dragItem.index });        // box (offset)
-        addHandle(x, timeToY(info.time), { 'data-h': 'infoanchor', 'data-i': dragItem.index }, '#1769aa');        // anchor (lane/time)
+        addHandle(x, timeToY(info.time), { 'data-h': 'infoanchor', 'data-i': dragItem.index }, '#0071e3');        // anchor (lane/time)
       }
     } else if (dragItem.kind === 'lane') {
       const ln = L.lanes[dragItem.index];
@@ -1363,10 +1353,9 @@
     const opts = (parseModel() || {}).options || {};
     const panel = document.createElement('div');
     panel.className = 'flowdrom-options-panel';
-    panel.style.cssText = 'position:fixed;z-index:10001;top:60px;left:50%;transform:translateX(-50%);background:#fff;border:1px solid #bbb;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.25);font:13px "Segoe UI",sans-serif;padding:12px 14px;max-height:80vh;overflow:auto;';
     const h = document.createElement('div'); h.textContent = 'Text styling (blank = default)'; h.style.cssText = 'font-weight:600;margin-bottom:8px;font-size:15px;'; panel.appendChild(h);
     const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:auto 70px 110px;gap:6px 10px;align-items:center;'; panel.appendChild(grid);
-    const hdr = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'color:#888;font-size:11px;'; return d; };
+    const hdr = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'color:var(--text-tertiary);font-size:11px;'; return d; };
     grid.appendChild(hdr('Entity')); grid.appendChild(hdr('Size')); grid.appendChild(hdr('Color'));
     OPTION_ENTITIES.forEach((ent) => {
       const cur = opts[ent] || {};
@@ -1379,7 +1368,7 @@
       color.addEventListener('change', () => { const v = color.value.trim() === '' ? null : color.value.trim(); const t = setOption(ed.getValue(), ent, 'textColor', v); if (t != null) applyText(t); });
       grid.appendChild(name); grid.appendChild(size); grid.appendChild(color);
     });
-    const close = document.createElement('button'); close.textContent = 'Close'; close.style.cssText = 'margin-top:10px;cursor:pointer;padding:4px 12px;'; close.addEventListener('click', () => panel.remove());
+    const close = document.createElement('button'); close.textContent = 'Close'; close.className = 'btn'; close.style.marginTop = '10px'; close.addEventListener('click', () => panel.remove());
     panel.appendChild(close);
     document.body.appendChild(panel);
   }
@@ -1398,15 +1387,12 @@
   function showGroupBanner() {
     const b = document.createElement('div');
     b.className = 'flowdrom-group-banner';
-    b.style.cssText =
-      'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:10001;background:#2a5eb2;color:#fff;' +
-      'padding:8px 12px;border-radius:6px;font:13px "Segoe UI",sans-serif;box-shadow:0 4px 16px rgba(0,0,0,0.25);display:flex;gap:10px;align-items:center;';
     const span = document.createElement('span');
     span.innerHTML = 'Click lanes to group (<b class="cnt">0</b> selected)';
-    const mk = (txt, bg, fn) => { const x = document.createElement('button'); x.textContent = txt; x.style.cssText = 'cursor:pointer;border:none;border-radius:4px;padding:4px 10px;background:' + bg + ';color:#fff;'; x.addEventListener('click', fn); return x; };
+    const mk = (txt, cls, fn) => { const x = document.createElement('button'); x.textContent = txt; x.className = cls; x.addEventListener('click', fn); return x; };
     b.appendChild(span);
-    b.appendChild(mk(groupEditIndex != null ? 'Save' : 'Create', '#1a7f37', () => createGroupFromSelection(window.innerWidth / 2, 130)));
-    b.appendChild(mk('Cancel', '#888', () => endGroupSelect()));
+    b.appendChild(mk(groupEditIndex != null ? 'Save' : 'Create', 'btn btn--primary', () => createGroupFromSelection(window.innerWidth / 2, 130)));
+    b.appendChild(mk('Cancel', 'btn', () => endGroupSelect()));
     document.body.appendChild(b);
     groupBanner = b;
   }
@@ -1477,7 +1463,7 @@
       const x2 = laneX(nearestLaneClean(p.x)), y2 = timeToY(snapTime(yToTime(p.y)));
       const g = document.createElementNS(SVGNS, 'line');
       g.setAttribute('x1', x1); g.setAttribute('y1', y1); g.setAttribute('x2', x2); g.setAttribute('y2', y2);
-      g.setAttribute('stroke', '#e6007a'); g.setAttribute('stroke-width', 2); g.setAttribute('stroke-dasharray', '5,4');
+      g.setAttribute('stroke', '#0071e3'); g.setAttribute('stroke-width', 2); g.setAttribute('stroke-dasharray', '5,4');
       ov.appendChild(g); createDrag.ghost = g;
     } else if (createDrag.kind === 'state') {
       const x = laneX(nearestLaneClean(createDrag.start.x));
@@ -1485,7 +1471,7 @@
       const yTop = timeToY(Math.min(t0, t1)), yBot = timeToY(Math.max(t0, t1));
       const g = document.createElementNS(SVGNS, 'rect');
       g.setAttribute('x', x - 25); g.setAttribute('y', yTop); g.setAttribute('width', 50); g.setAttribute('height', Math.max(2, yBot - yTop));
-      g.setAttribute('fill', 'rgba(230,0,122,0.12)'); g.setAttribute('stroke', '#e6007a'); g.setAttribute('stroke-dasharray', '4,3');
+      g.setAttribute('fill', 'rgba(0,113,227,0.12)'); g.setAttribute('stroke', '#0071e3'); g.setAttribute('stroke-dasharray', '4,3');
       ov.appendChild(g); createDrag.ghost = g;
     } else if (createDrag.kind === 'infoBox') {
       const x = laneX(nearestLaneClean(p.x)), y = timeToY(snapTime(yToTime(p.y)));
