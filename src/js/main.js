@@ -706,21 +706,11 @@ function renderGraph() {
 
       const minStateBoxWidth = 50;
       const paddingX = 6;
-      let stateBoxWidth;
-      let shouldUseFixedStateWidth = true;
-
-      for (const line of stateLines) {
-        if (line.length >= 6) {
-          shouldUseFixedStateWidth = false;
-          break;
-        }
-      }
-
-      if (shouldUseFixedStateWidth) {
-        stateBoxWidth = minStateBoxWidth;
-      } else {
-        stateBoxWidth = stateBbox.width + 2 * paddingX;
-      }
+      // Always size to the measured text (+ padding) so it never overflows the
+      // box; keep minStateBoxWidth only as a floor so short labels still get a
+      // reasonably sized box. (A small character count can still be wide — large
+      // fonts or wide glyphs — so we must not key off line length.)
+      const stateBoxWidth = Math.max(minStateBoxWidth, stateBbox.width + 2 * paddingX);
 
       const stateBoxX = laneX - (stateBoxWidth / 2);
       
