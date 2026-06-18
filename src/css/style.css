@@ -59,6 +59,10 @@
   --radius-xl: 20px;
   --radius-full: 9999px;
 
+  /* The canvas is an "artboard": it represents the document and must match the
+     exported SVG/PNG, so it stays light in both appearances (Keynote-style). */
+  --canvas-paper: #ffffff;
+
   /* ---- Neutral surfaces (light) ----------------------------------------- */
   --bg: #f5f5f7;          /* window / canvas backdrop */
   --surface: #ffffff;     /* cards, panels, menus */
@@ -159,3 +163,189 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* =============================================================================
+   Phase 1 — canvas as the stage.
+   App shell: a unified toolbar on top, a collapsible source pane on the left,
+   and the diagram canvas as the dominant region. Replaces the gradient banner,
+   the stacked input section, and the button row.
+   ========================================================================== */
+
+html, body { height: 100%; }
+body { margin: 0; padding: 0; overflow: hidden; }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+}
+
+/* ---- Toolbar ----------------------------------------------------------- */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  height: 52px;
+  flex: 0 0 auto;
+  padding: 0 var(--space-4);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.toolbar__lead { display: flex; align-items: center; gap: var(--space-3); }
+.toolbar__title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.toolbar__actions { display: flex; align-items: center; gap: var(--space-2); }
+.toolbar__sep {
+  width: 0.5px;
+  height: 22px;
+  background: var(--separator-strong);
+  margin: 0 var(--space-1);
+}
+.toolbar__link {
+  margin-left: var(--space-2);
+  color: var(--accent);
+  text-decoration: none;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+.toolbar__link:hover { text-decoration: underline; }
+
+/* ---- Buttons ----------------------------------------------------------- */
+.btn {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  color: var(--text-primary);
+  background: var(--surface-3);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              transform var(--motion-fast) var(--ease-standard),
+              box-shadow var(--motion-fast) var(--ease-standard);
+}
+.btn:hover { background: var(--accent-soft); }
+.btn:active { transform: scale(0.97); }
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+.btn--primary {
+  color: var(--text-on-accent);
+  background: var(--accent);
+  border-color: transparent;
+}
+.btn--primary:hover { background: var(--accent-hover); }
+.btn--primary:active { background: var(--accent-active); transform: scale(0.97); }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+}
+.icon-btn:hover { background: var(--surface-3); color: var(--text-primary); }
+.icon-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* ---- Workspace split --------------------------------------------------- */
+.workspace {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.pane--code {
+  flex: 0 0 420px;
+  width: 420px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 0.5px solid var(--separator);
+  overflow: hidden;
+}
+.app.code-collapsed .pane--code { display: none; }
+
+.pane__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 0.5px solid var(--separator);
+}
+.pane__title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.pane__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.pane__caption {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--text-tertiary);
+}
+.pane__caption code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  color: var(--text-secondary);
+}
+
+/* ---- Stage (canvas) ---------------------------------------------------- */
+.stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  padding: var(--space-5);
+  overflow: hidden;
+  background: var(--bg);
+}
+#svg-container {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-4);
+  background: var(--canvas-paper);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: auto;
+}
+
+/* Editor wrap keeps the copy button anchored; let the editor grow. */
+.editor-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.editor-wrap .CodeMirror { flex: 1 1 auto; }

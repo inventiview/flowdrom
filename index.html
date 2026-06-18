@@ -313,26 +313,50 @@
   <link rel="stylesheet" href="src/css/style.css">
 </head>
 <body>
-  <div class="container">
-    <!-- Clean title section -->
-    <div class="title-container">
-      <h1 class="main-title">FLOWDROM</h1>
-      <p class="subtitle">Transaction Sequence <span class="tech-accent">[DIAGRAMS]</span></p>
-      <a href="docs/" class="docs-link">📖 Documentation / User Guide</a>
-    </div>
-          
-    <div class="input-section">
-      <label for="input"><strong>Transaction JSON (use "|" for line breaks):</strong></label>
-      <div style="font-size: 13px; color: #444; margin-bottom: 6px;">
-        <span>
-          <b>Positioning tips:</b>
-          Use <code>&gt;</code> or <code>&lt;</code> at the start of a lane name to shift it horizontally (each symbol = 20px).
-          For message labels, use <code>&gt;</code> or <code>&lt;</code> at the start to move the label along the arrow.
-          For info boxes, add <code>&lt;x,y&gt;</code> at the start of the text to set pixel offset (e.g. <code>&lt;70,-50&gt;Info</code>).
-        </span>
+  <div class="app" id="app">
+
+    <!-- Unified toolbar (replaces the gradient banner + button row) -->
+    <header class="toolbar">
+      <div class="toolbar__lead">
+        <button class="icon-btn" id="toggle-code" type="button" aria-label="Toggle source pane"
+                title="Toggle source pane" onclick="toggleCodePane()">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+            <line x1="6.25" y1="2.5" x2="6.25" y2="13.5" stroke="currentColor" stroke-width="1.3"/>
+          </svg>
+        </button>
+        <span class="toolbar__title">Flowdrom</span>
       </div>
-      
-      <!-- Hidden textarea for compatibility with existing main.js -->
+
+      <div class="toolbar__actions">
+        <button class="btn" type="button" onclick="newBasicDiagram()">New</button>
+        <button class="btn btn--primary" type="button" onclick="renderGraph()">Render</button>
+        <button class="btn" type="button" onclick="canonizeJson()"
+                title="Sort, order and compact the JSON to the canonical guide style">Canonize</button>
+        <span class="toolbar__sep" aria-hidden="true"></span>
+        <button class="btn" type="button" onclick="exportSVG(true)">Export SVG</button>
+        <button class="btn" type="button" onclick="exportPNG()">Export PNG</button>
+        <button class="btn" type="button" onclick="document.getElementById('svgFileInput').click()">Load SVG</button>
+        <input type="file" id="svgFileInput" accept=".svg" hidden onchange="loadSVGFile(event)">
+        <a href="docs/" class="toolbar__link">Guide</a>
+      </div>
+    </header>
+
+    <div class="workspace">
+
+      <!-- Source pane (collapsible) -->
+      <aside class="pane pane--code" id="code-pane">
+        <div class="pane__header">
+          <span class="pane__title">Source</span>
+        </div>
+        <div class="pane__body">
+          <p class="pane__caption">
+            Transaction JSON — use <code>|</code> for line breaks. Prefix a lane name or message
+            label with <code>&gt;</code>/<code>&lt;</code> to nudge it (20px each); info boxes accept
+            a <code>&lt;x,y&gt;</code> pixel offset, e.g. <code>&lt;70,-50&gt;Info</code>.
+          </p>
+
+          <!-- Hidden textarea for compatibility with existing main.js -->
       <textarea id="input" rows="21">{
   title: 'Conflict: Two CAs ReadUnique Same Address',
   options: { message: { textSize: 15, textColor: 'default' } },
@@ -357,25 +381,21 @@
   ]
 }</textarea>
 
-      <!-- CodeMirror editor container -->
-      <div class="editor-wrap">
-        <button type="button" class="copy-json-btn" title="Copy JSON to clipboard" onclick="copyEditorJson(this)">⧉ Copy</button>
-        <div id="codemirror-container"></div>
-      </div>
+          <!-- CodeMirror editor container -->
+          <div class="editor-wrap">
+            <button type="button" class="copy-json-btn" title="Copy JSON to clipboard" onclick="copyEditorJson(this)">Copy</button>
+            <div id="codemirror-container"></div>
+          </div>
+        </div>
+      </aside>
 
-      <div class="button-group">
-        <button onclick="newBasicDiagram()">New</button>
-        <button onclick="renderGraph()">Render</button>
-        <button class="secondary" onclick="canonizeJson()" title="Sort, order and compact the JSON to the canonical guide style">Canonize JSON</button>
-        <button onclick="exportSVG(true)">Export SVG</button>
-        <button onclick="exportPNG()">Export PNG</button>
-        <input type="file" id="svgFileInput" accept=".svg" style="display: none;" onchange="loadSVGFile(event)">
-        <button onclick="document.getElementById('svgFileInput').click()">Load SVG</button>
-      </div>
+      <!-- Canvas stage — the document, now the dominant region -->
+      <main class="stage">
+        <h1 id="graph-title" style="display: none;">Enhanced Transaction Sequence Graph</h1>
+        <div id="svg-container"></div>
+      </main>
+
     </div>
-
-    <h1 id="graph-title" style="display: none;">Enhanced Transaction Sequence Graph</h1>
-    <div id="svg-container"></div>
   </div>
 
   <!-- CodeMirror Core (vendored locally) -->
@@ -527,6 +547,16 @@
     // Replace the editor with a minimal valid diagram (2 lanes + 1 message) so
     // the user can start a new diagram and build on it graphically. Replaces
     // current content immediately (use the editor's undo to revert).
+    // Collapse/expand the source pane. Refresh CodeMirror when it reappears so
+    // it re-measures against the restored width.
+    function toggleCodePane() {
+      const app = document.getElementById('app');
+      app.classList.toggle('code-collapsed');
+      if (!app.classList.contains('code-collapsed') && codeMirrorEditor) {
+        setTimeout(() => codeMirrorEditor.refresh(), 0);
+      }
+    }
+
     function newBasicDiagram() {
       const tpl = [
         '{',
