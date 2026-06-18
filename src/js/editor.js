@@ -690,6 +690,55 @@
     ov.style.display = 'block';
   }
 
+  // ========================================================================
+  // Hover affordance — at rest, show a faint outline + pointer cursor over any
+  // editable item so the canvas advertises that it is directly editable.
+  // ========================================================================
+
+  let hoverRAF = 0;
+
+  function hoverEl() {
+    const container = getContainer();
+    let ov = container.querySelector(':scope > .flowdrom-hover-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.className = 'flowdrom-hover-overlay';
+      ov.style.cssText = 'position:absolute;pointer-events:none;display:none;z-index:4;';
+      container.appendChild(ov);
+    }
+    return ov;
+  }
+  function clearHover() {
+    const c = getContainer(); if (!c) return;
+    const ov = c.querySelector(':scope > .flowdrom-hover-overlay'); if (ov) ov.style.display = 'none';
+    if (c.style.cursor === 'pointer') c.style.cursor = '';
+  }
+  function showHover(item) {
+    const els = itemElements(item.kind, item.index);
+    if (!els.length) { clearHover(); return; }
+    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+    for (const e of els) { const cr = e.getBoundingClientRect(); l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
+    const container = getContainer(); const c = container.getBoundingClientRect(); const ov = hoverEl(); const pad = 3;
+    ov.style.left = l - c.left + container.scrollLeft - pad + 'px';
+    ov.style.top = t - c.top + container.scrollTop - pad + 'px';
+    ov.style.width = r - l + 2 * pad + 'px';
+    ov.style.height = b - t + 2 * pad + 'px';
+    ov.style.display = 'block';
+  }
+  function onCanvasHover(ev) {
+    if (hoverRAF) return;
+    const cx = ev.clientX, cy = ev.clientY;
+    hoverRAF = requestAnimationFrame(() => {
+      hoverRAF = 0;
+      const container = getContainer(); if (!container) return;
+      // Don't compete with an open menu, a drag, creation or group selection.
+      if (menuEl || dragItem || creating || groupSelecting || groupDrag) { clearHover(); return; }
+      const cands = candidatesAt(cx, cy);
+      if (cands && cands.length) { container.style.cursor = 'pointer'; showHover(cands[0]); }
+      else { clearHover(); }
+    });
+  }
+
   function labelFor(item, model) {
     const m = model || {};
     try {
@@ -801,7 +850,7 @@
     // The legend as a whole (its box/title) — only action is removing it entirely.
     if (item.kind === 'legendBox') {
       addRow(menu, '⟶  Go to JSON definition', () => { closeMenu(); gotoLegend(); });
-      addRow(menu, '🗑  Delete entire legend', () => { closeMenu(); deleteLegend(); });
+      addRow(menu, '✕  Delete entire legend', () => { closeMenu(); deleteLegend(); });
       return;
     }
 
@@ -819,17 +868,17 @@
       const label = hasText(item, model) ? '✎  Edit text…' : '✎  Add text…';
       addRow(menu, label, () => { editText(item, clientX, clientY); });
     }
-    if (HAS_COLOR[item.kind]) addRow(menu, '🎨  Change color ▸', () => { showColorMenu(item, clientX, clientY); });
+    if (HAS_COLOR[item.kind]) addRow(menu, '●  Change color ▸', () => { showColorMenu(item, clientX, clientY); });
     if (HAS_STYLE[item.kind]) {
       const style = (currentField(model, item, 'style') === 'dashed') ? 'solid' : 'dashed';
       addRow(menu, '┄  Make ' + style, () => { closeMenu(); setItemField(item, 'style', quote(style)); });
     }
     if (item.kind === 'laneGroup') addRow(menu, '☷  Edit members…', () => { closeMenu(); startGroupSelect(item.index); });
     if (item.kind !== 'title') addRow(menu, '⟶  Go to JSON definition', () => { closeMenu(); gotoDefinition(item); });
-    if (DELETABLE[item.kind]) addRow(menu, '🗑  Delete', () => { closeMenu(); deleteItem(item); });
+    if (DELETABLE[item.kind]) addRow(menu, '✕  Delete', () => { closeMenu(); deleteItem(item); });
     if (item.kind === 'lane') {
       const refs = countLaneRefs(model, parseLanePrefix(model.lanes[item.index]).clean);
-      addRow(menu, '🗑  Delete lane' + (refs ? ' (+ ' + refs + ' refs)' : ''), () => { closeMenu(); deleteLaneAction(item); });
+      addRow(menu, '✕  Delete lane' + (refs ? ' (+ ' + refs + ' refs)' : ''), () => { closeMenu(); deleteLaneAction(item); });
     }
   }
 
@@ -1552,6 +1601,8 @@
     if (!container || container.__flowdromEditorBound) return;
     container.style.position = container.style.position || 'relative';
     container.addEventListener('click', onCanvasClick);
+    container.addEventListener('mousemove', onCanvasHover);
+    container.addEventListener('mouseleave', clearHover);
     container.addEventListener('pointerdown', function (e) {
       ignoreNextClick = false; // a new gesture starts; never let a stale flag eat its click
       if (e.target && e.target.getAttribute && e.target.getAttribute('data-h')) { onHandleDown(e); return; }
@@ -1562,7 +1613,7 @@
         if (pointInSelection(e.clientX, e.clientY)) { e.preventDefault(); startGroupDrag(e); }
       }
     }, true);
-    container.addEventListener('scroll', function () { clearSelBox(); });
+    container.addEventListener('scroll', function () { clearSelBox(); clearHover(); });
     // Right-click opens the Add menu (left-click empty is reserved for dismiss).
     container.addEventListener('contextmenu', function (e) {
       e.preventDefault();
