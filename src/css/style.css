@@ -349,3 +349,137 @@ body { margin: 0; padding: 0; overflow: hidden; }
 /* Editor wrap keeps the copy button anchored; let the editor grow. */
 .editor-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .editor-wrap .CodeMirror { flex: 1 1 auto; }
+
+/* =============================================================================
+   Phase 2 — editor chrome (the direct-manipulation surfaces injected by
+   editor.js): contextual menus, the inline text popover, the text-styling
+   panel, and the lane-group banner. Styling lives here so it shares tokens
+   with the rest of the app and adapts to dark mode.
+   ========================================================================== */
+
+/* ---- Contextual menu (picker / actions / add / color) ------------------ */
+.flowdrom-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 200px;
+  padding: var(--space-1) 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  user-select: none;
+  transform-origin: top left;
+  animation: flowdrom-pop var(--motion-fast) var(--ease-out);
+}
+@keyframes flowdrom-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.flowdrom-menu-header {
+  padding: 6px 12px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-tertiary);
+  border-bottom: 0.5px solid var(--separator);
+  white-space: nowrap;
+}
+.flowdrom-menu-row {
+  padding: 7px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--text-primary);
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+}
+.flowdrom-menu-row.muted { color: var(--text-tertiary); }
+.flowdrom-menu-row:hover { background: var(--accent); color: var(--text-on-accent); }
+
+/* ---- Inline text popover ----------------------------------------------- */
+.flowdrom-textedit {
+  position: fixed;
+  z-index: 10000;
+  min-width: 220px;
+  padding: 7px 10px;
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-popover);
+  outline: none;
+}
+.flowdrom-textedit:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring), var(--shadow-popover);
+}
+
+/* ---- Text-styling panel ------------------------------------------------ */
+.flowdrom-options-panel {
+  position: fixed;
+  z-index: 10001;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-height: 80vh;
+  overflow: auto;
+  padding: var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+.flowdrom-options-panel input {
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-xs);
+  padding: 4px 6px;
+}
+.flowdrom-options-panel input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+/* ---- Lane-group banner ------------------------------------------------- */
+.flowdrom-group-banner {
+  position: fixed;
+  top: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ---- Drag Δt badge ----------------------------------------------------- */
+.flowdrom-shift-badge {
+  position: fixed;
+  z-index: 10002;
+  padding: 4px 8px;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-on-accent);
+  background: var(--edit-accent);
+  border-radius: var(--radius-xs);
+  pointer-events: none;
+  box-shadow: var(--shadow-md);
+}
