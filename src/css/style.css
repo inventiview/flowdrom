@@ -469,6 +469,14 @@ body { margin: 0; padding: 0; overflow: hidden; }
   box-shadow: var(--shadow-lg);
 }
 
+/* ---- Hover affordance (at-rest discoverability) ------------------------ */
+.flowdrom-hover-overlay {
+  border: 1.5px solid var(--edit-accent);
+  border-radius: var(--radius-xs);
+  background: var(--edit-accent-soft);
+  opacity: 0.5;
+}
+
 /* ---- Drag Δt badge ----------------------------------------------------- */
 .flowdrom-shift-badge {
   position: fixed;
