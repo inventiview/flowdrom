@@ -19,7 +19,7 @@
   'use strict';
 
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const SNAP_TIME = 0.1; // grid snap for times; hold Alt to drag freely
+  const SNAP_TIME = 0.1; // grid snap for times; all time edits snap to this
   const DRAGGABLE = { message: true, state: true, infoBox: true, lane: true };
   const DELETABLE = { message: true, state: true, infoBox: true, legend: true, laneGroup: true };
   const HAS_COLOR = { message: true, legend: true, state: true }; // have a color field
@@ -481,7 +481,7 @@
   }
   function timeToY(t) { const L = layout(); return L.laneTop + t * L.timeStep; }
   function yToTime(y) { const L = layout(); return (y - L.laneTop) / L.timeStep; }
-  function snapTime(t, free) { const v = free ? t : Math.round(t / SNAP_TIME) * SNAP_TIME; return Math.max(0, v); }
+  function snapTime(t) { return Math.max(0, Math.round(t / SNAP_TIME) * SNAP_TIME); }
 
   function getContainer() { return document.getElementById('svg-container'); }
   function diagramSvg() { const c = getContainer(); return c ? c.querySelector('svg:not(.flowdrom-edit-overlay)') : null; }
@@ -537,7 +537,6 @@
   // Only time-bearing kinds can take part in a shared time shift.
   const SHIFTABLE = { message: true, state: true, infoBox: true };
 
-  function inSelection(it) { return selection.some((s) => s.kind === it.kind && s.index === it.index); }
   function toggleSelection(it) {
     const i = selection.findIndex((s) => s.kind === it.kind && s.index === it.index);
     if (i >= 0) selection.splice(i, 1); else selection.push({ kind: it.kind, index: it.index });
@@ -564,6 +563,22 @@
       box.style.width = r - l + 2 * pad + 'px';
       box.style.height = b - t + 2 * pad + 'px';
       container.appendChild(box);
+    });
+  }
+
+  // True when (clientX,clientY) falls inside the highlight box of any selected
+  // item — the grab region for starting a group drag. Uses the same bounding
+  // box + padding the dashed boxes are drawn with, so for a message the whole
+  // box (not just the thin arrow) is grabbable.
+  function pointInSelection(clientX, clientY) {
+    const pad = 4;
+    return selection.some((it) => {
+      const els = itemElements(it.kind, it.index);
+      if (!els.length) return false;
+      let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+      for (const e of els) { const cr = e.getBoundingClientRect(); l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
+      if (!isFinite(l)) return false;
+      return clientX >= l - pad && clientX <= r + pad && clientY >= t - pad && clientY <= b + pad;
     });
   }
 
@@ -636,7 +651,8 @@
     const curD = clientToDiagram(ev.clientX, ev.clientY);
     if (!startD || !curD) return;
     const rawDt = yToTime(curD.y) - yToTime(startD.y);
-    let dt = ev.altKey ? rawDt : Math.round(rawDt / SNAP_TIME) * SNAP_TIME;
+    // Group shift always snaps to the time grid (0.1).
+    let dt = Math.round(rawDt / SNAP_TIME) * SNAP_TIME;
     dt = Math.max(dt, -groupDrag.minTime); // never push a time below 0
     groupDrag.dt = dt;
     if (Math.abs(ev.clientY - groupDrag.startClientY) > 3) groupDrag.moved = true;
@@ -1164,9 +1180,8 @@
     if (!drag) return;
     const p = pointerToDiagram(drag.ov, ev);
     if (!p) return;
-    const free = ev.altKey;
     if (drag.kind === 'msg') {
-      const t = snapTime(yToTime(p.y), free);
+      const t = snapTime(yToTime(p.y));
       const lane = nearestLaneClean(p.x);
       const y = timeToY(t), x = laneX(lane);
       drag.handle.setAttribute('cy', y); drag.handle.setAttribute('cx', x);
@@ -1177,9 +1192,9 @@
       const st = parseModel().states[drag.index];
       const lane = nearestLaneClean(p.x), x = laneX(lane), pt = yToTime(p.y);
       let fromT = st.fromTime, toT = (st.toTime != null ? st.toTime : st.fromTime);
-      if (drag.end === 'from') fromT = snapTime(pt, free);
-      else if (drag.end === 'to') toT = snapTime(pt, free);
-      else { const mid = (st.fromTime + toT) / 2, dur = toT - st.fromTime; fromT = Math.max(0, snapTime(st.fromTime + (pt - mid), free)); toT = fromT + dur; }
+      if (drag.end === 'from') fromT = snapTime(pt);
+      else if (drag.end === 'to') toT = snapTime(pt);
+      else { const mid = (st.fromTime + toT) / 2, dur = toT - st.fromTime; fromT = Math.max(0, snapTime(st.fromTime + (pt - mid))); toT = fromT + dur; }
       fromT = Math.max(0, fromT); toT = Math.max(0, toT);
       const hy = drag.end === 'to' ? toT : (drag.end === 'from' ? fromT : (fromT + toT) / 2);
       drag.handle.setAttribute('cx', x); drag.handle.setAttribute('cy', timeToY(hy));
@@ -1188,7 +1203,7 @@
       drag.handle.setAttribute('cx', p.x); drag.handle.setAttribute('cy', p.y);
       drag.preview = { px: p.x, py: p.y };
     } else if (drag.kind === 'infoanchor') {
-      const lane = nearestLaneClean(p.x), t = snapTime(yToTime(p.y), free);
+      const lane = nearestLaneClean(p.x), t = snapTime(yToTime(p.y));
       drag.handle.setAttribute('cx', laneX(lane)); drag.handle.setAttribute('cy', timeToY(t));
       drag.preview = { lane: lane, time: t };
     } else if (drag.kind === 'msglabel') {
@@ -1454,27 +1469,26 @@
     if (!createDrag) return;
     const p = pointerToDiagram(createDrag.ov, ev);
     if (!p) return;
-    const free = ev.altKey;
     createDrag.cur = p;
     const ov = createDrag.ov;
     if (createDrag.ghost) ov.removeChild(createDrag.ghost);
     if (createDrag.kind === 'message') {
-      const x1 = laneX(nearestLaneClean(createDrag.start.x)), y1 = timeToY(snapTime(yToTime(createDrag.start.y), free));
-      const x2 = laneX(nearestLaneClean(p.x)), y2 = timeToY(snapTime(yToTime(p.y), free));
+      const x1 = laneX(nearestLaneClean(createDrag.start.x)), y1 = timeToY(snapTime(yToTime(createDrag.start.y)));
+      const x2 = laneX(nearestLaneClean(p.x)), y2 = timeToY(snapTime(yToTime(p.y)));
       const g = document.createElementNS(SVGNS, 'line');
       g.setAttribute('x1', x1); g.setAttribute('y1', y1); g.setAttribute('x2', x2); g.setAttribute('y2', y2);
       g.setAttribute('stroke', '#e6007a'); g.setAttribute('stroke-width', 2); g.setAttribute('stroke-dasharray', '5,4');
       ov.appendChild(g); createDrag.ghost = g;
     } else if (createDrag.kind === 'state') {
       const x = laneX(nearestLaneClean(createDrag.start.x));
-      const t0 = snapTime(yToTime(createDrag.start.y), free), t1 = snapTime(yToTime(p.y), free);
+      const t0 = snapTime(yToTime(createDrag.start.y)), t1 = snapTime(yToTime(p.y));
       const yTop = timeToY(Math.min(t0, t1)), yBot = timeToY(Math.max(t0, t1));
       const g = document.createElementNS(SVGNS, 'rect');
       g.setAttribute('x', x - 25); g.setAttribute('y', yTop); g.setAttribute('width', 50); g.setAttribute('height', Math.max(2, yBot - yTop));
       g.setAttribute('fill', 'rgba(230,0,122,0.12)'); g.setAttribute('stroke', '#e6007a'); g.setAttribute('stroke-dasharray', '4,3');
       ov.appendChild(g); createDrag.ghost = g;
     } else if (createDrag.kind === 'infoBox') {
-      const x = laneX(nearestLaneClean(p.x)), y = timeToY(snapTime(yToTime(p.y), free));
+      const x = laneX(nearestLaneClean(p.x)), y = timeToY(snapTime(yToTime(p.y)));
       const g = document.createElementNS(SVGNS, 'circle');
       g.setAttribute('cx', x); g.setAttribute('cy', y); g.setAttribute('r', 6);
       g.setAttribute('fill', 'rgba(46,139,87,0.3)'); g.setAttribute('stroke', '#2e8b57');
@@ -1490,13 +1504,12 @@
     cancelCreating();
     ignoreNextClick = true;
     if (!d) return;
-    const free = ev.altKey;
     const ed = getEditor(); if (!ed) return;
     let text = ed.getValue(), literal = null, key = null;
 
     if (wasCreating === 'infoBox') {
       const lane = nearestLaneClean(d.start.x);
-      const t = snapTime(yToTime(d.start.y), free);
+      const t = snapTime(yToTime(d.start.y));
       if (lane == null) return;
       showTextInput(ev.clientX, ev.clientY, 'note', (v) => {
         const txt = (v && v.trim()) || 'note';
@@ -1508,14 +1521,14 @@
     }
     if (wasCreating === 'message') {
       const from = nearestLaneClean(d.start.x), to = nearestLaneClean(d.cur.x);
-      const t0 = snapTime(yToTime(d.start.y), free), t1 = snapTime(yToTime(d.cur.y), free);
+      const t0 = snapTime(yToTime(d.start.y)), t1 = snapTime(yToTime(d.cur.y));
       if (from == null || to == null) return;
       if (from === to && t0 === t1) return; // ignore a zero gesture
       key = 'messages';
       literal = "{ path: '" + from + '->' + to + "', fromTime: " + numLiteral(t0) + ', toTime: ' + numLiteral(t1) + ' }';
     } else if (wasCreating === 'state') {
       const lane = nearestLaneClean(d.start.x);
-      let t0 = snapTime(yToTime(d.start.y), free), t1 = snapTime(yToTime(d.cur.y), free);
+      let t0 = snapTime(yToTime(d.start.y)), t1 = snapTime(yToTime(d.cur.y));
       if (lane == null) return;
       if (t1 < t0) { const tmp = t0; t0 = t1; t1 = tmp; }
       if (t0 === t1) t1 = t0 + 1; // give a fresh state a visible duration
@@ -1557,10 +1570,10 @@
       ignoreNextClick = false; // a new gesture starts; never let a stale flag eat its click
       if (e.target && e.target.getAttribute && e.target.getAttribute('data-h')) { onHandleDown(e); return; }
       if (creating) { onCreateDown(e); return; }
-      // Drag on a member of a multi-selection (no modifier) → shift them all in time.
-      if (e.button === 0 && !(e.ctrlKey || e.metaKey) && selection.length >= 2) {
-        const hit = candidatesAt(e.clientX, e.clientY).find((c) => inSelection(c) && SHIFTABLE[c.kind]);
-        if (hit) { e.preventDefault(); startGroupDrag(e); }
+      // Press inside a selected item's highlight box and drag up/down → shift
+      // every selected item in time. Works for a single selected item too.
+      if (e.button === 0 && !(e.ctrlKey || e.metaKey) && selection.length >= 1) {
+        if (pointInSelection(e.clientX, e.clientY)) { e.preventDefault(); startGroupDrag(e); }
       }
     }, true);
     container.addEventListener('scroll', function () { clearSelBox(); });
