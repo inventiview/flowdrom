@@ -9,142 +9,13 @@
   <link rel="stylesheet" href="src/vendor/codemirror/codemirror.min.css">
   
   <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #f5f5f5;
-    }
-
-    .container {
-      max-width: 1600px;
-      margin: 0 auto;
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-
-    /* Clean title styles */
-    .title-container {
-      text-align: center;
-      margin-bottom: 30px;
-      padding: 25px 0;
-      background: linear-gradient(135deg, #2a5eb2 0%, #1a4a8a 100%);
-      border-radius: 12px;
-    }
-
-    .main-title {
-      font-size: 3.5em;
-      font-weight: 800;
-      margin: 0;
-      color: white;
-      letter-spacing: 3px;
-      text-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    }
-
-    .subtitle {
-      font-size: 1.2em;
-      color: rgba(255,255,255,0.9);
-      margin: 10px 0 0 0;
-      font-weight: 300;
-      letter-spacing: 2px;
-    }
-
-    .tech-accent {
-      font-family: 'Courier New', monospace;
-      color: #87ceeb;
-      font-weight: bold;
-    }
-
-    h1 {
-      color: #2a5eb2;
-      margin-bottom: 20px;
-      text-align: center;
-    }
-
-    .input-section {
-      width: 100%;
-      margin-bottom: 20px;
-    }
-
-    /* Editor wrapper + copy button (top-right of the editor) */
-    .editor-wrap {
-      position: relative;
-    }
-
-    .copy-json-btn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      z-index: 10;
-      padding: 5px 10px;
-      font-size: 12px;
-      background: rgba(42, 94, 178, 0.9);
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      opacity: 0.85;
-    }
-
-    .copy-json-btn:hover {
-      opacity: 1;
-      background: #1a4a8a;
-    }
-
-    /* CodeMirror styling */
-    .CodeMirror {
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 16px;
-      height: auto;
-      min-height: 400px;
-    }
-
-    .CodeMirror-scroll {
-      min-height: 400px;
-    }
+    /* App chrome (body, toolbar, panes, buttons, editor, menus) lives in
+       src/css/style.css. Only the diagram SVG classes and the hidden textarea
+       remain inline below — they style the rendered/exported diagram itself. */
 
     /* Hide the original textarea but keep it for compatibility */
     #input {
       display: none;
-    }
-
-    .button-group {
-      display: flex;
-      gap: 10px;
-      margin-top: 15px;
-    }
-
-    button {
-      padding: 10px 20px;
-      background: #2a5eb2;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-
-    button:hover {
-      background: #1a4a8a;
-    }
-
-    button.secondary {
-      background: #6c757d;
-    }
-
-    button.secondary:hover {
-      background: #5a6268;
-    }
-
-    #svg-container {
-      margin-top: 20px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      background: white;
-      overflow: auto;
     }
 
     .lane-label {
@@ -220,14 +91,6 @@
       stroke-width: 1;
     }
 
-    .export-section {
-      margin-top: 20px;
-      padding: 15px;
-      background: #f8f9fa;
-      border-radius: 6px;
-      border: 1px solid #e9ecef;
-    }
-
     .legend-box {
       fill: white;
       stroke: #ccc;
@@ -269,25 +132,6 @@
       fill: none;
     }
     
-    .docs-link {
-      font-size: 18px;
-      padding: 10px 10px;
-      margin-top: 18px;
-      background-color: #1b64ae;
-      color: #ffffff;
-      border: 2px solid #007acc;
-      text-decoration: none;
-      border-radius: 6px;
-      display: inline-block;
-      transition: all 0.3s ease;
-    }
-
-    .docs-link:hover {
-      background-color: #830352;
-      color: #ffffff;
-      transform: translateY(2px);
-    }
-
       /* Make autocomplete menu bigger */
     .CodeMirror-hints {
     max-width: 400px !important;     /* Increase width */

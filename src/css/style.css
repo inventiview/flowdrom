@@ -483,3 +483,76 @@ body { margin: 0; padding: 0; overflow: hidden; }
   pointer-events: none;
   box-shadow: var(--shadow-md);
 }
+
+/* =============================================================================
+   Phase 3 — finish: CodeMirror theming (light + dark), the JSON copy button,
+   and the autocomplete popover. Migrated out of the inline <style> in
+   index.html so the editor participates in the token system and dark mode.
+   ========================================================================== */
+
+.editor-wrap { position: relative; }
+
+.CodeMirror {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  height: auto;
+  min-height: 360px;
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-sm);
+}
+.CodeMirror-scroll { min-height: 360px; }
+
+.copy-json-btn {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 10;
+  padding: 4px 10px;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+}
+.copy-json-btn:hover { background: var(--accent-soft); color: var(--text-primary); }
+.copy-json-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* Autocomplete hint popover — accent active row in both modes. */
+.CodeMirror-hint-active {
+  background: var(--accent) !important;
+  color: var(--text-on-accent) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .CodeMirror { background: var(--surface-2); color: var(--text-primary); }
+  .CodeMirror-gutters { background: var(--surface-2); border-right: 0.5px solid var(--separator); }
+  .CodeMirror-linenumber { color: var(--text-tertiary); }
+  .CodeMirror-cursor { border-left: 1px solid var(--text-primary); }
+  div.CodeMirror-selected { background: rgba(10, 132, 255, 0.28); }
+
+  .CodeMirror .cm-string { color: #9be29b; }
+  .CodeMirror .cm-number { color: #d8b6ff; }
+  .CodeMirror .cm-property,
+  .CodeMirror .cm-variable,
+  .CodeMirror .cm-variable-2 { color: #8fd3ff; }
+  .CodeMirror .cm-keyword,
+  .CodeMirror .cm-atom { color: #e0a3e6; }
+  .CodeMirror .cm-comment { color: var(--text-tertiary); }
+  .CodeMirror .cm-punctuation,
+  .CodeMirror .cm-bracket { color: var(--text-secondary); }
+
+  .CodeMirror-hints {
+    background: var(--surface);
+    color: var(--text-primary);
+    border: 0.5px solid var(--separator);
+    box-shadow: var(--shadow-popover);
+  }
+  .CodeMirror-hint { color: var(--text-primary); }
+}
