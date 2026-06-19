@@ -22,10 +22,12 @@
 ## Getting Started
 
 1. Open Flowdrom in your web browser
-2. Edit the JSON in the top panel to define your diagram
+2. Edit the JSON in the **source panel** (left side) to define your diagram
 3. Click **"Render"** to generate the visual diagram
 4. Use **"Export SVG"** or **"Export PNG"** to save your diagram
 5. Use **"Load SVG"** to edit existing diagrams
+
+> **The interface** has a **toolbar** across the top, the **source panel** (JSON) on the left, and the **canvas** on the right. Drag the divider between them to resize, or use the toolbar's pane toggle (top-left) to hide the source and give the canvas full width.
 
 ## The Graphical Editor
 
@@ -35,22 +37,24 @@ The rendered diagram is **interactive** — you can build and edit it directly o
 
 ### Start a new diagram
 
-Click **New** to replace the editor with a minimal starter (two lanes and one message), then build on it. (You can also just type JSON, or **Load SVG**.)
+Click **New** to start a blank diagram (just a title — no lanes or messages yet), then build it up: right-click the canvas to add lanes, then messages, states, and so on. (You can also type JSON directly in the source panel, or **Load SVG**.)
 
 ### Select an item
 
-- **Left-click** an element — a message, state, info box, lane, lane group, legend entry, or the title — to open a small menu of actions for it.
-- If several items overlap where you clicked, the menu first lists them so you can **pick which one** you meant; it then shows that item's actions.
+- **Hover** over the canvas: the item under the pointer is **highlighted** and the cursor turns to a pointer, so you can see exactly what a click will select. Thin targets like legend lines have a **forgiving hit area** — you don't have to land on the stroke.
+- **Left-click** the highlighted element — a message, state, info box, lane, lane group, legend entry, or the title — to open a small menu of actions for it. Where items overlap, the click acts on the highlighted (top) one; hover a different part to target another.
 - **Left-click empty space** clears the menu. **Esc** cancels any open menu, drag, or pending action.
 
 ### Move and edit existing items
 
 Most items offer a **Drag** action that reveals draggable handles:
 
-- **Message** — drag an endpoint to change its **time** (move vertically) or send it to **another lane** (move horizontally). Drag the small orange handle to slide the **label** along the arrow.
+- **Message** — drag an endpoint handle to change its **time** (move vertically) or send it to **another lane** (move horizontally). Drag the handle on the **label** to slide it along the arrow.
 - **State** — drag the **top/bottom** handles to resize (change start/end time) or the **middle** handle to move the whole box; drag sideways to change lane.
-- **Info box** — drag the pink handle to **reposition the box**; drag the blue handle to change **which lane/time** it points at.
+- **Info box** — drag the handle on the **box** to **reposition it**; drag the handle on the **anchor** (the lane/time point it connects to) to change what it points at.
 - **Lane** — *Drag (shift position)* nudges it sideways; *Drag (reorder)* changes its order.
+
+> All editing handles and the selection outline use a single highlight color, so they're easy to tell apart from the diagram's own colors.
 
 Times **snap to 0.1** steps while dragging — hold **Alt** for free placement.
 
