@@ -125,9 +125,44 @@ function orderedKeys(obj, preferred) {
   return preferred.filter(k => keys.includes(k)).concat(keys.filter(k => preferred.indexOf(k) === -1));
 }
 
+// Migrate the lanes array to the order-based sub-lane convention: a sub-lane is
+// always named "Parent.Sub", and its left/right side comes from its position in
+// the array relative to the parent. Legacy "Sub.Parent" names (which encoded a
+// left-side sub-lane in the name itself) are rewritten to "Parent.Sub" and moved
+// to just before their parent so they keep rendering on the left. Preserves any
+// >/< shift prefix. Idempotent: a model with no legacy names is returned as-is.
+function migrateLanes(lanes) {
+  if (!Array.isArray(lanes) || !lanes.length) return lanes;
+  const prefixOf = (raw) => { const m = /^([<>]+)/.exec(String(raw == null ? '' : raw)); return m ? m[1] : ''; };
+  const mains = new Set(lanes.map(cleanLaneName).filter(n => n && !n.includes('.')));
+
+  const items = lanes.map(raw => {
+    const pfx = prefixOf(raw), c = cleanLaneName(raw), parts = c.split('.');
+    if (parts.length === 2 && !mains.has(parts[0]) && mains.has(parts[1])) {
+      return { raw: pfx + parts[1] + '.' + parts[0], reverse: true, parent: parts[1] };
+    }
+    return { raw: raw };
+  });
+  if (!items.some(it => it.reverse)) return lanes; // already in the new form
+
+  // Emit converted left-side sub-lanes immediately before their parent.
+  const reverseByParent = {};
+  items.forEach(it => { if (it.reverse) (reverseByParent[it.parent] = reverseByParent[it.parent] || []).push(it.raw); });
+  const out = [];
+  items.forEach(it => {
+    if (it.reverse) return;
+    const c = cleanLaneName(it.raw);
+    if (reverseByParent[c]) { reverseByParent[c].forEach(r => out.push(r)); delete reverseByParent[c]; }
+    out.push(it.raw);
+  });
+  Object.keys(reverseByParent).forEach(p => reverseByParent[p].forEach(r => out.push(r))); // orphans
+  return out;
+}
+
 // Format a parsed config model into canonical, guide-style text.
 function formatConfig(model) {
   if (model == null || typeof model !== 'object' || Array.isArray(model)) return jsonLiteral(model);
+  if (Array.isArray(model.lanes)) model = Object.assign({}, model, { lanes: migrateLanes(model.lanes) });
   const lines = orderedKeys(model, TOP_LEVEL_ORDER).map(key => {
     const value = model[key];
     const isObjArray = Array.isArray(value) && value.length > 0 &&
@@ -254,44 +289,52 @@ function renderGraph() {
       }
     });
 
-    // Pass 2: Position all lanes (main and sub-lanes)
-    lanes.forEach(lane => {
+    // Map each main lane's clean name to its array index (for order-based sides).
+    const mainIndexByName = {};
+    lanes.forEach((lane, i) => {
+      const { cleanLane } = parseLaneNameOffset(lane);
+      if (!cleanLane.includes('.')) mainIndexByName[cleanLane] = i;
+    });
+
+    // Classify each lane: a sub-lane is named "Parent.Sub" (parent first) and
+    // its side is derived from its position in the lanes array relative to the
+    // parent — before the parent = left, after = right. Legacy "Sub.Parent"
+    // names are still understood and forced to the left for backward
+    // compatibility (they are auto-migrated to the new form on load).
+    const laneMeta = lanes.map((lane, i) => {
       const { cleanLane, offset } = parseLaneNameOffset(lane);
       const parts = cleanLane.split('.');
-      let x;
-      const isSubLane = parts.length === 2 && (mainLanes.has(parts[0]) || mainLanes.has(parts[1]));
-
-      if (isSubLane) {
-        const [part1, part2] = parts;
-        let parentLane = null;
-        let isLeftSide = false;
-
-        if (mainLanes.has(part1)) {
-          parentLane = part1;
-          isLeftSide = false;
-        } else if (mainLanes.has(part2)) {
-          parentLane = part2;
-          isLeftSide = true;
+      if (parts.length === 2) {
+        if (mainLanes.has(parts[0])) {
+          const pIdx = mainIndexByName[parts[0]];
+          return { sub: true, parent: parts[0], side: (pIdx != null && i < pIdx) ? 'left' : 'right', offset, i };
         }
-
-        if (parentLane) {
-          // Find the original lane string for parent to get its offset
-          const parentLaneKey = lanes.find(l => {
-            const { cleanLane: cl } = parseLaneNameOffset(l);
-            return cl === parentLane;
-          });
-          const parentX = lanePositions[parentLaneKey];
-          x = isLeftSide ? parentX - (laneSpacing / 3) : parentX + (laneSpacing / 3);
-          x += offset;
-        } else {
-          console.warn(`Parent lane for ${lane} not found. Defaulting position.`);
-          x = startX + lanes.indexOf(lane) * laneSpacing + offset;
+        if (mainLanes.has(parts[1])) {
+          return { sub: true, parent: parts[1], side: 'left', offset, i }; // legacy reverse form
         }
-      } else {
-        x = lanePositions[lane];
       }
+      return { sub: false, offset, i };
+    });
 
-      lanePositions[lane] = x;
+    // Pass 2: Position sub-lanes adjacent to their parent, stacking outward in
+    // array order (closest to the parent first). Main lanes keep their Pass 1 x.
+    const subSpacing = laneSpacing / 3;
+    lanes.forEach((lane, i) => {
+      const m = laneMeta[i];
+      if (!m.sub) return; // main lane already placed in Pass 1
+      const parentKey = lanes.find((l, j) => !laneMeta[j].sub && parseLaneNameOffset(l).cleanLane === m.parent);
+      const parentX = parentKey != null ? lanePositions[parentKey] : null;
+      if (parentX == null) {
+        console.warn(`Parent lane for ${lane} not found. Defaulting position.`);
+        lanePositions[lane] = startX + i * laneSpacing + m.offset;
+        return;
+      }
+      // Rank among same-parent, same-side sub-lanes by distance from the parent.
+      const sibs = laneMeta.filter(s => s.sub && s.parent === m.parent && s.side === m.side);
+      sibs.sort((a, b) => m.side === 'left' ? (b.i - a.i) : (a.i - b.i));
+      const rank = sibs.findIndex(s => s.i === m.i) + 1;
+      const dir = m.side === 'left' ? -1 : 1;
+      lanePositions[lane] = parentX + dir * rank * subSpacing + m.offset;
     });
 
     // Calculate lane group hierarchy
@@ -1219,7 +1262,7 @@ function loadSVGFile(event) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     formatConfig, jsonLiteral, formatKey, orderedKeys,
-    cleanLaneName, computeGroupExtents, resolveTextConfig,
+    cleanLaneName, computeGroupExtents, resolveTextConfig, migrateLanes,
     TOP_LEVEL_ORDER, SECTION_KEY_ORDER,
   };
 }

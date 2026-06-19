@@ -300,8 +300,7 @@ Info box placement
 ### 6. Complex Transactions
 
 Here's an advanced example showing 2 new features of lanes by using a different name syntax:
-1. Sublanes: these are handy to show a sub component interaction with the system. A lane may have 2 sublanes (one on each side).
-The Syntax for a sublane is to use one of the lane names and add a "." concatination either on the left or the right. For example for Lane="HN", a sublane on the right is given by using "HN.MEM" (MEM.HN would place it on the left).
+1. Sublanes: handy for showing a sub-component's interaction with the system. A sublane is named **`Parent.Sub`** (parent first) — e.g. for lane `HN`, a sublane is `HN.MEM`. Its **side is determined by array order**, not by the name: list the sublane *after* its parent to place it on the parent's right, or *before* the parent to place it on the left (multiple sublanes on a side stack outward). In the graphical editor you can simply drag a sublane across its parent to flip sides. (Older diagrams that used the reverse `Sub.Parent` form are migrated to `Parent.Sub` automatically on load.)
 
 2. Medium: this is handy when describing a medium through a message may pass. This is done using underscores on both sides - "\_Lane\_"
 
