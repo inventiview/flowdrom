@@ -173,7 +173,7 @@
       </div>
 
       <div class="toolbar__actions">
-        <button class="btn" type="button" onclick="newBasicDiagram()">New</button>
+        <button class="btn" type="button" onclick="newDiagram()">New</button>
         <button class="btn btn--primary" type="button" onclick="renderGraph()">Render</button>
         <button class="btn" type="button" onclick="canonizeJson()"
                 title="Sort, order and compact the JSON to the canonical guide style">Canonize</button>
@@ -441,14 +441,16 @@
       }
     }
 
-    function newBasicDiagram() {
+    // Start a brand-new, empty diagram. The empty lanes/messages arrays keep the
+    // structure valid and give the graphical editor arrays to insert into, while
+    // the renderer (main.js) tolerates the empty canvas. Build it up by
+    // right-clicking the canvas to add lanes, then messages/states/etc.
+    function newDiagram() {
       const tpl = [
         '{',
-        "  title: 'New Diagram',",
-        "  lanes: ['A', 'B'],",
-        '  messages: [',
-        "    { path: 'A->B', label: 'message', color: 'blue', style: 'solid', fromTime: 0, toTime: 1 },",
-        '  ],',
+        "  title: 'Untitled',",
+        '  lanes: [],',
+        '  messages: [],',
         '}'
       ].join('\n');
       document.getElementById('input').value = tpl;
