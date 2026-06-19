@@ -194,6 +194,16 @@ function renderGraph() {
     const laneGroups = input.laneGroups || [];
     const infoBoxes = input.infoBoxes || [];
     const textCfg = resolveTextConfig(input.options);
+
+    // Inject the diagram stylesheet into the live tempSvg up front so getBBox()
+    // measures label/legend/state text in the real fonts (it reflects the
+    // document's current styles). Without this, the auto-sized background boxes
+    // are measured in the browser default font and don't fit the text. This is
+    // the same CSS exportSVG embeds, so on-screen and exported output match.
+    const diagramStyle = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    diagramStyle.textContent = buildDiagramCss(textCfg);
+    tempSvg.appendChild(diagramStyle);
+
     const laneSpacing = 250;
     const timeStep = textCfg.timeStep;
     const showGrid = true;
