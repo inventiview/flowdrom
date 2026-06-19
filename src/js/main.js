@@ -50,7 +50,10 @@ function getDisplayOptions() {
 // apps that consume only this renderer (without index.html's CSS).
 function buildDiagramCss(cfg) {
   cfg = cfg || resolveTextConfig({});
-  const sans = "font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;";
+  // Portable sans so exports render consistently everywhere (Helvetica on Mac,
+  // Arial on Windows — metric-compatible — and a generic fallback elsewhere).
+  // Message/legend labels stay monospaced (Courier New) by design.
+  const sans = "font-family: Helvetica, Arial, sans-serif;";
   // For message/legend, 'item' leaves the per-item fill attribute showing; any
   // other value overrides every label with that color.
   const msgFill = cfg.message.color === 'item' ? '' : ` fill: ${cfg.message.color};`;
@@ -63,16 +66,16 @@ function buildDiagramCss(cfg) {
     .lane-group-label { font-weight: bold; font-size: ${cfg.laneGroup.size}px; text-anchor: middle; fill: ${cfg.laneGroup.color}; ${sans} }
     .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
     .message-label { font-size: ${cfg.message.size}px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold;${msgFill} }
-    .state-label { font-size: ${cfg.state.size}px; fill: ${cfg.state.color}; font-family: sans-serif; text-anchor: middle; }
+    .state-label { font-size: ${cfg.state.size}px; fill: ${cfg.state.color}; ${sans} text-anchor: middle; }
     .arrow { stroke-width: 2; }
     .dashed { stroke-dasharray: 5,5; }
-    .time-label { font-size: ${cfg.time.size}px; fill: ${cfg.time.color}; font-family: sans-serif; }
+    .time-label { font-size: ${cfg.time.size}px; fill: ${cfg.time.color}; ${sans} }
     .grid-line { stroke: #eee; stroke-width: 1; }
     .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
     .legend-title { font-weight: bold; font-size: ${cfg.legendTitle.size}px; fill: ${cfg.legendTitle.color}; ${sans} }
     .legend-label { font-size: ${cfg.legend.size}px; font-family: 'Courier New', monospace; dominant-baseline: middle;${legendFill} }
     .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
-    .info-box-text { font-size: ${cfg.info.size}px; font-family: 'Segoe UI', sans-serif; fill: ${cfg.info.color}; }
+    .info-box-text { font-size: ${cfg.info.size}px; ${sans} fill: ${cfg.info.color}; }
     .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
   `;
 }
