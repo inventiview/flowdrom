@@ -892,8 +892,7 @@
     }
 
     if (item.kind === 'lane') {
-      addRow(menu, '↔  Drag (shift position)', () => { closeMenu(); enterDrag(item, 'shift'); });
-      addRow(menu, '⇄  Drag (reorder)', () => { closeMenu(); enterDrag(item, 'reorder'); });
+      addRow(menu, '✥  Drag', () => { closeMenu(); enterDrag(item); });
       addRow(menu, '✎  Rename…', () => { renameLanePrompt(item, clientX, clientY); });
       addRow(menu, '⌹  Make sub-lane of…', () => { convertLanePrompt(item, clientX, clientY); });
       addRow(menu, '▦  Make medium lane', () => { closeMenu(); convertLane(item, 'medium'); });
@@ -1362,21 +1361,12 @@
       if (text != null) text = setOrInsertField(text, 'infoBoxes', d.index, 'time', numLiteral(d.preview.time));
     } else if (d.kind === 'lane') {
       const L = layout(); if (!L) return;
-      if (d.mode === 'shift') {
-        // Adjust the lane's '>'/'<' prefix (each = 20px) to match the drop x.
-        const ln = L.lanes[d.index];
-        const pp = parseLanePrefix(model.lanes[d.index]);
-        const naturalX = ln.x - pp.offsetPx;
-        const count = Math.round((d.preview.x - naturalX) / 20);
-        const lanes = model.lanes.slice();
-        lanes[d.index] = buildLaneName(pp.clean, count);
-        text = setLanes(text, lanes);
-      } else {
-        // reorder: target slot = number of OTHER lanes whose x is left of drop x
-        let target = 0;
-        for (const l of L.lanes) { if (l.index !== d.index && l.x < d.preview.x) target++; }
-        text = moveLane(text, d.index, target);
-      }
+      // A lane's array order IS its position (and, for a sub-lane, its side
+      // relative to the parent), so a drag simply reorders: the target slot is
+      // the number of OTHER lanes whose x is left of the drop point.
+      let target = 0;
+      for (const l of L.lanes) { if (l.index !== d.index && l.x < d.preview.x) target++; }
+      text = moveLane(text, d.index, target);
       if (text != null) applyText(text); // dragItem index may shift; drop drag mode
       exitDrag();
       return;

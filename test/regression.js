@@ -226,6 +226,27 @@ section('Regression — Bug 2: deleting a middle element must keep the separator
 }
 
 // ---------------------------------------------------------------------------
+section('Sub-lanes — migrate legacy "Sub.Parent" to order-based "Parent.Sub"');
+{
+  // Legacy reverse form (left-side sub-lane) -> "Parent.Sub" placed before the
+  // parent so it still renders on the left under the order-based model.
+  eq(M.migrateLanes(['CA0', 'sub.CA0', 'CA1']), ['CA0.sub', 'CA0', 'CA1'],
+     'reverse sub.CA0 -> CA0.sub before parent');
+  // Already new form -> untouched.
+  eq(M.migrateLanes(['CA0', 'CA0.sub', 'CA1']), ['CA0', 'CA0.sub', 'CA1'],
+     'new-form Parent.Sub left untouched');
+  // >/< shift prefix on the parent is preserved.
+  eq(M.migrateLanes(['>CA0', 'tag.CA0']), ['CA0.tag', '>CA0'],
+     'shift prefix on parent preserved');
+  // Multiple legacy left sub-lanes keep their relative order, before the parent.
+  eq(M.migrateLanes(['HN', 'CA0.HN', 'x.HN', 'CA1']), ['HN.CA0', 'HN.x', 'HN', 'CA1'],
+     'multiple legacy left sub-lanes stacked before parent');
+  // Idempotent.
+  const once = M.migrateLanes(['A', 'b.A', 'A.c']);
+  eq(M.migrateLanes(once.slice()), once, 'migrateLanes is idempotent');
+}
+
+// ---------------------------------------------------------------------------
 console.log(`\n${'='.repeat(60)}\n${pass} passed, ${fail} failed`);
 if (fail) { console.error('\nFAILURES:\n - ' + failures.join('\n - ')); process.exit(1); }
 console.log('All green.');
