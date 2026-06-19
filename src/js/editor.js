@@ -1361,13 +1361,52 @@
       if (text != null) text = setOrInsertField(text, 'infoBoxes', d.index, 'time', numLiteral(d.preview.time));
     } else if (d.kind === 'lane') {
       const L = layout(); if (!L) return;
-      // A lane's array order IS its position (and, for a sub-lane, its side
-      // relative to the parent), so a drag simply reorders: the target slot is
-      // the number of OTHER lanes whose x is left of the drop point.
-      let target = 0;
-      for (const l of L.lanes) { if (l.index !== d.index && l.x < d.preview.x) target++; }
-      text = moveLane(text, d.index, target);
-      if (text != null) applyText(text); // dragItem index may shift; drop drag mode
+      const dropX = d.preview.x;
+      const self = L.lanes.find((l) => l.index === d.index); if (!self) { exitDrag(); return; }
+      const clean = parseLanePrefix(model.lanes[d.index]).clean;
+      // Slot = number of OTHER lanes whose natural x is left of a given x.
+      const slotsLeftOf = (x) => L.lanes.reduce((n, l) => n + (l.index !== d.index && l.x < x ? 1 : 0), 0);
+      const curSlot = slotsLeftOf(self.x);
+      const target = slotsLeftOf(dropX);
+
+      if (target === curSlot) {
+        // Not crossing another lane → fine-tune only: set the '>'/'<' nudge
+        // (each = 20px) from the lane's natural x so it lands under the drop.
+        const pp = parseLanePrefix(model.lanes[d.index]);
+        const count = Math.round((dropX - (self.x - pp.offsetPx)) / 20);
+        const lanes = model.lanes.slice();
+        lanes[d.index] = buildLaneName(clean, count);
+        text = setLanes(text, lanes);
+        if (text != null) applyText(text);
+        exitDrag();
+        return;
+      }
+
+      // Crossing → reorder with the nudge cleared, then re-measure the lane's new
+      // natural position and re-apply the residual nudge so it stays under the
+      // drop point. applyText() re-renders synchronously, so layout() is fresh.
+      const lanes0 = model.lanes.slice();
+      lanes0[d.index] = clean;
+      let t = setLanes(text, lanes0);
+      if (t != null) t = moveLane(t, d.index, target);
+      if (t == null) { exitDrag(); return; }
+      applyText(t);
+
+      const L2 = layout();
+      const moved = L2 && L2.lanes.find((l) => l.clean === clean);
+      if (L2 && moved) {
+        const count = Math.round((dropX - moved.x) / 20);
+        if (count !== 0) {
+          const model2 = parseModel();
+          const idx2 = (model2 && model2.lanes) ? model2.lanes.findIndex((n) => parseLanePrefix(n).clean === clean) : -1;
+          if (idx2 >= 0) {
+            const lanes2 = model2.lanes.slice();
+            lanes2[idx2] = buildLaneName(clean, count);
+            const t2 = setLanes(getEditor().getValue(), lanes2);
+            if (t2 != null) applyText(t2);
+          }
+        }
+      }
       exitDrag();
       return;
     }
