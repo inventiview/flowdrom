@@ -184,8 +184,8 @@ function renderGraph() {
     const input = JSON5.parse(document.getElementById("input").value);
     currentConfig = input;
 
-    const lanes = input.lanes;
-    const messages = input.messages;
+    const lanes = input.lanes || [];
+    const messages = input.messages || [];
     const states = input.states || [];
     const legend = input.legend || [];
     const laneGroups = input.laneGroups || [];
@@ -198,12 +198,17 @@ function renderGraph() {
     const showStates = true;
 
     const startX = 150;
-    const maxMessageTime = Math.max(...messages.map(m => m.toTime));
-    const maxStateTime = Math.max(...states.map(s => s.toTime));
-    const maxInfoBoxTime = Math.max(...infoBoxes.map(i => i.time));
+    // Empty arrays would make Math.max(...[]) return -Infinity, so guard each.
+    const timeOf = (arr, key) => (arr.length ? Math.max(...arr.map(o => o[key])) : 0);
+    const maxMessageTime = timeOf(messages, 'toTime');
+    const maxStateTime = timeOf(states, 'toTime');
+    const maxInfoBoxTime = timeOf(infoBoxes, 'time');
 
-    // Calculate the overall maximum time
-    const maxTime = Math.max(maxMessageTime, maxStateTime, maxInfoBoxTime);
+    // Calculate the overall maximum time. A from-scratch diagram (no messages/
+    // states/info boxes yet) gets a small default so the canvas has usable
+    // height for lifelines instead of collapsing.
+    let maxTime = Math.max(maxMessageTime, maxStateTime, maxInfoBoxTime, 0);
+    if (maxTime <= 0) maxTime = 4;
     
     // Lane Positioning Logic
     const lanePositions = {};
