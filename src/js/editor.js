@@ -810,6 +810,11 @@
         if (clientX >= g.l - TOL_PX && clientX <= g.r + TOL_PX && clientY >= g.t - TOL_PX && clientY <= g.b + TOL_PX) add(g.kind, g.i);
       });
     }
+
+    // Container kinds (the whole-legend box) should rank below the individual
+    // items they enclose, so hover/click target the specific item first.
+    const CONTAINER = { legendBox: 1 };
+    out.sort((a, b) => (CONTAINER[a.kind] ? 1 : 0) - (CONTAINER[b.kind] ? 1 : 0));
     return out;
   }
 
@@ -850,7 +855,9 @@
     row.className = 'flowdrom-menu-row' + (opts.muted ? ' muted' : '');
 
     let icon = '', label = text, submenu = false;
-    const m = /^(\S+)\s{2,}([\s\S]*)$/.exec(text);
+    // Only a single leading symbol (non-word, non-space) counts as an icon, so
+    // multi-word labels like 'Message  CA0->HN' are never split into the gutter.
+    const m = /^([^\w\s])\s{2,}([\s\S]*)$/.exec(text);
     if (m) { icon = m[1]; label = m[2]; }
     if (/\s▸\s*$/.test(label)) { submenu = true; label = label.replace(/\s▸\s*$/, ''); }
 
@@ -869,18 +876,8 @@
     return row;
   }
 
-  // Stage 1: choose among overlapping items.
-  function showPicker(candidates, clientX, clientY) {
-    const model = parseModel();
-    const menu = buildMenu(clientX, clientY);
-    addHeader(menu, candidates.length + ' items here — select one:');
-    candidates.forEach((item) => {
-      const row = addRow(menu, labelFor(item, model), () => showActions(item, clientX, clientY));
-      row.addEventListener('mouseenter', () => highlightItem(item));
-    });
-  }
-
-  // Stage 2: actions for a chosen item.
+  // Actions for the clicked item (no disambiguation picker — the hover
+  // highlight already shows which item a click will act on).
   function showActions(item, clientX, clientY) {
     const model = parseModel();
     highlightItem(item);
@@ -945,7 +942,7 @@
       const p = (parent || '').trim(); if (!p) return;
       const text = renameLane(ed.getValue(), clean, p + '.' + clean);
       if (text != null) applyText(text);
-    });
+    }, 'Make sub-lane of');
   }
 
   function currentField(model, item, field) {
@@ -998,7 +995,7 @@
 
     addRow(menu, 'Custom…', () => {
       const cur = currentField(model, item, 'color') || '';
-      showTextInput(clientX, clientY, cur, (v) => { if (v && v.trim()) setItemField(item, 'color', quote(v.trim())); });
+      showTextInput(clientX, clientY, cur, (v) => { if (v && v.trim()) setItemField(item, 'color', quote(v.trim())); }, 'Custom color');
     });
   }
 
@@ -1010,7 +1007,7 @@
       const nv = (v || '').trim(); if (!nv) return;
       const text = renameLane(ed.getValue(), pp.clean, nv);
       if (text != null) applyText(text);
-    });
+    }, 'Rename lane');
   }
 
   function deleteItem(item) {
@@ -1055,21 +1052,44 @@
     ed.focus();
   }
 
-  // Reusable inline text input. Commits on Enter/blur, cancels on Escape.
-  function showTextInput(clientX, clientY, initial, onCommit) {
+  // Reusable inline text popover: a small captioned card with an input.
+  // Commits on Enter/blur, cancels on Escape. `label` is an optional caption.
+  function showTextInput(clientX, clientY, initial, onCommit, label) {
     closeMenu();
+    const pop = document.createElement('div');
+    pop.className = 'flowdrom-editpop';
+    pop.style.left = clientX + 'px';
+    pop.style.top = clientY + 'px';
+
+    const cap = document.createElement('div');
+    cap.className = 'flowdrom-editpop-cap';
+    cap.textContent = label || 'Edit';
+    pop.appendChild(cap);
+
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.value = initial || '';
     inp.className = 'flowdrom-textedit';
-    inp.style.left = clientX + 'px';
-    inp.style.top = clientY + 'px';
-    document.body.appendChild(inp);
+    pop.appendChild(inp);
+
+    const hint = document.createElement('div');
+    hint.className = 'flowdrom-editpop-hint';
+    hint.textContent = '↵ to save · esc to cancel';
+    pop.appendChild(hint);
+
+    document.body.appendChild(pop);
+    // Keep the popover within the viewport.
+    requestAnimationFrame(() => {
+      const r = pop.getBoundingClientRect();
+      if (r.right > window.innerWidth) pop.style.left = Math.max(8, window.innerWidth - r.width - 8) + 'px';
+      if (r.bottom > window.innerHeight) pop.style.top = Math.max(8, window.innerHeight - r.height - 8) + 'px';
+    });
+
     let done = false;
     const finish = (commit) => {
       if (done) return; done = true;
       const v = inp.value;
-      if (inp.parentNode) inp.parentNode.removeChild(inp);
+      if (pop.parentNode) pop.parentNode.removeChild(pop);
       if (commit) onCommit(v);
     };
     inp.addEventListener('keydown', (e) => {
@@ -1090,16 +1110,16 @@
     if (item.kind === 'message' || item.kind === 'legend') {
       const arr = item.kind === 'message' ? model.messages : model.legend;
       const pm = parseLabelMarkers((arr[item.index] || {}).label || '');
-      showTextInput(clientX, clientY, pm.text, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(pm.markers + v))));
+      showTextInput(clientX, clientY, pm.text, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(pm.markers + v))), item.kind === 'legend' ? 'Legend label' : 'Message label');
     } else if (item.kind === 'state') {
-      showTextInput(clientX, clientY, (model.states[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))));
+      showTextInput(clientX, clientY, (model.states[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'State label');
     } else if (item.kind === 'laneGroup') {
-      showTextInput(clientX, clientY, (model.laneGroups[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))));
+      showTextInput(clientX, clientY, (model.laneGroups[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Group name');
     } else if (item.kind === 'infoBox') {
       const off = parseInfoOffset((model.infoBoxes[item.index] || {}).text || '');
-      showTextInput(clientX, clientY, off.rest, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'text', quote(buildInfoText(off.x, off.y, v)))));
+      showTextInput(clientX, clientY, off.rest, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'text', quote(buildInfoText(off.x, off.y, v)))), 'Info box text');
     } else if (item.kind === 'title') {
-      showTextInput(clientX, clientY, model.title || '', (v) => commit()(setTopField(ed.getValue(), 'title', quote(v))));
+      showTextInput(clientX, clientY, model.title || '', (v) => commit()(setTopField(ed.getValue(), 'title', quote(v))), 'Diagram title');
     }
   }
   // Does the item currently have non-empty text?
@@ -1410,8 +1430,9 @@
     if (candidates.length) {
       closeMenu();
       clearSelection(); // a plain click moves on from any multi-selection
-      if (candidates.length === 1) showActions(candidates[0], e.clientX, e.clientY);
-      else showPicker(candidates, e.clientX, e.clientY);
+      // No disambiguation picker: act on the top candidate (the same item the
+      // hover highlight indicates). Overlap is resolved by hovering first.
+      showActions(candidates[0], e.clientX, e.clientY);
       return;
     }
     // Empty space (left click): dismiss any menu / selection. Add is on right-click.
@@ -1467,7 +1488,7 @@
       const label = (v || '').trim() || 'legend';
       const text = insertArrayElement(ed.getValue(), 'legend', '{ label: ' + quote(label) + ", color: 'black', style: 'solid' }");
       if (text != null) applyText(text);
-    });
+    }, 'New legend entry');
   }
 
   // ---- lane-group multi-select ----
@@ -1513,7 +1534,7 @@
       const lit = '{ label: ' + quote(label) + ', lanes: [' + cleans.map(quote).join(', ') + '] }';
       const text = insertArrayElement(ed.getValue(), 'laneGroups', lit);
       if (text != null) applyText(text);
-    });
+    }, 'Group name');
   }
 
   function startCreating(kind) {
@@ -1590,7 +1611,7 @@
         const lit = '{ lane: ' + quote(lane) + ', time: ' + numLiteral(t) + ', text: ' + quote(txt) + ' }';
         const out = insertArrayElement(ed.getValue(), 'infoBoxes', lit);
         if (out != null) applyText(out);
-      });
+      }, 'New info box');
       return;
     }
     if (wasCreating === 'message') {
@@ -1632,7 +1653,7 @@
       const arr = lanes.slice(); arr.splice(idx, 0, nm);
       const text = setLanes(ed.getValue(), arr);
       if (text != null) applyText(text);
-    });
+    }, 'New lane');
   }
 
   function attach() {
