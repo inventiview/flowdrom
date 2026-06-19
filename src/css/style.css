@@ -192,10 +192,12 @@ body { margin: 0; padding: 0; overflow: hidden; }
   height: 52px;
   flex: 0 0 auto;
   padding: 0 var(--space-4);
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
-  border-bottom: 0.5px solid var(--separator);
+  border-bottom: 1px solid var(--separator-strong);
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
 }
 
 .toolbar__lead { display: flex; align-items: center; gap: var(--space-3); }
@@ -277,14 +279,44 @@ body { margin: 0; padding: 0; overflow: hidden; }
 .pane--code {
   flex: 0 0 420px;
   width: 420px;
-  min-width: 300px;
+  min-width: 280px;
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border-right: 0.5px solid var(--separator);
   overflow: hidden;
 }
 .app.code-collapsed .pane--code { display: none; }
+
+/* ---- Draggable source/canvas divider ----------------------------------- */
+.splitter {
+  flex: 0 0 7px;
+  align-self: stretch;
+  position: relative;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+  z-index: 3;
+}
+.splitter::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--separator);
+  transition: width var(--motion-fast) var(--ease-standard),
+              background var(--motion-fast) var(--ease-standard);
+}
+.splitter:hover::before,
+.splitter:focus-visible::before,
+.splitter.dragging::before {
+  width: 3px;
+  background: var(--accent);
+}
+.splitter:focus-visible { outline: none; }
+.app.code-collapsed .splitter { display: none; }
 
 .pane__header {
   display: flex;
@@ -361,8 +393,8 @@ body { margin: 0; padding: 0; overflow: hidden; }
 .flowdrom-menu {
   position: fixed;
   z-index: 9999;
-  min-width: 200px;
-  padding: var(--space-1) 0;
+  min-width: 224px;
+  padding: var(--space-1);
   font-family: var(--font-ui);
   font-size: var(--text-base);
   color: var(--text-primary);
@@ -379,15 +411,22 @@ body { margin: 0; padding: 0; overflow: hidden; }
   to   { opacity: 1; transform: scale(1); }
 }
 .flowdrom-menu-header {
-  padding: 6px 12px;
-  font-size: var(--text-sm);
+  padding: 7px 10px 4px;
+  font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
   color: var(--text-tertiary);
-  border-bottom: 0.5px solid var(--separator);
   white-space: nowrap;
 }
+.flowdrom-menu-row + .flowdrom-menu-header { margin-top: var(--space-1); }
+
 .flowdrom-menu-row {
-  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
   color: var(--text-primary);
@@ -396,6 +435,32 @@ body { margin: 0; padding: 0; overflow: hidden; }
 }
 .flowdrom-menu-row.muted { color: var(--text-tertiary); }
 .flowdrom-menu-row:hover { background: var(--accent); color: var(--text-on-accent); }
+
+.flowdrom-menu-ic {
+  flex: 0 0 18px;
+  width: 18px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+.flowdrom-menu-row:hover .flowdrom-menu-ic { color: var(--text-on-accent); }
+.flowdrom-menu-ic.chip {
+  width: 13px;
+  height: 13px;
+  border-radius: var(--radius-xs);
+  border: 0.5px solid var(--separator);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.flowdrom-menu-lbl { flex: 1 1 auto; }
+.flowdrom-menu-chev {
+  flex: 0 0 auto;
+  margin-left: 14px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--text-tertiary);
+}
+.flowdrom-menu-row:hover .flowdrom-menu-chev { color: var(--text-on-accent); }
 
 /* ---- Inline text popover ----------------------------------------------- */
 .flowdrom-textedit {
