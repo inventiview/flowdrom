@@ -209,8 +209,9 @@ function computeGroupExtents(lanes, laneGroups, lanePositions) {
 }
 
 function renderGraph() {
+  document.querySelectorAll('.flowdrom-editpop').forEach(el => el.remove());
   const svgContainer = document.getElementById("svg-container");
-  
+
   const tempSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   tempSvg.setAttribute("id", "temp-graph");
   document.body.appendChild(tempSvg);
