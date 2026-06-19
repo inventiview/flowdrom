@@ -233,6 +233,10 @@
         </div>
       </aside>
 
+      <!-- Draggable divider: resize source pane vs. canvas -->
+      <div class="splitter" id="splitter" role="separator" aria-orientation="vertical"
+           aria-label="Resize source pane" tabindex="0"></div>
+
       <!-- Canvas stage — the document, now the dominant region -->
       <main class="stage">
         <h1 id="graph-title" style="display: none;">Enhanced Transaction Sequence Graph</h1>
@@ -377,6 +381,9 @@
         textarea.value = codeMirrorEditor.getValue();
       });
       
+      // Draggable source/canvas divider
+      initSplitter();
+
       // Auto-render on page load
       renderGraph();
     });
@@ -386,6 +393,39 @@
       if (codeMirrorEditor) {
         codeMirrorEditor.setValue(content);
       }
+    }
+
+    // Draggable divider between the source pane and the canvas. Adjusts the
+    // pane width within sensible bounds and refreshes CodeMirror after a drag.
+    function initSplitter() {
+      const splitter = document.getElementById('splitter');
+      const pane = document.getElementById('code-pane');
+      const ws = document.querySelector('.workspace');
+      if (!splitter || !pane || !ws) return;
+      let dragging = false;
+      splitter.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        splitter.classList.add('dragging');
+        try { splitter.setPointerCapture(e.pointerId); } catch (_) {}
+        e.preventDefault();
+      });
+      splitter.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const wsRect = ws.getBoundingClientRect();
+        const min = 260, max = Math.max(min, wsRect.width - 260);
+        let w = Math.max(min, Math.min(max, e.clientX - wsRect.left));
+        pane.style.flex = '0 0 ' + w + 'px';
+        pane.style.width = w + 'px';
+      });
+      const end = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        splitter.classList.remove('dragging');
+        try { splitter.releasePointerCapture(e.pointerId); } catch (_) {}
+        if (codeMirrorEditor) codeMirrorEditor.refresh();
+      };
+      splitter.addEventListener('pointerup', end);
+      splitter.addEventListener('pointercancel', end);
     }
 
     // Replace the editor with a minimal valid diagram (2 lanes + 1 message) so

@@ -788,6 +788,28 @@
       const top = L.laneTop, bot = L.laneTop + L.maxTime * L.timeStep;
       (L.lanes || []).forEach((ln) => { if (Math.abs(p.x - ln.x) <= tolLane && p.y >= top - tolLane && p.y <= bot + tolLane) add('lane', ln.index); });
     }
+
+    // 3) bounding-box proximity for small / thin boxed items whose strokes are
+    //    hard to land on exactly (legend rows + their swatch lines, states,
+    //    info boxes, titles, group labels). Union each item's tagged elements
+    //    and expand by a forgiving margin. Diagonal items (messages) and lane
+    //    lines are excluded — they have their own geometric proximity above.
+    const BBOX_KINDS = { legend: 1, legendBox: 1, state: 1, infoBox: 1, title: 1, laneGroup: 1 };
+    const TOL_PX = 9;
+    const groups = {};
+    if (svg) {
+      svg.querySelectorAll('[data-kind]').forEach((el) => {
+        const kind = el.getAttribute('data-kind'); if (!BBOX_KINDS[kind]) return;
+        const i = parseInt(el.getAttribute('data-index'), 10); if (isNaN(i)) return;
+        const r = el.getBoundingClientRect(); const id = kind + ':' + i;
+        const g = groups[id] || (groups[id] = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity, kind: kind, i: i });
+        g.l = Math.min(g.l, r.left); g.t = Math.min(g.t, r.top); g.r = Math.max(g.r, r.right); g.b = Math.max(g.b, r.bottom);
+      });
+      Object.keys(groups).forEach((id) => {
+        const g = groups[id];
+        if (clientX >= g.l - TOL_PX && clientX <= g.r + TOL_PX && clientY >= g.t - TOL_PX && clientY <= g.b + TOL_PX) add(g.kind, g.i);
+      });
+    }
     return out;
   }
 
@@ -819,11 +841,29 @@
     h.className = 'flowdrom-menu-header';
     menu.appendChild(h);
   }
+  // Build a menu row with an aligned icon gutter, a label, and (when the label
+  // ends in "▸") a right-aligned submenu chevron. Pass opts.swatch = color to
+  // render a color chip in the gutter instead of a glyph.
   function addRow(menu, text, onClick, opts) {
     opts = opts || {};
     const row = document.createElement('div');
-    row.textContent = text;
     row.className = 'flowdrom-menu-row' + (opts.muted ? ' muted' : '');
+
+    let icon = '', label = text, submenu = false;
+    const m = /^(\S+)\s{2,}([\s\S]*)$/.exec(text);
+    if (m) { icon = m[1]; label = m[2]; }
+    if (/\s▸\s*$/.test(label)) { submenu = true; label = label.replace(/\s▸\s*$/, ''); }
+
+    const ic = document.createElement('span');
+    ic.className = 'flowdrom-menu-ic' + (opts.swatch ? ' chip' : '');
+    if (opts.swatch) ic.style.background = opts.swatch; else ic.textContent = icon;
+    const lb = document.createElement('span');
+    lb.className = 'flowdrom-menu-lbl';
+    lb.textContent = label;
+    row.appendChild(ic);
+    row.appendChild(lb);
+    if (submenu) { const ch = document.createElement('span'); ch.className = 'flowdrom-menu-chev'; ch.textContent = '›'; row.appendChild(ch); }
+
     row.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
     menu.appendChild(row);
     return row;
@@ -942,8 +982,7 @@
     const menu = buildMenu(clientX, clientY);
 
     const swatch = (c) => {
-      const row = addRow(menu, '   ' + c, () => { closeMenu(); setItemField(item, 'color', quote(c)); });
-      row.style.borderLeft = '14px solid ' + c;
+      addRow(menu, c, () => { closeMenu(); setItemField(item, 'color', quote(c)); }, { swatch: c });
     };
 
     // 1) colors already in use (top), 2) the rest of the palette, 3) custom.
@@ -1386,12 +1425,12 @@
   function showCreateMenu(clientX, clientY) {
     const menu = buildMenu(clientX, clientY);
     addHeader(menu, 'Add element:');
-    addRow(menu, '➕  Message (drag to draw)', () => { closeMenu(); startCreating('message'); });
-    addRow(menu, '➕  State (drag to draw)', () => { closeMenu(); startCreating('state'); });
-    addRow(menu, '➕  Info box (click a lane)', () => { closeMenu(); startCreating('infoBox'); });
-    addRow(menu, '➕  Lane here', () => { closeMenu(); addLaneAt(clientX, clientY); });
-    addRow(menu, '➕  Legend entry', () => { closeMenu(); addLegendEntry(clientX, clientY); });
-    addRow(menu, '➕  Lane group (select lanes)', () => { closeMenu(); startGroupSelect(); });
+    addRow(menu, '+  Message (drag to draw)', () => { closeMenu(); startCreating('message'); });
+    addRow(menu, '+  State (drag to draw)', () => { closeMenu(); startCreating('state'); });
+    addRow(menu, '+  Info box (click a lane)', () => { closeMenu(); startCreating('infoBox'); });
+    addRow(menu, '+  Lane here', () => { closeMenu(); addLaneAt(clientX, clientY); });
+    addRow(menu, '+  Legend entry', () => { closeMenu(); addLegendEntry(clientX, clientY); });
+    addRow(menu, '+  Lane group (select lanes)', () => { closeMenu(); startGroupSelect(); });
     addRow(menu, '⚙  Text styling…', () => { closeMenu(); showOptionsPanel(); });
   }
 
