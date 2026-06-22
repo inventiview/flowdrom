@@ -208,6 +208,22 @@ function computeGroupExtents(lanes, laneGroups, lanePositions) {
   });
 }
 
+// Parse any CSS color (named or hex/rgb) to {r,g,b}, or null if invalid. Uses a
+// cached canvas 2d context, which normalizes valid colors and leaves fillStyle
+// unchanged for invalid input — so seeding from two different bases and checking
+// for agreement detects an invalid color. Browser-only (called during render).
+function parseCssColor(str) {
+  try {
+    const ctx = parseCssColor._ctx || (parseCssColor._ctx = document.createElement('canvas').getContext('2d'));
+    ctx.fillStyle = '#000000'; ctx.fillStyle = str; const a = ctx.fillStyle;
+    ctx.fillStyle = '#ffffff'; ctx.fillStyle = str; const b = ctx.fillStyle;
+    if (a !== b) return null; // invalid: result depended on the seed
+    if (a[0] === '#') return { r: parseInt(a.slice(1, 3), 16), g: parseInt(a.slice(3, 5), 16), b: parseInt(a.slice(5, 7), 16) };
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(a);
+    return m ? { r: +m[1], g: +m[2], b: +m[3] } : null;
+  } catch (e) { return null; }
+}
+
 function renderGraph() {
   document.querySelectorAll('.flowdrom-editpop').forEach(el => el.remove());
   const svgContainer = document.getElementById("svg-container");
@@ -258,7 +274,13 @@ function renderGraph() {
     // height for lifelines instead of collapsing.
     let maxTime = Math.max(maxMessageTime, maxStateTime, maxInfoBoxTime, 0);
     if (maxTime <= 0) maxTime = 4;
-    
+
+    // Extra "runway" below the last event: lifelines, grid and time labels
+    // continue one time-unit past the final element, so a new message/state can
+    // be dropped just below the last one without running off the canvas. (#9)
+    const lifelineTail = 1;
+    const lifelineBottom = maxTime + lifelineTail;
+
     // Lane Positioning Logic
     const lanePositions = {};
     let currentMainLaneIndex = 0;
@@ -390,16 +412,39 @@ function renderGraph() {
     // with the lane-group drawing below so labels/brackets stay aligned. The
     // title↔group and group↔lane gaps give the bracket label room to breathe
     // (it must clear both the title above and the lane labels below).
-    const titleHeight = 40;
-    const laneGroupPitch = 34;
+    // Title and group labels may use '|' for line breaks; reserve extra vertical
+    // room so the multi-line versions push content down / clear the level above
+    // rather than overlapping it. (#12)
+    const titleText = input.title || "Enhanced Transaction Graph";
+    const titleLines = String(titleText).split('|');
+    const titleLineHeight = textCfg.title.size * 1.2;
+    const titleHeight = 40 + (titleLines.length - 1) * titleLineHeight;
+
+    const groupLabelLineHeight = textCfg.laneGroup.size * 1.2;
+    const maxGroupLabelLines = groupHierarchy.length
+      ? Math.max(...groupHierarchy.map(g => String(g.label || '').split('|').length))
+      : 1;
+    const laneGroupPitch = 34 + (maxGroupLabelLines - 1) * groupLabelLineHeight;
     const laneGroupHeight = laneGroupLevels * laneGroupPitch;
     const spaceBetweenTitleAndGroups = 24;
-    const spaceBetweenGroupsAndLanes = 38;
+    // Multi-line lane labels stack upward from just above the lifelines; widen
+    // the groups↔lanes gap so the tallest one clears the brackets/title. (#11)
+    const laneLabelLineHeight = textCfg.lane.size * 1.2;
+    const maxLaneLabelLines = lanes.length
+      ? Math.max(...lanes.map(l => String(parseLaneNameOffset(l).cleanLane).split('|').length))
+      : 1;
+    const spaceBetweenGroupsAndLanes = Math.max(38, maxLaneLabelLines * laneLabelLineHeight + 14);
 
     const laneTop = titleHeight + spaceBetweenTitleAndGroups + laneGroupHeight + spaceBetweenGroupsAndLanes;
     
     const bottomPadding = 30;
-    const svgHeight = laneTop + (maxTime + 1) * timeStep + bottomPadding;
+    let svgHeight = laneTop + lifelineBottom * timeStep + bottomPadding;
+
+    // Track the real vertical extent of drawn content so the canvas can grow to
+    // contain anything that spills past the computed height/top — e.g. an info
+    // box dragged far down (or up). Seeded with the runway bottom. (#1)
+    let contentBottom = laneTop + lifelineBottom * timeStep;
+    let contentTop = 0;
 
     // Draw lanes
     lanes.forEach((lane, laneIndex) => {
@@ -413,7 +458,7 @@ function renderGraph() {
       line.setAttribute("x1", x);
       line.setAttribute("y1", laneTop);
       line.setAttribute("x2", x);
-      line.setAttribute("y2", laneTop + maxTime * timeStep);
+      line.setAttribute("y2", laneTop + lifelineBottom * timeStep);
 
       line.setAttribute("stroke", isSubLane ? "#666" :  isSpecialLane ? "LightGray" : "#333");
       line.setAttribute("stroke-width", isSubLane ? "2" :  isSpecialLane ? "16" :"3");
@@ -425,13 +470,24 @@ function renderGraph() {
 
       const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
       text.setAttribute("x", x);
-      text.setAttribute("y", laneTop - 10);
       text.setAttribute("class", isSubLane ? "sub-lane-label" : "lane-label");
       text.setAttribute("data-kind", "lane");
       text.setAttribute("data-index", laneIndex);
       text.setAttribute("data-role", "label");
       // Fill comes from the (configurable) .lane-label / .sub-lane-label CSS.
-      text.textContent = cleanLane;
+      // Lane names may use '|' for line breaks; stack the lines upward so the
+      // bottom line keeps its usual position just above the lifeline. (#11)
+      const laneFontSize = isSubLane ? textCfg.subLane.size : textCfg.lane.size;
+      const laneLineHeight = laneFontSize * 1.2;
+      const laneLabelLines = String(cleanLane).split('|');
+      text.setAttribute("y", laneTop - 10 - (laneLabelLines.length - 1) * laneLineHeight);
+      laneLabelLines.forEach((ln, i) => {
+        const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+        tspan.setAttribute("x", x);
+        tspan.setAttribute("dy", i === 0 ? 0 : laneLineHeight);
+        tspan.textContent = ln;
+        text.appendChild(tspan);
+      });
       tempSvg.appendChild(text);
     });
 
@@ -464,12 +520,21 @@ function renderGraph() {
 
         const groupLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
         groupLabel.setAttribute("x", centerX);
-        groupLabel.setAttribute("y", groupLabelY);
         groupLabel.setAttribute("class", "lane-group-label");
         groupLabel.setAttribute("data-kind", "laneGroup");
         groupLabel.setAttribute("data-index", groupIndex);
         groupLabel.setAttribute("data-role", "label");
-        groupLabel.textContent = group.label;
+        // Group labels may use '|' for line breaks; stack upward so the bottom
+        // line keeps its usual spot just above the bracket. (#12)
+        const groupLabelLines = String(group.label).split('|');
+        groupLabel.setAttribute("y", groupLabelY - (groupLabelLines.length - 1) * groupLabelLineHeight);
+        groupLabelLines.forEach((ln, i) => {
+          const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          tspan.setAttribute("x", centerX);
+          tspan.setAttribute("dy", i === 0 ? 0 : groupLabelLineHeight);
+          tspan.textContent = ln;
+          groupLabel.appendChild(tspan);
+        });
         tempSvg.appendChild(groupLabel);
 
         const bracket = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -525,12 +590,20 @@ function renderGraph() {
     title.setAttribute("fill", textCfg.title.color);
     title.setAttribute("data-kind", "title");
     title.setAttribute("data-index", 0);
-    title.textContent = input.title || "Enhanced Transaction Graph";
+    // Title may use '|' for line breaks; stack downward from titleY (titleHeight
+    // above reserved room for the extra lines). (#12)
+    titleLines.forEach((ln, i) => {
+      const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+      tspan.setAttribute("x", (svgWidth / 2) - 80);
+      tspan.setAttribute("dy", i === 0 ? 0 : titleLineHeight);
+      tspan.textContent = ln;
+      title.appendChild(tspan);
+    });
     tempSvg.appendChild(title);
 
     // Draw grid
     if (showGrid) {
-      for (let t = 0; t <= maxTime; t++) {
+      for (let t = 0; t <= lifelineBottom; t++) {
         const y = laneTop + t * timeStep;
         const gridLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
         gridLine.setAttribute("x1", startX - 100);
@@ -725,7 +798,7 @@ function renderGraph() {
       function getPastelColor(color) {
         const colorMap = {
           'red': '#ffcccc',
-          'blue': '#ccccff',  
+          'blue': '#ccccff',
           'green': '#ccffcc',
           'yellow': '#ffffcc',
           'purple': '#ffccff',
@@ -733,7 +806,16 @@ function renderGraph() {
           'cyan': '#ccffff',
           'pink': '#ffccdd'
         };
-        return colorMap[color.toLowerCase()] || '#ffffcc';
+        if (!color) return '#ffffcc';
+        const key = String(color).toLowerCase().trim();
+        if (colorMap[key]) return colorMap[key];
+        // Any other valid CSS color (named or hex): tint toward white so it reads
+        // as a soft state background, consistent with the built-in pastels above.
+        // Falls back to the default yellow only for genuinely invalid input. (#10)
+        const rgb = parseCssColor(color);
+        if (!rgb) return '#ffffcc';
+        const tint = (c) => Math.round(c + (255 - c) * 0.72);
+        return `rgb(${tint(rgb.r)}, ${tint(rgb.g)}, ${tint(rgb.b)})`;
       }
       
       const stateSubGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -868,7 +950,11 @@ function renderGraph() {
         // Use parsed offsets (no quadrant-based placement anymore)
         const boxX = laneX + xOffset - boxWidth / 2;
         const boxY = anchorY + yOffset - boxHeight / 2;
-        
+
+        // Record this box's extent so the canvas can grow to contain it. (#1)
+        contentBottom = Math.max(contentBottom, boxY + boxHeight);
+        contentTop = Math.min(contentTop, boxY);
+
         const connectLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
         connectLine.setAttribute("x1", laneX);
         connectLine.setAttribute("y1", anchorY);
@@ -1035,6 +1121,16 @@ function renderGraph() {
         }
       });
     }
+
+    // Grow the canvas to contain any content that overflowed the initial height
+    // or rose above the top (e.g. an info box dragged well below/above its
+    // anchor), so nothing is clipped. Pad by bottomPadding on the spilling side.
+    // The width is unchanged — only vertical overflow is in scope here. (#1)
+    const finalTop = contentTop < 0 ? contentTop - bottomPadding : 0;
+    const finalBottom = Math.max(svgHeight, contentBottom + bottomPadding);
+    const finalHeight = finalBottom - finalTop;
+    tempSvg.setAttribute('height', finalHeight);
+    tempSvg.setAttribute('viewBox', `0 ${finalTop} ${svgWidth} ${finalHeight}`);
 
     const exportedSvg = exportSVG(false, tempSvg);
     svgContainer.innerHTML = exportedSvg;
@@ -1231,6 +1327,13 @@ function loadSVGFile(event) {
           }
         } catch (cmErr) {
           console.warn('Could not update CodeMirror editor:', cmErr);
+        }
+
+        // If persistent text styling is on and this file specifies its own
+        // (different) styling, let the editor layer ask which to keep before we
+        // render (so persistence doesn't silently override the file).
+        if (typeof window !== 'undefined' && typeof window.flowdromBeforeLoadRender === 'function') {
+          try { window.flowdromBeforeLoadRender(); } catch (e) { /* never block loading */ }
         }
 
         // Re-render graph from the newly loaded config

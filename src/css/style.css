@@ -490,6 +490,19 @@ body { margin: 0; padding: 0; overflow: hidden; }
   font-size: var(--text-xs);
   color: var(--text-tertiary);
 }
+.flowdrom-editpop-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+}
+.flowdrom-editpop-foot .flowdrom-editpop-hint {
+  margin-top: 0;
+}
+.flowdrom-editpop-foot .btn {
+  padding: 4px 12px;
+  font-size: var(--text-xs);
+}
 .flowdrom-textedit {
   display: block;
   width: 100%;

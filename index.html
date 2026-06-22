@@ -60,8 +60,10 @@
       </div>
 
       <div class="toolbar__actions">
-        <button class="btn" type="button" onclick="newDiagram()">New</button>
-        <button class="btn btn--primary" type="button" onclick="renderGraph()">Render</button>
+        <button class="btn" type="button" onclick="(window.flowdromNewDiagram||newDiagram)()">New</button>
+        <button class="btn" type="button" onclick="flowdromUndo()" title="Undo (Ctrl/Cmd+Z)">Undo</button>
+        <button class="btn" type="button" onclick="flowdromRedo()" title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
+        <button class="btn btn--primary" type="button" onclick="(window.flowdromRender||renderGraph)()">Render</button>
         <button class="btn" type="button" onclick="canonizeJson()"
                 title="Sort, order and compact the JSON to the canonical guide style">Canonize</button>
         <span class="toolbar__sep" aria-hidden="true"></span>

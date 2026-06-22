@@ -1,2 +1,5 @@
 # Claude Code local tooling (preview launch config, etc.) — machine-specific
 .claude/
+
+# Local LLM benchmark rig — developer-only, not part of the shipped app
+eval/

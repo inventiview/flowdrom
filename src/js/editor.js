@@ -45,6 +45,15 @@
     return (typeof window !== 'undefined' && window.JSON5) || (typeof JSON5 !== 'undefined' ? JSON5 : null); // eslint-disable-line no-undef
   }
 
+  // Measure rendered text width for a given CSS font shorthand (cached canvas
+  // context). Used to grow the edit popover to fit the text as it's typed.
+  function measureTextWidth(text, font) {
+    const ctx = measureTextWidth._ctx || (measureTextWidth._ctx = document.createElement('canvas').getContext('2d'));
+    if (!ctx) return (text || '').length * 8; // canvas unavailable: rough fallback
+    ctx.font = font;
+    return ctx.measureText(text || '').width;
+  }
+
   // ========================================================================
   // Pure text helpers (exported for unit testing — no DOM dependency).
   // ========================================================================
@@ -481,7 +490,10 @@
   }
   function timeToY(t) { const L = layout(); return L.laneTop + t * L.timeStep; }
   function yToTime(y) { const L = layout(); return (y - L.laneTop) / L.timeStep; }
-  function snapTime(t) { return Math.max(0, Math.round(t / SNAP_TIME) * SNAP_TIME); }
+  // Snap to the time grid. Dividing/multiplying by 0.1 leaves binary FP noise
+  // (e.g. 2.8000000000000003), so scale by the integer inverse and round the
+  // result to keep clean values like 2.8.
+  function snapTime(t) { const inv = Math.round(1 / SNAP_TIME); return Math.max(0, Math.round(t * inv) / inv); }
 
   function getContainer() { return document.getElementById('svg-container'); }
   function diagramSvg() { const c = getContainer(); return c ? c.querySelector('svg:not(.flowdrom-edit-overlay)') : null; }
@@ -515,6 +527,8 @@
   let groupEditIndex = null; // index of the group being edited (null = creating new)
   let selection = [];        // multi-select: [{kind,index}] toggled via ctrl+click
   let groupDrag = null;      // in-progress group time-shift drag
+  let subLaneOf = null;      // { childIndex, childClean } while picking a parent lane
+  let subLaneBanner = null;  // the floating "click the parent lane" prompt bar
 
   // ========================================================================
   // Selection box (sibling div over the container) + item labelling.
@@ -669,6 +683,133 @@
     removeShiftBadge();
     if (d && d.moved && d.dt) { ignoreNextClick = true; commitGroupShift(d.dt); }
     else { renderSelectionBoxes(); }
+  }
+
+  // ---- rubber-band selection (drag on empty canvas) ---------------------
+  // Drag a rectangle over empty space to select every time-bearing item it
+  // touches, instead of ctrl+clicking each one. (#4)
+  let rubber = null;
+
+  function itemsInRect(rect) {
+    const out = []; const model = parseModel(); if (!model) return out;
+    const sets = [['message', model.messages], ['state', model.states], ['infoBox', model.infoBoxes]];
+    sets.forEach((pair) => {
+      const kind = pair[0]; (pair[1] || []).forEach((_, i) => {
+        const els = itemElements(kind, i); if (!els.length) return;
+        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+        for (const e of els) { const c = e.getBoundingClientRect(); l = Math.min(l, c.left); t = Math.min(t, c.top); r = Math.max(r, c.right); b = Math.max(b, c.bottom); }
+        if (!isFinite(l)) return;
+        // Non-greedy: the item must be fully enclosed by the rectangle, not just
+        // touched by it. (#4)
+        if (l >= rect.left && r <= rect.right && t >= rect.top && b <= rect.bottom) out.push({ kind: kind, index: i });
+      });
+    });
+    return out;
+  }
+  function startRubberBand(ev) {
+    closeMenu(); exitDrag();
+    const container = getContainer(); if (!container) return;
+    const el = document.createElement('div');
+    el.className = 'flowdrom-rubber';
+    el.style.cssText = 'position:absolute;pointer-events:none;border:1px dashed var(--edit-accent);background:var(--edit-accent-soft);border-radius:var(--radius-xs);z-index:7;';
+    container.appendChild(el);
+    rubber = { sx: ev.clientX, sy: ev.clientY, cx: ev.clientX, cy: ev.clientY, moved: false, el: el };
+    window.addEventListener('pointermove', onRubberMove, true);
+    window.addEventListener('pointerup', onRubberUp, true);
+    ev.preventDefault();
+  }
+  function onRubberMove(ev) {
+    if (!rubber) return;
+    rubber.cx = ev.clientX; rubber.cy = ev.clientY;
+    if (Math.abs(ev.clientX - rubber.sx) > 3 || Math.abs(ev.clientY - rubber.sy) > 3) rubber.moved = true;
+    const container = getContainer(); const c = container.getBoundingClientRect();
+    const l = Math.min(rubber.sx, rubber.cx), t = Math.min(rubber.sy, rubber.cy);
+    const r = Math.max(rubber.sx, rubber.cx), b = Math.max(rubber.sy, rubber.cy);
+    rubber.el.style.left = (l - c.left + container.scrollLeft) + 'px';
+    rubber.el.style.top = (t - c.top + container.scrollTop) + 'px';
+    rubber.el.style.width = (r - l) + 'px';
+    rubber.el.style.height = (b - t) + 'px';
+  }
+  function onRubberUp() {
+    window.removeEventListener('pointermove', onRubberMove, true);
+    window.removeEventListener('pointerup', onRubberUp, true);
+    const rb = rubber; rubber = null;
+    if (rb && rb.el && rb.el.parentNode) rb.el.parentNode.removeChild(rb.el);
+    if (!rb) return;
+    if (!rb.moved) { clearSelection(); return; } // a plain click on empty space
+    const rect = { left: Math.min(rb.sx, rb.cx), top: Math.min(rb.sy, rb.cy), right: Math.max(rb.sx, rb.cx), bottom: Math.max(rb.sy, rb.cy) };
+    selection = itemsInRect(rect);
+    renderSelectionBoxes();
+    ignoreNextClick = true; // swallow the click that ends the drag
+  }
+
+  // ---- multi-selection actions (menu on right-click inside selection) ----
+
+  function setSelectionField(items, field, literal) {
+    const ed = getEditor(); if (!ed) return;
+    let text = ed.getValue();
+    items.forEach((it) => { // field edits don't shift indices, so order is free
+      const key = SECTION_BY_KIND[it.kind]; if (!key) return;
+      const t = setOrInsertField(text, key, it.index, field, literal);
+      if (t != null) text = t;
+    });
+    applyText(text); renderSelectionBoxes();
+  }
+  function deleteSelection() {
+    const ed = getEditor(); if (!ed) return;
+    let text = ed.getValue();
+    const byKind = {};
+    selection.forEach((it) => { (byKind[it.kind] = byKind[it.kind] || []).push(it.index); });
+    Object.keys(byKind).forEach((kind) => {
+      const key = SECTION_BY_KIND[kind]; if (!key) return;
+      byKind[kind].sort((a, b) => b - a).forEach((i) => { const t = deleteArrayElement(text, key, i); if (t != null) text = t; });
+    });
+    clearSelection(); exitDrag(); applyText(text);
+  }
+  function cloneWithOffset(obj, kind, dt) {
+    const c = Object.assign({}, obj); const r3 = (x) => parseFloat((x).toFixed(3));
+    if (kind === 'message' || kind === 'state') { if (c.fromTime != null) c.fromTime = r3(c.fromTime + dt); if (c.toTime != null) c.toTime = r3(c.toTime + dt); }
+    else if (kind === 'infoBox') { if (c.time != null) c.time = r3(c.time + dt); }
+    return c;
+  }
+  // Duplicate each given item one time-unit below, then select the copies so they
+  // can be dragged into place (works for a single item or a multi-selection). (#2)
+  function duplicateItems(items) {
+    const ed = getEditor(); const model = parseModel(); const J = getJSON5();
+    if (!ed || !model || !J || !items.length) return;
+    const dt = 1; let text = ed.getValue(); const newSel = [];
+    const arrs = { message: model.messages || [], state: model.states || [], infoBox: model.infoBoxes || [] };
+    const counts = { message: arrs.message.length, state: arrs.state.length, infoBox: arrs.infoBox.length };
+    items.forEach((it) => {
+      const arr = arrs[it.kind]; if (!arr || !arr[it.index]) return;
+      const key = SECTION_BY_KIND[it.kind]; if (!key) return;
+      const literal = J.stringify(cloneWithOffset(arr[it.index], it.kind, dt));
+      const t = insertArrayElement(text, key, literal); // appends → new index = current length
+      if (t != null) { text = t; newSel.push({ kind: it.kind, index: counts[it.kind] }); counts[it.kind]++; }
+    });
+    selection = newSel;
+    applyText(text); renderSelectionBoxes();
+  }
+  function duplicateSelection() { duplicateItems(selection); }
+  function showSelectionColorMenu(clientX, clientY) {
+    const colorable = selection.filter((s) => HAS_COLOR[s.kind]);
+    const menu = buildMenu(clientX, clientY);
+    addHeader(menu, 'Color ' + colorable.length + ' items:');
+    PALETTE.forEach((c) => addRow(menu, c, () => { closeMenu(); setSelectionField(colorable, 'color', quote(c)); }, { swatch: c }));
+    addRow(menu, 'Custom…', () => { showTextInput(clientX, clientY, '', (v) => { if (v && v.trim()) setSelectionField(colorable, 'color', quote(v.trim())); }, 'Custom color'); });
+  }
+  function showSelectionMenu(clientX, clientY) {
+    const menu = buildMenu(clientX, clientY);
+    addHeader(menu, selection.length + ' items selected');
+    addRow(menu, '✥  Drag the box to move in time', () => { closeMenu(); }, { muted: true });
+    addRow(menu, '⧉  Duplicate (below)', () => { closeMenu(); duplicateSelection(); });
+    if (selection.some((s) => HAS_COLOR[s.kind])) addRow(menu, '●  Change color ▸', () => { showSelectionColorMenu(clientX, clientY); });
+    const styleable = selection.filter((s) => HAS_STYLE[s.kind]);
+    if (styleable.length) {
+      addRow(menu, '┄  Make dashed', () => { closeMenu(); setSelectionField(styleable, 'style', quote('dashed')); });
+      addRow(menu, '─  Make solid', () => { closeMenu(); setSelectionField(styleable, 'style', quote('solid')); });
+    }
+    addRow(menu, '✕  Delete all', () => { closeMenu(); deleteSelection(); });
   }
 
   function itemElements(kind, index) {
@@ -894,11 +1035,20 @@
     if (item.kind === 'lane') {
       addRow(menu, '✥  Drag', () => { closeMenu(); enterDrag(item); });
       addRow(menu, '✎  Rename…', () => { renameLanePrompt(item, clientX, clientY); });
-      addRow(menu, '⌹  Make sub-lane of…', () => { convertLanePrompt(item, clientX, clientY); });
-      addRow(menu, '▦  Make medium lane', () => { closeMenu(); convertLane(item, 'medium'); });
+      const laneClean = parseLanePrefix(model.lanes[item.index]).clean;
+      const isMedium = laneClean.startsWith('_') && laneClean.endsWith('_') && laneClean.length > 1;
+      const isSub = laneClean.includes('.');
+      if (isMedium || isSub) {
+        addRow(menu, '▮  Make primary lane', () => { closeMenu(); makeLanePrimary(item); });
+      } else {
+        addRow(menu, '⌹  Make sub-lane of…', () => { closeMenu(); startSubLaneSelect(item); });
+        addRow(menu, '▦  Make medium lane', () => { closeMenu(); convertLane(item, 'medium'); });
+      }
     } else if (DRAGGABLE[item.kind]) {
       addRow(menu, '✥  Drag', () => { closeMenu(); enterDrag(item); });
     }
+
+    if (SHIFTABLE[item.kind]) addRow(menu, '⧉  Duplicate', () => { closeMenu(); duplicateItems([item]); });
 
     if (TEXTABLE[item.kind]) {
       const label = hasText(item, model) ? '✎  Edit text…' : '✎  Add text…';
@@ -933,15 +1083,68 @@
     const text = renameLane(ed.getValue(), clean, nn);
     if (text != null) applyText(text);
   }
-  function convertLanePrompt(item, clientX, clientY) {
+  // Revert a sub-lane or medium lane back to a primary lane: drop the parent
+  // (Parent.Sub → Sub) or the medium underscores (_X_ → X). renameLane cascades
+  // the change to every reference. (lane menu)
+  function makeLanePrimary(item) {
     const ed = getEditor(); const model = parseModel();
     if (!ed || !model) return;
     const clean = parseLanePrefix(model.lanes[item.index]).clean;
-    showTextInput(clientX, clientY, '', (parent) => {
-      const p = (parent || '').trim(); if (!p) return;
-      const text = renameLane(ed.getValue(), clean, p + '.' + clean);
-      if (text != null) applyText(text);
-    }, 'Make sub-lane of');
+    let nn = clean;
+    if (clean.includes('.')) {
+      const parts = clean.split('.');
+      const mains = new Set((model.lanes || []).map((l) => parseLanePrefix(l).clean).filter((c) => !c.includes('.')));
+      if (mains.has(parts[0])) nn = parts.slice(1).join('.');   // Parent.Sub → Sub
+      else if (mains.has(parts[1])) nn = parts[0];              // legacy Sub.Parent → Sub
+      else nn = parts.slice(1).join('.') || parts[0];           // fallback: drop first segment
+    } else if (clean.startsWith('_') && clean.endsWith('_')) {
+      nn = clean.replace(/^_+|_+$/g, '');                       // _X_ → X
+    }
+    if (nn && nn !== clean) { const text = renameLane(ed.getValue(), clean, nn); if (text != null) applyText(text); }
+  }
+  // Pick-a-parent-lane mode for "Make sub-lane of…": after choosing the action on
+  // a lane, the next lane you click becomes its parent — more direct than typing
+  // the parent's name. Esc / right-click / clicking empty space cancels. (#6)
+  function startSubLaneSelect(item) {
+    exitDrag(); cancelCreating(); endGroupSelect();
+    const model = parseModel(); if (!model) return;
+    const childClean = parseLanePrefix(model.lanes[item.index]).clean;
+    subLaneOf = { childIndex: item.index, childClean: childClean };
+    const c = getContainer(); if (c) c.style.cursor = 'crosshair';
+    showSubLaneBanner(childClean);
+  }
+  function showSubLaneBanner(childClean) {
+    endSubLaneBanner();
+    const b = document.createElement('div');
+    b.className = 'flowdrom-group-banner';
+    const span = document.createElement('span');
+    span.textContent = 'Click the parent lane for “' + childClean + '”';
+    const cancel = document.createElement('button');
+    cancel.textContent = 'Cancel'; cancel.className = 'btn';
+    cancel.addEventListener('click', endSubLaneSelect);
+    b.appendChild(span); b.appendChild(cancel);
+    document.body.appendChild(b);
+    subLaneBanner = b;
+  }
+  function endSubLaneBanner() { if (subLaneBanner && subLaneBanner.parentNode) subLaneBanner.parentNode.removeChild(subLaneBanner); subLaneBanner = null; }
+  function endSubLaneSelect() {
+    subLaneOf = null;
+    const c = getContainer(); if (c && c.style.cursor === 'crosshair') c.style.cursor = '';
+    endSubLaneBanner();
+  }
+  // Convert the pending child into a sub-lane of the clicked parent. Only a main
+  // lane (no '.') can be a parent, so we never create a 3-part composite name.
+  function applySubLaneParent(parentIndex) {
+    if (!subLaneOf) return;
+    const childIndex = subLaneOf.childIndex, childClean = subLaneOf.childClean;
+    endSubLaneSelect();
+    if (parentIndex === childIndex) return;
+    const ed = getEditor(); const model = parseModel();
+    if (!ed || !model) return;
+    const parentClean = parseLanePrefix(model.lanes[parentIndex]).clean;
+    if (!parentClean || parentClean.includes('.') || parentClean === childClean) return;
+    const text = renameLane(ed.getValue(), childClean, parentClean + '.' + childClean);
+    if (text != null) applyText(text);
   }
 
   function currentField(model, item, field) {
@@ -1006,7 +1209,7 @@
       const nv = (v || '').trim(); if (!nv) return;
       const text = renameLane(ed.getValue(), pp.clean, nv);
       if (text != null) applyText(text);
-    }, 'Rename lane');
+    }, 'Rename lane', true);
   }
 
   function deleteItem(item) {
@@ -1053,7 +1256,12 @@
 
   // Reusable inline text popover: a small captioned card with an input.
   // Commits on Enter/blur, cancels on Escape. `label` is an optional caption.
-  function showTextInput(clientX, clientY, initial, onCommit, label) {
+  // When `multiline` is set, the popover uses a textarea and the diagram's '|'
+  // line-break convention is shown as real newlines. Enter (or the Save button /
+  // clicking away) saves; Alt+Enter inserts a line break. The value is converted
+  // back to '|' for the model, so callers keep passing/receiving '|'-encoded
+  // text. The popover width fits the longest line. (#12)
+  function showTextInput(clientX, clientY, initial, onCommit, label, multiline) {
     closeMenu();
     const pop = document.createElement('div');
     pop.className = 'flowdrom-editpop';
@@ -1065,18 +1273,58 @@
     cap.textContent = label || 'Edit';
     pop.appendChild(cap);
 
-    const inp = document.createElement('input');
-    inp.type = 'text';
-    inp.value = initial || '';
+    const inp = document.createElement(multiline ? 'textarea' : 'input');
+    if (!multiline) inp.type = 'text';
+    inp.value = multiline ? String(initial || '').replace(/\|/g, '\n') : (initial || '');
     inp.className = 'flowdrom-textedit';
+    if (multiline) {
+      // Start at exactly the number of displayed lines (1 for new text).
+      inp.rows = Math.min(12, Math.max(1, inp.value.split('\n').length));
+      inp.style.resize = 'vertical';
+      inp.wrap = 'off'; // lines break only on Enter; long lines scroll, not soft-wrap
+    }
     pop.appendChild(inp);
 
-    const hint = document.createElement('div');
+    // Footer: short hint + explicit Cancel/Save buttons, so multi-line edits have
+    // an obvious save target instead of relying on a key chord. (#12)
+    const footer = document.createElement('div');
+    footer.className = 'flowdrom-editpop-foot';
+    const hint = document.createElement('span');
     hint.className = 'flowdrom-editpop-hint';
-    hint.textContent = '↵ to save · esc to cancel';
-    pop.appendChild(hint);
+    hint.textContent = multiline ? 'Enter = save · Alt+Enter = new line' : 'Enter = save';
+    const spacer = document.createElement('span');
+    spacer.style.flex = '1';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button'; cancelBtn.className = 'btn'; cancelBtn.textContent = 'Cancel';
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button'; saveBtn.className = 'btn btn--primary'; saveBtn.textContent = 'Save';
+    footer.appendChild(hint); footer.appendChild(spacer); footer.appendChild(cancelBtn); footer.appendChild(saveBtn);
+    pop.appendChild(footer);
 
     document.body.appendChild(pop);
+
+    // Grow the box to fit the typed text, per line, so it mirrors how the text
+    // will be displayed — it widens as you type and only wraps when you press
+    // Enter (which starts a new line). (#12)
+    const csInp = getComputedStyle(inp);
+    const fontCss = (csInp.font && csInp.font.trim())
+      ? csInp.font
+      : (csInp.fontStyle + ' ' + csInp.fontWeight + ' ' + csInp.fontSize + ' ' + csInp.fontFamily);
+    function autosize() {
+      const ls = inp.value.split('\n');
+      // Rows first (and independent of measurement) so the height always tracks
+      // the exact number of displayed lines, even if width sizing is skipped.
+      if (multiline) inp.rows = Math.min(12, Math.max(1, ls.length));
+      let w = measureTextWidth(label || '', fontCss); // never narrower than the caption
+      for (const ln of ls) w = Math.max(w, measureTextWidth(ln, fontCss));
+      pop.style.width = Math.min(680, Math.max(280, Math.ceil(w) + 48)) + 'px';
+      // Re-clamp horizontally if growth pushed the box past the viewport edge.
+      const r = pop.getBoundingClientRect();
+      if (r.right > window.innerWidth) pop.style.left = Math.max(8, window.innerWidth - r.width - 8) + 'px';
+    }
+    autosize();
+    inp.addEventListener('input', autosize);
+
     // Keep the popover within the viewport.
     requestAnimationFrame(() => {
       const r = pop.getBoundingClientRect();
@@ -1087,16 +1335,44 @@
     let done = false;
     const finish = (commit) => {
       if (done) return; done = true;
-      const v = inp.value;
+      const v = multiline ? inp.value.replace(/\n/g, '|') : inp.value;
       if (pop.parentNode) pop.parentNode.removeChild(pop);
       if (commit) onCommit(v);
     };
     inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      // A lone Alt would otherwise move focus to the browser menu bar (blurring
+      // the field); suppress its default so focus stays put. Alt+Enter etc. still
+      // work (those arrive as the Enter keydown with e.altKey).
+      if (e.key === 'Alt') { e.preventDefault(); e.stopPropagation(); return; }
+      if (e.key === 'Enter') {
+        if (multiline && e.altKey) { // Alt+Enter inserts a line break
+          e.preventDefault();
+          const s = inp.selectionStart, en = inp.selectionEnd, val = inp.value;
+          inp.value = val.slice(0, s) + '\n' + val.slice(en);
+          inp.selectionStart = inp.selectionEnd = s + 1;
+          autosize();
+        } else { e.preventDefault(); finish(true); } // Enter saves
+      } else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
       e.stopPropagation(); // don't let Escape reach the global handler
     });
-    inp.addEventListener('blur', () => finish(true));
+    // Some browsers toggle the menu bar on the Alt keyup; suppress that too.
+    inp.addEventListener('keyup', (e) => { if (e.key === 'Alt') { e.preventDefault(); e.stopPropagation(); } });
+    inp.addEventListener('blur', () => {
+      // Defer and verify: tapping Alt (or any browser chrome — menu bar, devtools,
+      // alt-tab) blurs the field without the user meaning to commit. Only save
+      // when focus truly moved elsewhere in the page; if the chrome stole it,
+      // restore focus and stay open.
+      setTimeout(() => {
+        if (done) return;
+        if (!document.hasFocus()) { try { inp.focus(); } catch (_) {} return; }
+        finish(true);
+      }, 0);
+    });
+    // Keep the input focused on button mousedown so the blur-save doesn't fire
+    // before the click; act on click.
+    [cancelBtn, saveBtn].forEach((b) => b.addEventListener('mousedown', (e) => e.preventDefault()));
+    cancelBtn.addEventListener('click', (e) => { e.stopPropagation(); finish(false); });
+    saveBtn.addEventListener('click', (e) => { e.stopPropagation(); finish(true); });
     setTimeout(() => { inp.focus(); inp.select(); }, 0);
   }
 
@@ -1109,16 +1385,16 @@
     if (item.kind === 'message' || item.kind === 'legend') {
       const arr = item.kind === 'message' ? model.messages : model.legend;
       const pm = parseLabelMarkers((arr[item.index] || {}).label || '');
-      showTextInput(clientX, clientY, pm.text, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(pm.markers + v))), item.kind === 'legend' ? 'Legend label' : 'Message label');
+      showTextInput(clientX, clientY, pm.text, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(pm.markers + v))), item.kind === 'legend' ? 'Legend label' : 'Message label', true);
     } else if (item.kind === 'state') {
-      showTextInput(clientX, clientY, (model.states[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'State label');
+      showTextInput(clientX, clientY, (model.states[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'State label', true);
     } else if (item.kind === 'laneGroup') {
-      showTextInput(clientX, clientY, (model.laneGroups[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Group name');
+      showTextInput(clientX, clientY, (model.laneGroups[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Group name', true);
     } else if (item.kind === 'infoBox') {
       const off = parseInfoOffset((model.infoBoxes[item.index] || {}).text || '');
-      showTextInput(clientX, clientY, off.rest, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'text', quote(buildInfoText(off.x, off.y, v)))), 'Info box text');
+      showTextInput(clientX, clientY, off.rest, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'text', quote(buildInfoText(off.x, off.y, v)))), 'Info box text', true);
     } else if (item.kind === 'title') {
-      showTextInput(clientX, clientY, model.title || '', (v) => commit()(setTopField(ed.getValue(), 'title', quote(v))), 'Diagram title');
+      showTextInput(clientX, clientY, model.title || '', (v) => commit()(setTopField(ed.getValue(), 'title', quote(v))), 'Diagram title', true);
     }
   }
   // Does the item currently have non-empty text?
@@ -1432,6 +1708,51 @@
     if (typeof window.renderGraph === 'function') window.renderGraph();
   }
 
+  // Undo/redo for graphical edits. Each graphical edit calls ed.setValue with a
+  // non-coalescing "setValue" origin, so CodeMirror's own history already records
+  // one step per edit. We drive it through here so undo/redo also work from the
+  // canvas (toolbar buttons + keyboard), always re-render the diagram, and clear
+  // any transient editor UI (open menu, drag handles, selection). (#7)
+  function doUndoRedo(kind) {
+    const ed = getEditor(); if (!ed) return;
+    closeMenu(); exitDrag(); cancelCreating(); endGroupSelect(); endSubLaneSelect(); clearSelection();
+    if (kind === 'redo') ed.redo(); else ed.undo();
+    const ta = document.getElementById('input'); if (ta) ta.value = ed.getValue();
+    if (typeof window !== 'undefined' && typeof window.renderGraph === 'function') window.renderGraph();
+  }
+  if (typeof window !== 'undefined') {
+    window.flowdromUndo = function () { doUndoRedo('undo'); };
+    window.flowdromRedo = function () { doUndoRedo('redo'); };
+  }
+
+  // Guided "New": walk through title → lanes, each pre-filled with a default, so a
+  // fresh diagram starts usable (lanes already drawn) instead of blank. Enter/Save
+  // advances; Esc/Cancel at any step aborts without touching the current diagram. (#3)
+  function buildNewDiagram(title, lanes) {
+    keepLoadedStyling = false; keptSignature = null; // a fresh graph should pick up persistent styling
+    const ed = getEditor(); const J = getJSON5(); if (!ed || !J) return;
+    const model = { title: title || 'Untitled', lanes: lanes || [], messages: [] };
+    let text;
+    try { text = (typeof window !== 'undefined' && typeof window.formatConfig === 'function') ? window.formatConfig(model) : J.stringify(model, null, 2); }
+    catch (e) { text = J.stringify(model, null, 2); }
+    ed.setValue(text);
+    const ta = document.getElementById('input'); if (ta) ta.value = text;
+    if (typeof window !== 'undefined' && typeof window.renderGraph === 'function') window.renderGraph();
+  }
+  function guidedNewDiagram() {
+    closeMenu(); exitDrag(); cancelCreating(); endGroupSelect(); endSubLaneSelect(); clearSelection();
+    const cx = Math.max(8, Math.round((typeof window !== 'undefined' ? window.innerWidth : 600) / 2) - 150);
+    const cy = 90;
+    showTextInput(cx, cy, 'Untitled', (title) => {
+      const t = (title || '').trim() || 'Untitled';
+      showTextInput(cx, cy, 'Client, Server', (lanesStr) => {
+        const lanes = String(lanesStr || '').split(',').map((s) => s.trim()).filter(Boolean);
+        buildNewDiagram(t, lanes);
+      }, 'Lane names (comma-separated)');
+    }, 'New diagram title');
+  }
+  if (typeof window !== 'undefined') window.flowdromNewDiagram = guidedNewDiagram;
+
   // ========================================================================
   // Wiring.
   // ========================================================================
@@ -1442,6 +1763,11 @@
     if (groupSelecting) { // toggle lane membership
       const lane = candidatesAt(e.clientX, e.clientY).find((c) => c.kind === 'lane');
       if (lane) { if (groupSelecting.has(lane.index)) groupSelecting.delete(lane.index); else groupSelecting.add(lane.index); rebuildOverlay(); updateGroupBanner(); }
+      return;
+    }
+    if (subLaneOf) { // pick a parent lane (or cancel on a non-lane click)
+      const lane = candidatesAt(e.clientX, e.clientY).find((c) => c.kind === 'lane');
+      if (lane) applySubLaneParent(lane.index); else endSubLaneSelect();
       return;
     }
     if (creating) return; // a draw gesture is pending; ignore plain clicks
@@ -1470,6 +1796,25 @@
     clearSelection();
   }
 
+  // Double-click = the item's most common single action, skipping the menu: edit
+  // text for labelled items, rename for a lane. Falls back to the menu when there
+  // is no obvious default. (#8)
+  function primaryAction(item, clientX, clientY) {
+    if (item.kind === 'lane') { renameLanePrompt(item, clientX, clientY); return; }
+    if (TEXTABLE[item.kind]) { editText(item, clientX, clientY); return; }
+    showActions(item, clientX, clientY);
+  }
+  function onCanvasDblClick(e) {
+    if (e.ctrlKey || e.metaKey) return;
+    if (creating || groupSelecting || subLaneOf || dragItem) return;
+    const cands = candidatesAt(e.clientX, e.clientY);
+    if (!cands.length) return;
+    e.preventDefault();
+    closeMenu();
+    clearSelection();
+    primaryAction(cands[0], e.clientX, e.clientY);
+  }
+
   // ---- creation ----
 
   function showCreateMenu(clientX, clientY) {
@@ -1484,6 +1829,97 @@
     addRow(menu, '⚙  Text styling…', () => { closeMenu(); showOptionsPanel(); });
   }
 
+  // ---- persistent text styling (saved in localStorage, applied to every graph) ----
+  const TEXT_STYLE_KEY = 'flowdrom:textStyling';
+  function getPersistentStyle() { try { const s = localStorage.getItem(TEXT_STYLE_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function isStylePersistent() { return getPersistentStyle() != null; }
+  function savePersistentStyle(opts) { try { localStorage.setItem(TEXT_STYLE_KEY, JSON.stringify(opts || {})); } catch (e) { /* private mode etc. */ } }
+  function clearPersistentStyle() { try { localStorage.removeItem(TEXT_STYLE_KEY); } catch (e) { /* ignore */ } }
+  function currentOptions() { const m = parseModel(); return (m && m.options) ? m.options : {}; }
+
+  // Order-independent structural compare (the options block may be emitted in any
+  // key order), used to know when the current graph is already in sync.
+  function stableStr(o) {
+    if (o == null) return 'null';
+    if (typeof o !== 'object') return JSON.stringify(o);
+    if (Array.isArray(o)) return '[' + o.map(stableStr).join(',') + ']';
+    return '{' + Object.keys(o).sort().map((k) => JSON.stringify(k) + ':' + stableStr(o[k])).join(',') + '}';
+  }
+  function optionsEqual(a, b) { return stableStr(a || {}) === stableStr(b || {}); }
+
+  // Replace / insert / remove the whole top-level `options` object.
+  function setOptionsObject(text, options) {
+    const J = getJSON5(); if (!J) return text;
+    const loc = locateObjectValue(text, 'options');
+    const has = options && Object.keys(options).length > 0;
+    if (!has) {
+      if (!loc) return text;
+      let s = loc.open, e2 = loc.close + 1;
+      const before = text.slice(0, s);
+      const km = /(,?\s*)options\s*:\s*$/.exec(before);
+      if (km) s = before.length - km[0].length;
+      if (text[e2] === ',') e2++;
+      return text.slice(0, s) + text.slice(e2);
+    }
+    const body = J.stringify(options, null, 2);
+    if (loc) return text.slice(0, loc.open) + body + text.slice(loc.close + 1);
+    const open = text.indexOf('{'); if (open < 0) return text;
+    return text.slice(0, open + 1) + '\n  options: ' + body + ',' + text.slice(open + 1);
+  }
+
+  // When persistence is on, stamp the saved options onto whatever graph is
+  // rendered, so every graph (new, loaded, pasted) uses it. Driven from the
+  // render hook; the re-entrancy guard + equality check prevent a render loop.
+  let plantingStyle = false;
+  let keepLoadedStyling = false; // set when the user opts to keep a graph's own styling over the saved one
+  let keptSignature = null;      // signature of the kept options, so Render doesn't re-prompt for the same styling
+  function applyPersistentStyling() {
+    if (plantingStyle || keepLoadedStyling) return;
+    const opts = getPersistentStyle(); if (!opts) return; // off
+    const ed = getEditor(); const J = getJSON5(); if (!ed || !J) return;
+    let model; try { model = J.parse(ed.getValue()); } catch (e) { return; }
+    if (optionsEqual(model.options, opts)) return; // already in sync
+    const text = setOptionsObject(ed.getValue(), opts);
+    if (text == null || text === ed.getValue()) return;
+    plantingStyle = true;
+    try { applyText(text); } finally { plantingStyle = false; }
+  }
+
+  // Commit a styling edit. While persistent, update the saved preference *first*
+  // so the render hook keeps the change instead of reverting to the old setting.
+  function commitStyle(text) {
+    if (text == null) return;
+    if (isStylePersistent()) { try { savePersistentStyle((getJSON5().parse(text).options) || {}); } catch (e) { /* ignore */ } }
+    applyText(text);
+  }
+
+  // When persistence is on and the current graph (just loaded, or hand-edited in
+  // the JSON panel) carries its own, different styling, ask which should win
+  // before rendering — otherwise persistence stamps over it. `force` re-asks even
+  // for styling previously kept (used on an explicit Load); the Render button
+  // passes force=false so it doesn't re-prompt for the same styling each time.
+  function resolveStyleConflict(force) {
+    const persisted = getPersistentStyle();
+    if (!persisted) { keepLoadedStyling = false; keptSignature = null; return; } // persistence off
+    const model = parseModel();
+    const loadedOpts = (model && model.options) || {};
+    // Conflict = applying persistence would change the look. A graph with *no*
+    // options still has an effective (default) styling, so empty-vs-saved counts
+    // as a conflict too — only skip when it already matches the saved styling.
+    if (optionsEqual(loadedOpts, persisted)) { keepLoadedStyling = false; keptSignature = null; return; }
+    const sig = stableStr(loadedOpts);
+    if (!force && keepLoadedStyling && sig === keptSignature) return; // already chose to keep this exact styling
+    const keepIt = (typeof window !== 'undefined' && typeof window.confirm === 'function')
+      ? window.confirm('This diagram\'s text styling differs from your saved styling.\nOK = keep the diagram\'s · Cancel = use your saved')
+      : false;
+    keepLoadedStyling = keepIt;
+    keptSignature = keepIt ? sig : null;
+  }
+  if (typeof window !== 'undefined') {
+    window.flowdromBeforeLoadRender = function () { resolveStyleConflict(true); };  // Load SVG: always re-evaluate
+    window.flowdromRender = function () { resolveStyleConflict(false); if (typeof window.renderGraph === 'function') window.renderGraph(); };
+  }
+
   // Global text styling panel — edits the options.<entity>.{textSize,textColor}.
   function showOptionsPanel() {
     const ed = getEditor(); if (!ed) return;
@@ -1492,6 +1928,14 @@
     const panel = document.createElement('div');
     panel.className = 'flowdrom-options-panel';
     const h = document.createElement('div'); h.textContent = 'Text styling (blank = default)'; h.style.cssText = 'font-weight:600;margin-bottom:8px;font-size:15px;'; panel.appendChild(h);
+    // Persist toggle: when on, this styling is saved and stamped onto every graph.
+    const persist = document.createElement('label');
+    persist.style.cssText = 'display:flex;align-items:center;gap:7px;margin-bottom:10px;font-size:13px;cursor:pointer;';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = isStylePersistent();
+    const cbl = document.createElement('span'); cbl.textContent = 'Make persistent (apply this styling to every graph)';
+    persist.appendChild(cb); persist.appendChild(cbl);
+    cb.addEventListener('change', () => { if (cb.checked) savePersistentStyle(currentOptions()); else clearPersistentStyle(); });
+    panel.appendChild(persist);
     const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:auto 70px 110px;gap:6px 10px;align-items:center;'; panel.appendChild(grid);
     const hdr = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'color:var(--text-tertiary);font-size:11px;'; return d; };
     grid.appendChild(hdr('Entity')); grid.appendChild(hdr('Size')); grid.appendChild(hdr('Color'));
@@ -1502,8 +1946,8 @@
       if (typeof cur.textSize === 'number') size.value = cur.textSize;
       const color = document.createElement('input'); color.type = 'text'; color.placeholder = 'default'; color.className = 'opt-color'; color.setAttribute('data-ent', ent); color.style.width = '100px';
       if (cur.textColor && cur.textColor !== 'default') color.value = cur.textColor;
-      size.addEventListener('change', () => { const v = size.value.trim() === '' ? null : parseFloat(size.value); const t = setOption(ed.getValue(), ent, 'textSize', v); if (t != null) applyText(t); });
-      color.addEventListener('change', () => { const v = color.value.trim() === '' ? null : color.value.trim(); const t = setOption(ed.getValue(), ent, 'textColor', v); if (t != null) applyText(t); });
+      size.addEventListener('change', () => { const v = size.value.trim() === '' ? null : parseFloat(size.value); commitStyle(setOption(ed.getValue(), ent, 'textSize', v)); });
+      color.addEventListener('change', () => { const v = color.value.trim() === '' ? null : color.value.trim(); commitStyle(setOption(ed.getValue(), ent, 'textColor', v)); });
       grid.appendChild(name); grid.appendChild(size); grid.appendChild(color);
     });
     const close = document.createElement('button'); close.textContent = 'Close'; close.className = 'btn'; close.style.marginTop = '10px'; close.addEventListener('click', () => panel.remove());
@@ -1512,12 +1956,11 @@
   }
 
   function addLegendEntry(clientX, clientY) {
-    const ed = getEditor(); if (!ed) return;
-    showTextInput(clientX, clientY, '', (v) => {
-      const label = (v || '').trim() || 'legend';
-      const text = insertArrayElement(ed.getValue(), 'legend', '{ label: ' + quote(label) + ", color: 'black', style: 'solid' }");
-      if (text != null) applyText(text);
-    }, 'New legend entry');
+    createWithPrompts('legend', {}, [
+      { key: 'label', label: 'Legend label', def: 'legend', multiline: true },
+      { key: 'color', label: 'Color', def: 'black' },
+      { key: 'style', label: 'Style (solid / dashed)', def: 'solid' },
+    ], clientX, clientY);
   }
 
   // ---- lane-group multi-select ----
@@ -1536,7 +1979,7 @@
   }
   function updateGroupBanner() { if (groupBanner) { const c = groupBanner.querySelector('.cnt'); if (c) c.textContent = groupSelecting ? groupSelecting.size : 0; } }
   function startGroupSelect(editIndex) {
-    exitDrag(); creating = null;
+    exitDrag(); creating = null; endSubLaneSelect();
     groupSelecting = new Set();
     groupEditIndex = (typeof editIndex === 'number') ? editIndex : null;
     if (groupEditIndex != null) {
@@ -1563,10 +2006,11 @@
       const lit = '{ label: ' + quote(label) + ', lanes: [' + cleans.map(quote).join(', ') + '] }';
       const text = insertArrayElement(ed.getValue(), 'laneGroups', lit);
       if (text != null) applyText(text);
-    }, 'Group name');
+    }, 'Group name', true);
   }
 
   function startCreating(kind) {
+    endSubLaneSelect();
     creating = kind;
     const c = getContainer();
     if (c) c.style.cursor = 'crosshair';
@@ -1620,6 +2064,46 @@
     }
   }
 
+  // Create a new element immediately from its geometry + field defaults (so it
+  // appears on the canvas at once), then prompt for each field in sequence — each
+  // pre-filled with its default and applied live, so the element updates after
+  // every Enter. A field left at its default is skipped (no edit), so accepting
+  // defaults doesn't pile up undo steps. `geom` holds the fixed fields
+  // (path/lane/times); `fields` is { key, label, def, omitIfEmpty, multiline }.
+  // Esc/Cancel just stops prompting — the element drawn so far stays. (add-element prompts)
+  function createWithPrompts(kind, geom, fields, clientX, clientY) {
+    const J = getJSON5(); const ed = getEditor(); if (!J || !ed) return;
+    const key = SECTION_BY_KIND[kind]; if (!key) return;
+    const model = parseModel();
+    const index = (model && model[key]) ? model[key].length : 0; // append target
+    const obj = Object.assign({}, geom);
+    Object.keys(obj).forEach((k) => { if (typeof obj[k] === 'number') obj[k] = parseFloat(obj[k].toFixed(3)); }); // strip FP noise from times
+    fields.forEach((f) => { if (!f.omitIfEmpty) obj[f.key] = f.def; }); // seed defaults (optional-empty fields like a label stay unset)
+    const seeded = insertArrayElement(ed.getValue(), key, J.stringify(obj));
+    if (seeded == null) return;
+    applyText(seeded);
+    highlightItem({ kind: kind, index: index });
+
+    let i = 0;
+    function step() {
+      if (i >= fields.length) { clearSelBox(); return; }
+      const f = fields[i++];
+      showTextInput(clientX, clientY, f.def, (v) => {
+        const val = (v == null ? '' : String(v));
+        const desired = (val.trim() === '') ? f.def : val;
+        const m = parseModel();
+        const cur = (m && m[key] && m[key][index]) ? m[key][index][f.key] : undefined;
+        if (desired !== '' && String(cur == null ? '' : cur) !== desired) { // commit only real changes
+          const t = setOrInsertField(ed.getValue(), key, index, f.key, quote(desired));
+          if (t != null) applyText(t);
+        }
+        highlightItem({ kind: kind, index: index });
+        step();
+      }, f.label, f.multiline);
+    }
+    step();
+  }
+
   function onCreateUp(ev) {
     window.removeEventListener('pointermove', onCreateMove, true);
     window.removeEventListener('pointerup', onCreateUp, true);
@@ -1628,40 +2112,36 @@
     cancelCreating();
     ignoreNextClick = true;
     if (!d) return;
-    const ed = getEditor(); if (!ed) return;
-    let text = ed.getValue(), literal = null, key = null;
+    const x = ev.clientX, y = ev.clientY;
 
     if (wasCreating === 'infoBox') {
       const lane = nearestLaneClean(d.start.x);
       const t = snapTime(yToTime(d.start.y));
       if (lane == null) return;
-      showTextInput(ev.clientX, ev.clientY, 'note', (v) => {
-        const txt = (v && v.trim()) || 'note';
-        const lit = '{ lane: ' + quote(lane) + ', time: ' + numLiteral(t) + ', text: ' + quote(txt) + ' }';
-        const out = insertArrayElement(ed.getValue(), 'infoBoxes', lit);
-        if (out != null) applyText(out);
-      }, 'New info box');
-      return;
-    }
-    if (wasCreating === 'message') {
+      createWithPrompts('infoBox', { lane: lane, time: t }, [
+        { key: 'text', label: 'Info box text', def: 'note', multiline: true },
+      ], x, y);
+    } else if (wasCreating === 'message') {
       const from = nearestLaneClean(d.start.x), to = nearestLaneClean(d.cur.x);
       const t0 = snapTime(yToTime(d.start.y)), t1 = snapTime(yToTime(d.cur.y));
       if (from == null || to == null) return;
       if (from === to && t0 === t1) return; // ignore a zero gesture
-      key = 'messages';
-      literal = "{ path: '" + from + '->' + to + "', fromTime: " + numLiteral(t0) + ', toTime: ' + numLiteral(t1) + ' }';
+      createWithPrompts('message', { path: from + '->' + to, fromTime: t0, toTime: t1 }, [
+        { key: 'label', label: 'Message label', def: '', omitIfEmpty: true, multiline: true },
+        { key: 'color', label: 'Color', def: 'black' },
+        { key: 'style', label: 'Style (solid / dashed)', def: 'solid' },
+      ], x, y);
     } else if (wasCreating === 'state') {
       const lane = nearestLaneClean(d.start.x);
       let t0 = snapTime(yToTime(d.start.y)), t1 = snapTime(yToTime(d.cur.y));
       if (lane == null) return;
       if (t1 < t0) { const tmp = t0; t0 = t1; t1 = tmp; }
       if (t0 === t1) t1 = t0 + 1; // give a fresh state a visible duration
-      key = 'states';
-      literal = "{ lane: " + quote(lane) + ", label: 'state', fromTime: " + numLiteral(t0) + ', toTime: ' + numLiteral(t1) + ' }';
+      createWithPrompts('state', { lane: lane, fromTime: t0, toTime: t1 }, [
+        { key: 'label', label: 'State label', def: 'state', multiline: true },
+        { key: 'color', label: 'Color', def: 'yellow' },
+      ], x, y);
     }
-    if (!literal) return;
-    text = insertArrayElement(text, key, literal);
-    if (text != null) applyText(text);
   }
 
   function uniqueLaneName(lanes) {
@@ -1682,7 +2162,7 @@
       const arr = lanes.slice(); arr.splice(idx, 0, nm);
       const text = setLanes(ed.getValue(), arr);
       if (text != null) applyText(text);
-    }, 'New lane');
+    }, 'New lane', true);
   }
 
   function attach() {
@@ -1690,6 +2170,7 @@
     if (!container || container.__flowdromEditorBound) return;
     container.style.position = container.style.position || 'relative';
     container.addEventListener('click', onCanvasClick);
+    container.addEventListener('dblclick', onCanvasDblClick);
     container.addEventListener('mousemove', onCanvasHover);
     container.addEventListener('mouseleave', clearHover);
     container.addEventListener('pointerdown', function (e) {
@@ -1698,22 +2179,42 @@
       if (creating) { onCreateDown(e); return; }
       // Press inside a selected item's highlight box and drag up/down → shift
       // every selected item in time. Works for a single selected item too.
-      if (e.button === 0 && !(e.ctrlKey || e.metaKey) && selection.length >= 1) {
-        if (pointInSelection(e.clientX, e.clientY)) { e.preventDefault(); startGroupDrag(e); }
+      if (e.button === 0 && !(e.ctrlKey || e.metaKey)) {
+        if (selection.length >= 1 && pointInSelection(e.clientX, e.clientY)) { e.preventDefault(); startGroupDrag(e); return; }
+        if (groupSelecting || subLaneOf) return; // those modes own plain clicks
+        if (!candidatesAt(e.clientX, e.clientY).length) { startRubberBand(e); } // drag on empty → rubber-band select
       }
     }, true);
     container.addEventListener('scroll', function () { clearSelBox(); clearHover(); });
     // Right-click opens the Add menu (left-click empty is reserved for dismiss).
     container.addEventListener('contextmenu', function (e) {
       e.preventDefault();
+      if (subLaneOf) { endSubLaneSelect(); return; } // right-click cancels parent-pick
       if (creating) return;
+      // Right-click inside a multi-selection → actions for the whole selection;
+      // otherwise the usual Add menu. (#5)
+      if (selection.length && pointInSelection(e.clientX, e.clientY)) { showSelectionMenu(e.clientX, e.clientY); return; }
       showCreateMenu(e.clientX, e.clientY);
     });
     // Close menu when clicking outside it (and outside the canvas handled above).
     document.addEventListener('pointerdown', function (e) {
       if (menuEl && !menuEl.contains(e.target) && !container.contains(e.target)) { closeMenu(); }
     }, true);
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeMenu(); exitDrag(); cancelCreating(); endGroupSelect(); clearSelection(); } });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeMenu(); exitDrag(); cancelCreating(); endGroupSelect(); endSubLaneSelect(); clearSelection(); } });
+    // Undo/redo from anywhere (canvas or the JSON editor). Capture phase so it
+    // pre-empts CodeMirror's own Ctrl-Z and adds the diagram re-render — but we
+    // bow out for plain text fields (the edit popover) so their native undo wins.
+    document.addEventListener('keydown', function (e) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = (e.key || '').toLowerCase();
+      if (k !== 'z' && k !== 'y') return;
+      const t = e.target;
+      const inCM = !!(t && t.closest && t.closest('.CodeMirror'));
+      const inField = !inCM && !!(t && t.closest && t.closest('input, textarea'));
+      if (inField) return; // let the field's native undo handle it
+      e.preventDefault(); e.stopPropagation();
+      doUndoRedo((k === 'y' || e.shiftKey) ? 'redo' : 'undo');
+    }, true);
     container.__flowdromEditorBound = true;
   }
 
@@ -1723,6 +2224,7 @@
     const wrapped = function () {
       const out = orig.apply(this, arguments);
       try { attach(); rebuildOverlay(); if (dragItem) highlightItem(dragItem); } catch (e) { /* never break rendering */ }
+      try { applyPersistentStyling(); } catch (e) { /* never break rendering */ }
       return out;
     };
     wrapped.__flowdromWrapped = true;

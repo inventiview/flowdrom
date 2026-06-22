@@ -33,16 +33,17 @@
 
 The rendered diagram is **interactive** — you can build and edit it directly on the canvas, and every change is written back to the JSON (and vice-versa). The diagram looks exactly like a normal render until you interact with it.
 
-> Tip: you don't have to choose between the two — mix graphical edits and JSON editing freely. Use the JSON panel's normal **Undo** (Ctrl/Cmd-Z) to revert a graphical change.
+> Tip: you don't have to choose between the two — mix graphical edits and JSON editing freely. Use **Undo / Redo** (the toolbar buttons, or **Ctrl/Cmd-Z** and **Ctrl/Cmd-Shift-Z** / **Ctrl-Y**) to step back and forth. These work whether your focus is on the canvas or the JSON panel, and each one re-renders the diagram.
 
 ### Start a new diagram
 
-Click **New** to start a blank diagram (just a title — no lanes or messages yet), then build it up: right-click the canvas to add lanes, then messages, states, and so on. (You can also type JSON directly in the source panel, or **Load SVG**.)
+Click **New** to start a fresh diagram. It walks you through two quick prompts — the **title**, then the **lane names** (comma-separated) — each pre-filled with a default you can accept by pressing **Enter**. The diagram opens with those lanes ready; build it up by right-clicking the canvas to add messages, states, and so on. (You can also type JSON directly in the source panel, or **Load SVG**.)
 
 ### Select an item
 
 - **Hover** over the canvas: the item under the pointer is **highlighted** and the cursor turns to a pointer, so you can see exactly what a click will select. Thin targets like legend lines have a **forgiving hit area** — you don't have to land on the stroke.
 - **Left-click** the highlighted element — a message, state, info box, lane, lane group, legend entry, or the title — to open a small menu of actions for it. Where items overlap, the click acts on the highlighted (top) one; hover a different part to target another.
+- **Double-click** an item to jump straight to its most common action — **Edit text** for a labelled item, **Rename** for a lane — skipping the menu.
 - **Left-click empty space** clears the menu. **Esc** cancels any open menu, drag, or pending action.
 
 ### Move and edit existing items
@@ -52,7 +53,7 @@ Most items offer a **Drag** action that reveals draggable handles:
 - **Message** — drag an endpoint handle to change its **time** (move vertically) or send it to **another lane** (move horizontally). Drag the handle on the **label** to slide it along the arrow.
 - **State** — drag the **top/bottom** handles to resize (change start/end time) or the **middle** handle to move the whole box; drag sideways to change lane.
 - **Info box** — drag the handle on the **box** to **reposition it**; drag the handle on the **anchor** (the lane/time point it connects to) to change what it points at.
-- **Lane** — *Drag (shift position)* nudges it sideways; *Drag (reorder)* changes its order.
+- **Lane** — **Drag** the handle sideways: cross another lane to **reorder**, or move within its current slot to **nudge** its horizontal position.
 
 > All editing handles and the selection outline use a single highlight color, so they're easy to tell apart from the diagram's own colors.
 
@@ -60,20 +61,27 @@ Times **snap to 0.1** steps while dragging — hold **Alt** for free placement.
 
 Other actions in an item's menu:
 
-- **Edit text** — label, info text, or the diagram title.
-- **Change color** and **Make dashed / Make solid** — for messages and legend entries (color is also available for states).
+- **Edit text** — label, info text, group name, or the diagram title. The editor is **multi-line**: **Enter** saves, **Alt+Enter** adds a line break (so you don't have to type `|` yourself), and the box grows to fit what you type.
+- **Duplicate** — for messages, states, and info boxes: drops a copy one time-step below, selected so you can drag it into place.
+- **Change color** and **Make dashed / Make solid** — for messages and legend entries. **States** can take a color too — any CSS color name or hex (it's rendered as a soft tint).
 - **Go to JSON definition** — selects that element in the JSON panel.
 - **Delete**.
-- For **lanes**: **Rename** (updates every reference automatically), **Make sub-lane of…**, **Make medium lane**, and **Delete lane** (also removes elements that referenced it).
+- For **lanes**: **Rename** (updates every reference automatically), **Make sub-lane of…** (then **click the parent lane**), **Make medium lane**, and **Delete lane** (also removes elements that referenced it). A sub-lane or medium lane instead offers **Make primary lane** to revert it (drops the parent, or the `_…_` medium markers).
+
+### Select multiple items
+
+- **Drag a box** over empty canvas to select every message, state, and info box it **fully encloses** (items only partly inside the box aren't selected). You can also **Ctrl/Cmd-click** items to build up a selection one at a time.
+- **Drag** anywhere inside the selection to shift all the selected items in time together.
+- **Right-click** the selection for actions on the whole set: **Duplicate**, **Change color**, **Make dashed / Make solid**, and **Delete all**.
 
 ### Add items
 
 **Right-click** anywhere on the canvas to open the **Add** menu:
 
-- **Message** / **State** — pick it, then **drag** on the canvas to draw it (between lanes, or down a lane).
-- **Info box** — pick it, then **click a lane** at the time you want.
+- **Message** / **State** — pick it, then **drag** on the canvas to draw it (between lanes, or down a lane). The element appears immediately, then you're prompted for its fields (label, color, style…), each pre-filled with a default — every **Enter** updates the element live, and you can stop at any point (what you've set so far stays).
+- **Info box** — pick it, then **click a lane** at the time you want, and enter its text.
 - **Lane** — adds a lane at the clicked position (you give it a name).
-- **Legend entry** — adds a legend line (you give it a label).
+- **Legend entry** — adds a legend line (you're prompted for its label, color, and style).
 - **Lane group (select lanes)** — then click the lanes to include and press **Create**.
 - **Text styling…** — opens a panel to set font size/color per element type (this edits the `options` block; see [Display Options](#8-display-options)).
 
@@ -82,7 +90,7 @@ Other actions in an item's menu:
 ## Basic Concepts
 
 Flowdrom diagrams consist of:
-- **Lanes**: Vertical columns representing entities (processors, agents, memory, etc.)
+- **Lanes**: Vertical columns representing entities (processors, agents, memory, etc.). A lane name may use `|` for a line break in its label (e.g. `'Caching|Agent'`).
 - **Messages**: Arrows between lanes showing communication
 - **States**: Boxes showing state changes within lanes
 - **Time**: Horizontal axis showing sequence of events
@@ -411,6 +419,16 @@ Example — bigger, high-contrast lanes and messages while leaving everything el
 
 Add the `options` object to your config in the JSON panel and click **Render**. Type `options` in the editor for an autocomplete snippet to get started. Because the setting lives in the config, it round-trips through Export/Load SVG.
 
+You can also set it visually: right-click the canvas → **Text styling…** opens a panel with a size/color field per element type.
+
+#### Make it persistent (apply to every graph)
+
+The Text styling panel has a **Make persistent** toggle. When on, your current styling is saved in the browser and automatically applied to every graph you create or open — so you don't have to re-set it each time. Editing a field while it's on updates the saved styling too; turning it off forgets it.
+
+Because persistence would otherwise silently change a diagram that has its own styling, Flowdrom asks first: when you **Load SVG** (or hand-edit the styling and press **Render**) and the diagram's styling differs from your saved one, a prompt lets you **keep the diagram's** styling or **use your saved** styling.
+
+> Persistence is stored per browser (it doesn't follow you across machines or browsers), and private/incognito windows forget it when closed.
+
 ## HTML / CSS named colors
 
 You can use any standard HTML/CSS named color in your diagrams (for message colors, state backgrounds, legends, etc.). Below is the complete list of named colors and their hexadecimal values — copy the color name (for example `red` or `RebeccaPurple`) into your diagram JSON's `color` field. On GitHub Pages the table will also display a small color swatch for each name.
@@ -617,12 +635,13 @@ Each key is a text entity with an optional `textSize` (number, px) and `textColo
 {
   lane: 'LaneName',          // Which lane
   label: 'State Name',       // State description
-  color: 'yellow|red|green|blue|orange|cyan', // Background color
+  color: 'yellow',           // Background — any CSS color name or hex (rendered as a soft tint)
   fromTime: 0,               // Start time
   toTime: 1                  // End time
 }
 ```
 > Note: state may have a single time (i.e. Start time = End time)
+> The background is drawn as a light tint of the color you give, so the black label stays readable. `yellow, red, green, blue, orange, cyan, purple, pink` have hand-tuned pastels; any other color is auto-tinted.
 
 ### Lane Group Object
 ```js
