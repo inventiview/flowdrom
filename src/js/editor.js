@@ -1178,18 +1178,21 @@
     if (text != null) applyText(text);
   }
 
-  // Colors already used in the diagram, most-frequent first. So the picker can
-  // offer "reuse a color you already have" before the generic palette.
-  function usedColors(model) {
+  // Colors already used by a given element kind, most-frequent first — so the
+  // picker can offer "reuse a color you already have" scoped to what you're
+  // colouring (state colours when colouring a state, etc.). With no kind it
+  // aggregates across all colourable kinds.
+  function usedColors(model, kind) {
     const counts = new Map();
     const bump = (c) => { if (c && typeof c === 'string') counts.set(c, (counts.get(c) || 0) + 1); };
     if (model) {
-      (model.messages || []).forEach((m) => bump(m.color));
-      (model.legend || []).forEach((l) => bump(l.color));
-      (model.states || []).forEach((s) => bump(s.color));
+      const sources = { message: model.messages, legend: model.legend, state: model.states };
+      const lists = kind ? [sources[kind]] : [model.messages, model.legend, model.states];
+      lists.forEach((arr) => (arr || []).forEach((e) => bump(e.color)));
     }
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map((e) => e[0]);
   }
+  const USED_LABEL = { message: 'Used by messages:', state: 'Used by states:', legend: 'Used by legend:' };
 
   // Reusable color picker menu. `kind` selects the right palette (states use the
   // pastel-keyed STATE_PALETTE); `current` pre-fills the Custom field; `onPick`
@@ -1201,10 +1204,10 @@
     const menu = buildMenu(clientX, clientY);
     const swatch = (c) => { addRow(menu, c, () => { closeMenu(); onPick(c); }, { swatch: c }); };
 
-    // 1) colors already in use (top), 2) the rest of the palette, 3) custom.
-    const used = usedColors(model);
+    // 1) colors already used by this kind (top), 2) the rest of the palette, 3) custom.
+    const used = usedColors(model, kind);
     if (used.length) {
-      addHeader(menu, 'Used in diagram:');
+      addHeader(menu, USED_LABEL[kind] || 'Used in diagram:');
       used.forEach(swatch);
       addHeader(menu, 'Palette:');
     } else {

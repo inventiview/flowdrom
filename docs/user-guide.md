@@ -69,7 +69,7 @@ Other actions in an item's menu:
 
 - **Edit text** — label, info text, group name, or the diagram title. The editor is **multi-line**: **Enter** saves, **Alt+Enter** adds a line break (so you don't have to type `|` yourself), and the box grows to fit what you type.
 - **Duplicate** — for messages, states, and info boxes, drops a copy one time-step below, selected so you can drag it into place; for a **legend entry** it appends an identical row.
-- **Change color** and **Make dashed / Make solid** — for messages and legend entries. **Change color** opens a **palette** (colors already used in the diagram first, then the rest, plus a **Custom…** field for any CSS color name or hex). **States** can take a color too (rendered as a soft tint).
+- **Change color** and **Make dashed / Make solid** — for messages and legend entries. **Change color** opens a **palette** — colors already used by **that element type** first (e.g. existing state colors when coloring a state), then the rest of the palette, plus a **Custom…** field for any CSS color name or hex. **States** can take a color too (rendered as a soft tint).
 - **Go to JSON definition** — selects that element in the JSON panel.
 - **Delete**.
 - For **lanes**: **Rename** (updates every reference automatically), **Make sub-lane of…** (then **click the parent lane**), **Make medium lane**, and **Delete lane** (also removes elements that referenced it). A sub-lane or medium lane instead offers **Make primary lane** to revert it (drops the parent, or the `_…_` medium markers).
