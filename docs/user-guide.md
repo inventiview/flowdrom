@@ -46,6 +46,12 @@ Click **New** to start a fresh diagram. It walks you through two quick prompts �
 - **Double-click** an item to jump straight to its most common action — **Edit text** for a labelled item, **Rename** for a lane — skipping the menu.
 - **Left-click empty space** clears the menu. **Esc** cancels any open menu, drag, or pending action.
 
+### Zoom and fit the canvas
+
+- By default the diagram **fits the canvas width**, and re-fits automatically when the canvas changes size — resizing the window or dragging the divider between the source panel and the canvas.
+- **Ctrl/Cmd + mouse-wheel** over the canvas **zooms the diagram** (centered on the pointer), scrolling within the canvas when you zoom in past its edges. This zooms only the diagram — not the toolbar or source panel — and takes over from auto-fit.
+- The toolbar's **Fit** button snaps the diagram back to fit the canvas and **resumes auto-fit** on resize.
+
 ### Move and edit existing items
 
 Most items offer a **Drag** action that reveals draggable handles:
@@ -62,8 +68,8 @@ Times **snap to 0.1** steps while dragging — hold **Alt** for free placement.
 Other actions in an item's menu:
 
 - **Edit text** — label, info text, group name, or the diagram title. The editor is **multi-line**: **Enter** saves, **Alt+Enter** adds a line break (so you don't have to type `|` yourself), and the box grows to fit what you type.
-- **Duplicate** — for messages, states, and info boxes: drops a copy one time-step below, selected so you can drag it into place.
-- **Change color** and **Make dashed / Make solid** — for messages and legend entries. **States** can take a color too — any CSS color name or hex (it's rendered as a soft tint).
+- **Duplicate** — for messages, states, and info boxes, drops a copy one time-step below, selected so you can drag it into place; for a **legend entry** it appends an identical row.
+- **Change color** and **Make dashed / Make solid** — for messages and legend entries. **Change color** opens a **palette** (colors already used in the diagram first, then the rest, plus a **Custom…** field for any CSS color name or hex). **States** can take a color too (rendered as a soft tint).
 - **Go to JSON definition** — selects that element in the JSON panel.
 - **Delete**.
 - For **lanes**: **Rename** (updates every reference automatically), **Make sub-lane of…** (then **click the parent lane**), **Make medium lane**, and **Delete lane** (also removes elements that referenced it). A sub-lane or medium lane instead offers **Make primary lane** to revert it (drops the parent, or the `_…_` medium markers).
@@ -78,10 +84,10 @@ Other actions in an item's menu:
 
 **Right-click** anywhere on the canvas to open the **Add** menu:
 
-- **Message** / **State** — pick it, then **drag** on the canvas to draw it (between lanes, or down a lane). The element appears immediately, then you're prompted for its fields (label, color, style…), each pre-filled with a default — every **Enter** updates the element live, and you can stop at any point (what you've set so far stays).
+- **Message** / **State** — pick it, then **drag** on the canvas to draw it (between lanes, or down a lane). The element appears immediately, then you're guided through its fields, each applied live: the **label** in a text box, the **color** from the palette picker, and the line **style** from a solid/dashed menu (same controls as editing an existing item). You can stop at any point — what you've set so far stays.
 - **Info box** — pick it, then **click a lane** at the time you want, and enter its text.
 - **Lane** — adds a lane at the clicked position (you give it a name).
-- **Legend entry** — adds a legend line (you're prompted for its label, color, and style).
+- **Legend entry** — adds a legend line: enter its label, then pick a color and a solid/dashed style.
 - **Lane group (select lanes)** — then click the lanes to include and press **Create**.
 - **Text styling…** — opens a panel to set font size/color per element type (this edits the `options` block; see [Display Options](#8-display-options)).
 

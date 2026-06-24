@@ -655,6 +655,7 @@
       scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
     }
     groupDrag = { startClientY: ev.clientY, minTime: selectionMinTime(parseModel() || {}), moved: false, dt: 0, scale: scale };
+    document.body.style.userSelect = 'none'; // block text selection during the drag (we no longer preventDefault the press) (#1)
     window.addEventListener('pointermove', onGroupDragMove, true);
     window.addEventListener('pointerup', onGroupDragUp, true);
   }
@@ -679,6 +680,7 @@
   function onGroupDragUp() {
     window.removeEventListener('pointermove', onGroupDragMove, true);
     window.removeEventListener('pointerup', onGroupDragUp, true);
+    document.body.style.userSelect = '';
     const d = groupDrag; groupDrag = null;
     removeShiftBadge();
     if (d && d.moved && d.dt) { ignoreNextClick = true; commitGroupShift(d.dt); }
@@ -778,16 +780,20 @@
     const ed = getEditor(); const model = parseModel(); const J = getJSON5();
     if (!ed || !model || !J || !items.length) return;
     const dt = 1; let text = ed.getValue(); const newSel = [];
-    const arrs = { message: model.messages || [], state: model.states || [], infoBox: model.infoBoxes || [] };
-    const counts = { message: arrs.message.length, state: arrs.state.length, infoBox: arrs.infoBox.length };
+    const arrs = { message: model.messages || [], state: model.states || [], infoBox: model.infoBoxes || [], legend: model.legend || [] };
+    const counts = { message: arrs.message.length, state: arrs.state.length, infoBox: arrs.infoBox.length, legend: arrs.legend.length };
     items.forEach((it) => {
       const arr = arrs[it.kind]; if (!arr || !arr[it.index]) return;
       const key = SECTION_BY_KIND[it.kind]; if (!key) return;
+      // Time-bearing kinds drop one time-unit below; a legend copy is identical
+      // (it just appends a new row). (#4)
       const literal = J.stringify(cloneWithOffset(arr[it.index], it.kind, dt));
       const t = insertArrayElement(text, key, literal); // appends → new index = current length
       if (t != null) { text = t; newSel.push({ kind: it.kind, index: counts[it.kind] }); counts[it.kind]++; }
     });
-    selection = newSel;
+    // Only auto-select copies that can actually be time-shifted by dragging; a
+    // legend copy isn't draggable, so leave the selection clear for it. (#4)
+    selection = newSel.filter((s) => SHIFTABLE[s.kind]);
     applyText(text); renderSelectionBoxes();
   }
   function duplicateSelection() { duplicateItems(selection); }
@@ -899,7 +905,16 @@
   // Hit-testing: all tagged items under a viewport point (disambiguation).
   // ========================================================================
 
+  // candidatesAt is the hot path: it re-parses the model and measures every
+  // tagged SVG element. Hover calls it on each mousemove and a click calls it
+  // again for the SAME point a moment later, so cache the last result keyed by
+  // the viewport point. Invalidated whenever the diagram could have moved
+  // (render / scroll / zoom / resize). (#1 perf)
+  let candCache = null;
+  function invalidateCandidates() { candCache = null; }
+
   function candidatesAt(clientX, clientY) {
+    if (candCache && candCache.x === clientX && candCache.y === clientY) return candCache.out;
     const seen = {}; const out = [];
     const add = (kind, index) => { const id = kind + ':' + index; if (!seen[id]) { seen[id] = true; out.push({ kind: kind, index: index }); } };
 
@@ -956,6 +971,7 @@
     // items they enclose, so hover/click target the specific item first.
     const CONTAINER = { legendBox: 1 };
     out.sort((a, b) => (CONTAINER[a.kind] ? 1 : 0) - (CONTAINER[b.kind] ? 1 : 0));
+    candCache = { x: clientX, y: clientY, out: out };
     return out;
   }
 
@@ -1048,7 +1064,7 @@
       addRow(menu, '✥  Drag', () => { closeMenu(); enterDrag(item); });
     }
 
-    if (SHIFTABLE[item.kind]) addRow(menu, '⧉  Duplicate', () => { closeMenu(); duplicateItems([item]); });
+    if (SHIFTABLE[item.kind] || item.kind === 'legend') addRow(menu, '⧉  Duplicate', () => { closeMenu(); duplicateItems([item]); });
 
     if (TEXTABLE[item.kind]) {
       const label = hasText(item, model) ? '✎  Edit text…' : '✎  Add text…';
@@ -1175,14 +1191,15 @@
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map((e) => e[0]);
   }
 
-  function showColorMenu(item, clientX, clientY) {
+  // Reusable color picker menu. `kind` selects the right palette (states use the
+  // pastel-keyed STATE_PALETTE); `current` pre-fills the Custom field; `onPick`
+  // receives the chosen color string (raw, unquoted). Shared by "Change color"
+  // and the add-element flow so colour input is consistent everywhere. (#2)
+  function showColorPicker(kind, clientX, clientY, current, onPick) {
     const model = parseModel();
-    const base = (item.kind === 'state' ? STATE_PALETTE : PALETTE);
+    const base = (kind === 'state' ? STATE_PALETTE : PALETTE);
     const menu = buildMenu(clientX, clientY);
-
-    const swatch = (c) => {
-      addRow(menu, c, () => { closeMenu(); setItemField(item, 'color', quote(c)); }, { swatch: c });
-    };
+    const swatch = (c) => { addRow(menu, c, () => { closeMenu(); onPick(c); }, { swatch: c }); };
 
     // 1) colors already in use (top), 2) the rest of the palette, 3) custom.
     const used = usedColors(model);
@@ -1196,9 +1213,22 @@
     base.filter((c) => used.indexOf(c) === -1).forEach(swatch);
 
     addRow(menu, 'Custom…', () => {
-      const cur = currentField(model, item, 'color') || '';
-      showTextInput(clientX, clientY, cur, (v) => { if (v && v.trim()) setItemField(item, 'color', quote(v.trim())); }, 'Custom color');
+      showTextInput(clientX, clientY, current || '', (v) => { if (v && v.trim()) onPick(v.trim()); }, 'Custom color');
     });
+  }
+  function showColorMenu(item, clientX, clientY) {
+    const model = parseModel();
+    showColorPicker(item.kind, clientX, clientY, currentField(model, item, 'color') || '',
+      (c) => setItemField(item, 'color', quote(c)));
+  }
+
+  // Reusable line-style picker (solid / dashed) — a selection, never free text,
+  // so style input matches the color picker. `onPick` gets 'solid' | 'dashed'. (#2)
+  function showStylePicker(clientX, clientY, onPick) {
+    const menu = buildMenu(clientX, clientY);
+    addHeader(menu, 'Line style:');
+    addRow(menu, '─  Solid', () => { closeMenu(); onPick('solid'); });
+    addRow(menu, '┄  Dashed', () => { closeMenu(); onPick('dashed'); });
   }
 
   function renameLanePrompt(item, clientX, clientY) {
@@ -1730,6 +1760,7 @@
   // advances; Esc/Cancel at any step aborts without touching the current diagram. (#3)
   function buildNewDiagram(title, lanes) {
     keepLoadedStyling = false; keptSignature = null; // a fresh graph should pick up persistent styling
+    zoomUserSet = false; canvasZoom = 1; // a fresh diagram returns to auto-fit (#3)
     const ed = getEditor(); const J = getJSON5(); if (!ed || !J) return;
     const model = { title: title || 'Untitled', lanes: lanes || [], messages: [] };
     let text;
@@ -1752,6 +1783,75 @@
     }, 'New diagram title');
   }
   if (typeof window !== 'undefined') window.flowdromNewDiagram = guidedNewDiagram;
+
+  // ========================================================================
+  // Canvas zoom — Ctrl/Cmd + wheel scales the diagram SVG itself, so the canvas
+  // zooms like the rest of the page (which the browser already zooms on the text
+  // editor and toolbar) instead of triggering a full-page browser zoom. The
+  // viewBox is left untouched, so the engine's hit-testing / handle geometry
+  // (which derive scale from the rendered size vs. viewBox) keep working. (#3)
+  // ========================================================================
+  let canvasZoom = 1;
+  let zoomUserSet = false; // until the user wheels, keep auto-fitting to the container width
+  // Intrinsic (zoom = 1) diagram size from the viewBox (the renderer keeps it fixed).
+  function diagramBaseSize(svg) {
+    const vb = svg.getAttribute('viewBox');
+    if (vb) { const p = vb.split(/[\s,]+/).map(parseFloat); if (p.length === 4 && p[2] > 0 && p[3] > 0) return { w: p[2], h: p[3] }; }
+    const w = parseFloat(svg.getAttribute('width')), h = parseFloat(svg.getAttribute('height'));
+    if (w > 0 && h > 0) { svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h); return { w: w, h: h }; }
+    return null;
+  }
+  function applyCanvasZoom() {
+    const svg = diagramSvg(); if (!svg) return;
+    const container = getContainer(); if (!container) return;
+    const b = diagramBaseSize(svg); if (!b) return;
+    // Until the user explicitly zooms, fit-to-width (shrink only) like the SVG's
+    // built-in max-width:100% did — so the default view is unchanged.
+    if (!zoomUserSet) {
+      const avail = container.clientWidth - 8;
+      canvasZoom = avail > 0 ? Math.min(1, avail / b.w) : 1;
+    }
+    // The injected SVG carries inline `max-width:100%; height:auto`, which clamps
+    // it to the container and blocks zoom-in. Override that, then size the viewport
+    // by the width/height ATTRIBUTES (so the fixed viewBox scales the drawing and
+    // the bigger box gives the container scrollable overflow). (#3)
+    svg.style.maxWidth = 'none';
+    svg.style.removeProperty('zoom');
+    svg.setAttribute('width', b.w * canvasZoom);
+    svg.setAttribute('height', b.h * canvasZoom);
+  }
+  function onCanvasWheel(e) {
+    if (!(e.ctrlKey || e.metaKey)) return; // plain wheel = normal scroll
+    e.preventDefault(); // stop the browser's page zoom; we zoom the canvas instead
+    const container = getContainer(); if (!container) return;
+    if (!zoomUserSet) { applyCanvasZoom(); zoomUserSet = true; } // lock in the current fitted scale as the start point
+    const prev = canvasZoom;
+    const next = Math.min(8, Math.max(0.05, prev * Math.exp(-e.deltaY * 0.0015)));
+    if (next === prev) return;
+    canvasZoom = next;
+    // Keep the diagram point under the cursor anchored while zooming.
+    const rect = container.getBoundingClientRect();
+    const ox = e.clientX - rect.left, oy = e.clientY - rect.top;
+    const ratio = next / prev;
+    applyCanvasZoom();
+    container.scrollLeft = (container.scrollLeft + ox) * ratio - ox;
+    container.scrollTop = (container.scrollTop + oy) * ratio - oy;
+    invalidateCandidates();
+    rebuildOverlay();
+    if (dragItem) highlightItem(dragItem);
+    clearHover();
+  }
+  // Return to auto-fit: drop manual-zoom mode so the diagram fits the canvas now
+  // and keeps re-fitting as the canvas/boundary is resized. (#3)
+  function fitCanvas() {
+    zoomUserSet = false;
+    applyCanvasZoom();
+    invalidateCandidates();
+    rebuildOverlay();
+    if (dragItem) highlightItem(dragItem);
+    clearHover();
+  }
+  if (typeof window !== 'undefined') window.flowdromFitCanvas = fitCanvas;
 
   // ========================================================================
   // Wiring.
@@ -1804,15 +1904,35 @@
     if (TEXTABLE[item.kind]) { editText(item, clientX, clientY); return; }
     showActions(item, clientX, clientY);
   }
-  function onCanvasDblClick(e) {
-    if (e.ctrlKey || e.metaKey) return;
-    if (creating || groupSelecting || subLaneOf || dragItem) return;
-    const cands = candidatesAt(e.clientX, e.clientY);
-    if (!cands.length) return;
-    e.preventDefault();
-    closeMenu();
-    clearSelection();
-    primaryAction(cands[0], e.clientX, e.clientY);
+  // Double-click detection at the document level (capture). We can't rely on the
+  // native dblclick event or per-click counts here: the first click opens the
+  // actions menu *under the cursor*, so the second press lands on the menu (a
+  // body overlay), where neither the canvas handlers nor a matching-target
+  // dblclick ever fire. A document-capture handler sees that press regardless,
+  // and elementsFromPoint still finds the item beneath the menu. (#1)
+  const DBLCLICK_MS = 400, DBLCLICK_PX = 6;
+  let lastTap = { t: 0, x: -1, y: -1 };
+  function onDocPointerDownDbl(e) {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || creating || groupSelecting || subLaneOf) { lastTap.t = 0; return; }
+    const container = getContainer(); if (!container) { lastTap.t = 0; return; }
+    const r = container.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) { lastTap.t = 0; return; }
+    const cands = candidatesAt(e.clientX, e.clientY); // finds the item even under an open menu
+    const item = cands.length ? cands[0] : null;
+    const now = Date.now();
+    const near = Math.abs(e.clientX - lastTap.x) <= DBLCLICK_PX && Math.abs(e.clientY - lastTap.y) <= DBLCLICK_PX;
+    if (item && lastTap.t && (now - lastTap.t) <= DBLCLICK_MS && near) {
+      // Second press of a double-click: run the primary action and stop the press
+      // from reaching the menu (or the canvas press handler). (#1)
+      e.preventDefault(); e.stopPropagation();
+      lastTap.t = 0;
+      closeMenu();
+      clearSelection();
+      ignoreNextClick = true; // swallow the trailing click
+      primaryAction(item, e.clientX, e.clientY);
+      return;
+    }
+    lastTap = { t: item ? now : 0, x: e.clientX, y: e.clientY };
   }
 
   // ---- creation ----
@@ -1958,8 +2078,8 @@
   function addLegendEntry(clientX, clientY) {
     createWithPrompts('legend', {}, [
       { key: 'label', label: 'Legend label', def: 'legend', multiline: true },
-      { key: 'color', label: 'Color', def: 'black' },
-      { key: 'style', label: 'Style (solid / dashed)', def: 'solid' },
+      { key: 'color', label: 'Color', def: 'black', type: 'color' },
+      { key: 'style', label: 'Style', def: 'solid', type: 'style' },
     ], clientX, clientY);
   }
 
@@ -2085,21 +2205,35 @@
     highlightItem({ kind: kind, index: index });
 
     let i = 0;
+    // Apply a chosen value for the current field and advance. `desired` is the
+    // final string (already resolved from default); commit only real changes so
+    // accepting defaults doesn't pile up undo steps.
+    function commitFieldValue(f, desired) {
+      const m = parseModel();
+      const cur = (m && m[key] && m[key][index]) ? m[key][index][f.key] : undefined;
+      if (desired !== '' && String(cur == null ? '' : cur) !== desired) {
+        const t = setOrInsertField(ed.getValue(), key, index, f.key, quote(desired));
+        if (t != null) applyText(t);
+      }
+      highlightItem({ kind: kind, index: index });
+      step();
+    }
     function step() {
       if (i >= fields.length) { clearSelBox(); return; }
       const f = fields[i++];
-      showTextInput(clientX, clientY, f.def, (v) => {
-        const val = (v == null ? '' : String(v));
-        const desired = (val.trim() === '') ? f.def : val;
-        const m = parseModel();
-        const cur = (m && m[key] && m[key][index]) ? m[key][index][f.key] : undefined;
-        if (desired !== '' && String(cur == null ? '' : cur) !== desired) { // commit only real changes
-          const t = setOrInsertField(ed.getValue(), key, index, f.key, quote(desired));
-          if (t != null) applyText(t);
-        }
-        highlightItem({ kind: kind, index: index });
-        step();
-      }, f.label, f.multiline);
+      // Each field type uses the same input control as editing an existing
+      // element: a palette menu for colors, a solid/dashed menu for styles, and
+      // the text popover otherwise. (#2)
+      if (f.type === 'color') {
+        showColorPicker(kind, clientX, clientY, f.def, (c) => commitFieldValue(f, c));
+      } else if (f.type === 'style') {
+        showStylePicker(clientX, clientY, (s) => commitFieldValue(f, s));
+      } else {
+        showTextInput(clientX, clientY, f.def, (v) => {
+          const val = (v == null ? '' : String(v));
+          commitFieldValue(f, (val.trim() === '') ? f.def : val);
+        }, f.label, f.multiline);
+      }
     }
     step();
   }
@@ -2128,8 +2262,8 @@
       if (from === to && t0 === t1) return; // ignore a zero gesture
       createWithPrompts('message', { path: from + '->' + to, fromTime: t0, toTime: t1 }, [
         { key: 'label', label: 'Message label', def: '', omitIfEmpty: true, multiline: true },
-        { key: 'color', label: 'Color', def: 'black' },
-        { key: 'style', label: 'Style (solid / dashed)', def: 'solid' },
+        { key: 'color', label: 'Color', def: 'black', type: 'color' },
+        { key: 'style', label: 'Style', def: 'solid', type: 'style' },
       ], x, y);
     } else if (wasCreating === 'state') {
       const lane = nearestLaneClean(d.start.x);
@@ -2139,7 +2273,7 @@
       if (t0 === t1) t1 = t0 + 1; // give a fresh state a visible duration
       createWithPrompts('state', { lane: lane, fromTime: t0, toTime: t1 }, [
         { key: 'label', label: 'State label', def: 'state', multiline: true },
-        { key: 'color', label: 'Color', def: 'yellow' },
+        { key: 'color', label: 'Color', def: 'yellow', type: 'color' },
       ], x, y);
     }
   }
@@ -2170,8 +2304,26 @@
     if (!container || container.__flowdromEditorBound) return;
     container.style.position = container.style.position || 'relative';
     container.addEventListener('click', onCanvasClick);
-    container.addEventListener('dblclick', onCanvasDblClick);
     container.addEventListener('mousemove', onCanvasHover);
+    // Ctrl/Cmd + mouse-wheel zooms the diagram itself (not the whole page). (#3)
+    container.addEventListener('wheel', onCanvasWheel, { passive: false });
+    // Re-fit the diagram to the canvas whenever its size changes — window resize
+    // OR dragging the editor/canvas boundary — until the user takes manual zoom
+    // control with Ctrl+wheel. (rAF-debounced to avoid layout thrash.) (#3)
+    if (typeof ResizeObserver !== 'undefined') {
+      let resizeRAF = 0;
+      const ro = new ResizeObserver(function () {
+        if (resizeRAF) return;
+        resizeRAF = requestAnimationFrame(function () {
+          resizeRAF = 0;
+          applyCanvasZoom(); // re-fits when !zoomUserSet; keeps the manual zoom otherwise
+          invalidateCandidates();
+          rebuildOverlay();
+          if (dragItem) highlightItem(dragItem);
+        });
+      });
+      ro.observe(container);
+    }
     container.addEventListener('mouseleave', clearHover);
     container.addEventListener('pointerdown', function (e) {
       ignoreNextClick = false; // a new gesture starts; never let a stale flag eat its click
@@ -2180,12 +2332,28 @@
       // Press inside a selected item's highlight box and drag up/down → shift
       // every selected item in time. Works for a single selected item too.
       if (e.button === 0 && !(e.ctrlKey || e.metaKey)) {
-        if (selection.length >= 1 && pointInSelection(e.clientX, e.clientY)) { e.preventDefault(); startGroupDrag(e); return; }
+        // Don't preventDefault here: doing so suppresses the click/dblclick events
+        // in some browsers, which broke double-clicking a selected item. Text
+        // selection during an actual drag is blocked in startGroupDrag instead. (#1)
+        if (selection.length >= 1 && pointInSelection(e.clientX, e.clientY)) { startGroupDrag(e); return; }
         if (groupSelecting || subLaneOf) return; // those modes own plain clicks
-        if (!candidatesAt(e.clientX, e.clientY).length) { startRubberBand(e); } // drag on empty → rubber-band select
+        const cands = candidatesAt(e.clientX, e.clientY);
+        if (cands.length) {
+          // Open the actions menu on PRESS, not release, so it feels instant. The
+          // release's click would otherwise re-open it, so swallow that click. The
+          // 2nd press of a double-click is intercepted earlier by the document-
+          // level detector (it stops propagation), so this won't reopen then. (#1)
+          closeMenu();
+          clearSelection();
+          showActions(cands[0], e.clientX, e.clientY);
+          ignoreNextClick = true;
+          return;
+        }
+        startRubberBand(e); // drag on empty → rubber-band select
       }
     }, true);
-    container.addEventListener('scroll', function () { clearSelBox(); clearHover(); });
+    container.addEventListener('scroll', function () { invalidateCandidates(); clearSelBox(); clearHover(); });
+    window.addEventListener('resize', invalidateCandidates);
     // Right-click opens the Add menu (left-click empty is reserved for dismiss).
     container.addEventListener('contextmenu', function (e) {
       e.preventDefault();
@@ -2196,6 +2364,10 @@
       if (selection.length && pointInSelection(e.clientX, e.clientY)) { showSelectionMenu(e.clientX, e.clientY); return; }
       showCreateMenu(e.clientX, e.clientY);
     });
+    // Double-click detector — capture phase at document level so it sees the 2nd
+    // press even when it lands on the menu overlay. Runs before the canvas press
+    // handler (document captures before its descendants). (#1)
+    document.addEventListener('pointerdown', onDocPointerDownDbl, true);
     // Close menu when clicking outside it (and outside the canvas handled above).
     document.addEventListener('pointerdown', function (e) {
       if (menuEl && !menuEl.contains(e.target) && !container.contains(e.target)) { closeMenu(); }
@@ -2223,7 +2395,7 @@
     const orig = window.renderGraph;
     const wrapped = function () {
       const out = orig.apply(this, arguments);
-      try { attach(); rebuildOverlay(); if (dragItem) highlightItem(dragItem); } catch (e) { /* never break rendering */ }
+      try { invalidateCandidates(); attach(); applyCanvasZoom(); rebuildOverlay(); if (dragItem) highlightItem(dragItem); } catch (e) { /* never break rendering */ }
       try { applyPersistentStyling(); } catch (e) { /* never break rendering */ }
       return out;
     };
