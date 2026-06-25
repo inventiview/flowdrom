@@ -2103,8 +2103,15 @@
     const opacity = document.createElement('input'); opacity.type = 'number'; opacity.min = '0'; opacity.max = '1'; opacity.step = '0.05'; opacity.placeholder = '0.5'; opacity.style.width = '80px';
     if (typeof graph.opacity === 'number') opacity.value = graph.opacity;
     opacity.addEventListener('change', () => { let v = opacity.value.trim() === '' ? null : parseFloat(opacity.value); if (v != null) v = Math.max(0, Math.min(1, v)); commitStyle(setOption(ed.getValue(), 'graph', 'opacity', v)); });
+    const styleSel = document.createElement('select'); styleSel.style.width = '88px';
+    [['outline', 'Outline'], ['white', 'White'], ['solid', 'Solid']].forEach(([val, txt]) => {
+      const o = document.createElement('option'); o.value = val; o.textContent = txt; styleSel.appendChild(o);
+    });
+    styleSel.value = (['outline', 'white', 'solid'].indexOf(graph.labelStyle) >= 0) ? graph.labelStyle : 'outline';
+    styleSel.addEventListener('change', () => { commitStyle(setOption(ed.getValue(), 'graph', 'labelStyle', styleSel.value === 'outline' ? null : styleSel.value)); });
     grow('Repeat every (time)', interval);
     grow('Label opacity (0–1)', opacity);
+    grow('Label style', styleSel);
     repeatBox.appendChild(ggrid);
     panel.appendChild(repeatBox);
 

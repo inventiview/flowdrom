@@ -63,10 +63,18 @@ function buildDiagramCss(cfg) {
     .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
     .lane-label { font-weight: bold; font-size: ${cfg.lane.size}px; text-anchor: middle; fill: ${cfg.lane.color}; ${sans} }
     .sub-lane-label { font-weight: bold; font-size: ${cfg.subLane.size}px; text-anchor: middle; fill: ${cfg.subLane.color}; ${sans} }
-    /* Repeated lane labels: word-art outline (white halo) so they read as a
-       distinct guide and stay legible over messages/states. Opacity is set
-       per-group inline from options.graph.opacity. */
-    .lane-label-repeat text { paint-order: stroke; stroke: #ffffff; stroke-width: 3.5px; stroke-linejoin: round; pointer-events: none; }
+    /* Repeated lane labels: a distinct guide style so they don't read as ordinary
+       message/state text. Three variants (options.graph.labelStyle); opacity is
+       set per-group inline from options.graph.opacity. */
+    .lane-label-repeat { pointer-events: none; }
+    /* outline: hollow, colored letters (true "word-art" outline) */
+    .lane-label-repeat.outline .lane-label { fill: none; stroke: ${cfg.lane.color}; stroke-width: 1.3px; stroke-linejoin: round; }
+    .lane-label-repeat.outline .sub-lane-label { fill: none; stroke: ${cfg.subLane.color}; stroke-width: 1px; stroke-linejoin: round; }
+    /* white: white letters with a colored outline */
+    .lane-label-repeat.white .lane-label { fill: #ffffff; stroke: ${cfg.lane.color}; stroke-width: 3px; paint-order: stroke; stroke-linejoin: round; }
+    .lane-label-repeat.white .sub-lane-label { fill: #ffffff; stroke: ${cfg.subLane.color}; stroke-width: 2px; paint-order: stroke; stroke-linejoin: round; }
+    /* solid: colored letters with a white halo (chunky, reads solid on white) */
+    .lane-label-repeat.solid .lane-label, .lane-label-repeat.solid .sub-lane-label { paint-order: stroke; stroke: #ffffff; stroke-width: 3.5px; stroke-linejoin: round; }
     .lane-group-label { font-weight: bold; font-size: ${cfg.laneGroup.size}px; text-anchor: middle; fill: ${cfg.laneGroup.color}; ${sans} }
     .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
     .message-label { font-size: ${cfg.message.size}px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold;${msgFill} }
@@ -263,6 +271,10 @@ function renderGraph() {
     // When on, every state box in a lane is widened to the widest state in that
     // lane, so the states line up as a column. Width is determined per lane.
     const uniformStateWidth = !!graphOpts.uniformStateWidth;
+    // Visual style of the repeated labels: 'outline' (hollow colored letters),
+    // 'white' (white letters with a colored outline), or 'solid' (colored fill +
+    // white halo). Default 'outline'.
+    const labelStyle = (['outline', 'white', 'solid'].indexOf(graphOpts.labelStyle) >= 0) ? graphOpts.labelStyle : 'outline';
 
     // Inject the diagram stylesheet into the live tempSvg up front so getBBox()
     // measures label/legend/state text in the real fonts (it reflects the
@@ -499,9 +511,9 @@ function renderGraph() {
     // the diagram's own message/state text — no opaque box needed. The group is
     // faded by the configurable opacity. Non-interactive (no data-kind), so the
     // graphical editor ignores it. (repeat-lane-labels)
-    function appendRepeatLaneLabel(x, y, meta, className, opacity) {
+    function appendRepeatLaneLabel(x, y, meta, className, opacity, style) {
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      g.setAttribute("class", "lane-label-repeat");
+      g.setAttribute("class", "lane-label-repeat " + (style || "outline"));
       g.setAttribute("aria-hidden", "true");
       if (opacity != null) g.setAttribute("opacity", opacity);
       tempSvg.appendChild(g);
@@ -1213,11 +1225,11 @@ function renderGraph() {
         const meta = laneLabelMeta(lane);
         const cls = meta.isSubLane ? "sub-lane-label" : "lane-label";
         // bottom label under the lifeline
-        appendRepeatLaneLabel(x, lifelineEndY + meta.lineHeight, meta, cls, repeatLabelOpacity);
+        appendRepeatLaneLabel(x, lifelineEndY + meta.lineHeight, meta, cls, repeatLabelOpacity, labelStyle);
         contentBottom = Math.max(contentBottom, lifelineEndY + meta.lineHeight * meta.lines.length + 10);
         // mid-lifeline repeats every `laneLabelInterval` TIME units
         for (let t = laneLabelInterval; t < lifelineBottom; t += laneLabelInterval) {
-          appendRepeatLaneLabel(x, laneTop + t * timeStep, meta, cls, repeatLabelOpacity);
+          appendRepeatLaneLabel(x, laneTop + t * timeStep, meta, cls, repeatLabelOpacity, labelStyle);
         }
       });
     }

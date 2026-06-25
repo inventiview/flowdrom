@@ -443,6 +443,7 @@ options: {
     repeatLaneLabels: true,   // repeat each lane name down the page + below its lifeline
     laneLabelInterval: 6,     // ...every N TIME units (default 5)
     opacity: 0.5,             // 0–1: how faint the repeated labels are (default 0.5)
+    labelStyle: 'outline',    // 'outline' | 'white' | 'solid' (default 'outline')
     uniformStateWidth: true   // make every state box in a lane as wide as that lane's widest
   }
 }
@@ -451,6 +452,7 @@ options: {
 - **`repeatLaneLabels`** — for tall diagrams, repeats each lane's name at a fixed vertical interval (and once below its lifeline) so you can tell lanes apart when scrolled away from the top. The repeats use an outlined "word-art" style and are drawn on top, so they stay legible over messages and states. They're purely visual — not editable handles.
 - **`laneLabelInterval`** — spacing between repeats, in **time units** (the same scale as `fromTime`/`toTime`), so it tracks the diagram's own grid.
 - **`opacity`** — fades the repeated labels (0 = invisible, 1 = solid).
+- **`labelStyle`** — how the repeated labels are drawn so they read as a distinct guide: `'outline'` (hollow colored letters), `'white'` (white letters with a colored outline), or `'solid'` (colored letters with a white halo). Default `'outline'`.
 - **`uniformStateWidth`** — widens every state box in a lane to match that lane's widest state, so a lane's states line up as a neat column. The width is computed per lane.
 
 Set these visually under right-click → **Styling…** → **Graph styling**, or edit the `options.graph` block directly.
