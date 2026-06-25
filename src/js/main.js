@@ -63,6 +63,10 @@ function buildDiagramCss(cfg) {
     .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
     .lane-label { font-weight: bold; font-size: ${cfg.lane.size}px; text-anchor: middle; fill: ${cfg.lane.color}; ${sans} }
     .sub-lane-label { font-weight: bold; font-size: ${cfg.subLane.size}px; text-anchor: middle; fill: ${cfg.subLane.color}; ${sans} }
+    /* Repeated lane labels: word-art outline (white halo) so they read as a
+       distinct guide and stay legible over messages/states. Opacity is set
+       per-group inline from options.graph.opacity. */
+    .lane-label-repeat text { paint-order: stroke; stroke: #ffffff; stroke-width: 3.5px; stroke-linejoin: round; pointer-events: none; }
     .lane-group-label { font-weight: bold; font-size: ${cfg.laneGroup.size}px; text-anchor: middle; fill: ${cfg.laneGroup.color}; ${sans} }
     .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
     .message-label { font-size: ${cfg.message.size}px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold;${msgFill} }
@@ -246,6 +250,19 @@ function renderGraph() {
     const laneGroups = input.laneGroups || [];
     const infoBoxes = input.infoBoxes || [];
     const textCfg = resolveTextConfig(input.options);
+    // Graph styling (options.graph): repeated lane labels are an opt-in aid for
+    // tall diagrams, driven entirely by the model so the editor render, exportSVG,
+    // and any external renderer produce identical output. The interval is in TIME
+    // units (like fromTime/toTime), so it tracks the diagram's own scale and stays
+    // deterministic. Off by default. (repeat-lane-labels)
+    const graphOpts = (input.options && input.options.graph) || {};
+    const repeatLaneLabels = !!graphOpts.repeatLaneLabels;
+    const laneLabelInterval = (graphOpts.laneLabelInterval > 0) ? graphOpts.laneLabelInterval : 5;
+    const repeatLabelOpacity = (typeof graphOpts.opacity === 'number')
+      ? Math.max(0, Math.min(1, graphOpts.opacity)) : 0.5;
+    // When on, every state box in a lane is widened to the widest state in that
+    // lane, so the states line up as a column. Width is determined per lane.
+    const uniformStateWidth = !!graphOpts.uniformStateWidth;
 
     // Inject the diagram stylesheet into the live tempSvg up front so getBBox()
     // measures label/legend/state text in the real fonts (it reflects the
@@ -446,49 +463,82 @@ function renderGraph() {
     let contentBottom = laneTop + lifelineBottom * timeStep;
     let contentTop = 0;
 
-    // Draw lanes
-    lanes.forEach((lane, laneIndex) => {
+    const lifelineEndY = laneTop + lifelineBottom * timeStep;
+
+    function laneLabelMeta(lane) {
       const { cleanLane } = parseLaneNameOffset(lane);
-      const x = lanePositions[lane];
       const parts = cleanLane.split('.');
       const isSubLane = parts.length === 2 && (mainLanes.has(parts[0]) || mainLanes.has(parts[1]));
       const isSpecialLane = cleanLane.startsWith('_') && cleanLane.endsWith('_');
+      const fontSize = isSubLane ? textCfg.subLane.size : textCfg.lane.size;
+      const lineHeight = fontSize * 1.2;
+      const lines = String(cleanLane).split('|');
+      return { cleanLane, isSubLane, isSpecialLane, fontSize, lineHeight, lines };
+    }
+
+    function appendLaneLabel(x, y, lines, lineHeight, className, attrs, parent) {
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.setAttribute("x", x);
+      text.setAttribute("y", y);
+      text.setAttribute("class", className);
+      Object.keys(attrs || {}).forEach(key => text.setAttribute(key, attrs[key]));
+      lines.forEach((ln, i) => {
+        const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+        tspan.setAttribute("x", x);
+        tspan.setAttribute("dy", i === 0 ? 0 : lineHeight);
+        tspan.textContent = ln;
+        text.appendChild(tspan);
+      });
+      (parent || tempSvg).appendChild(text);
+      return text;
+    }
+
+    // A repeated lane label, drawn on top of the diagram. It uses a "word-art"
+    // outline (a contrasting halo via .lane-label-repeat, paint-order:stroke) so
+    // it stays legible over messages/states AND reads as visually distinct from
+    // the diagram's own message/state text — no opaque box needed. The group is
+    // faded by the configurable opacity. Non-interactive (no data-kind), so the
+    // graphical editor ignores it. (repeat-lane-labels)
+    function appendRepeatLaneLabel(x, y, meta, className, opacity) {
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.setAttribute("class", "lane-label-repeat");
+      g.setAttribute("aria-hidden", "true");
+      if (opacity != null) g.setAttribute("opacity", opacity);
+      tempSvg.appendChild(g);
+      appendLaneLabel(x, y, meta.lines, meta.lineHeight, className, { "aria-hidden": "true" }, g);
+      return g;
+    }
+
+    // Draw lanes
+    lanes.forEach((lane, laneIndex) => {
+      const x = lanePositions[lane];
+      const meta = laneLabelMeta(lane);
 
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
       line.setAttribute("x1", x);
       line.setAttribute("y1", laneTop);
       line.setAttribute("x2", x);
-      line.setAttribute("y2", laneTop + lifelineBottom * timeStep);
+      line.setAttribute("y2", lifelineEndY);
 
-      line.setAttribute("stroke", isSubLane ? "#666" :  isSpecialLane ? "LightGray" : "#333");
-      line.setAttribute("stroke-width", isSubLane ? "2" :  isSpecialLane ? "16" :"3");
+      line.setAttribute("stroke", meta.isSubLane ? "#666" :  meta.isSpecialLane ? "LightGray" : "#333");
+      line.setAttribute("stroke-width", meta.isSubLane ? "2" :  meta.isSpecialLane ? "16" :"3");
       // Editor identity tags (inert; used only by editor.js, ignored by the engine/extension).
       line.setAttribute("data-kind", "lane");
       line.setAttribute("data-index", laneIndex);
       line.setAttribute("data-role", "line");
       tempSvg.appendChild(line);
 
-      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      text.setAttribute("x", x);
-      text.setAttribute("class", isSubLane ? "sub-lane-label" : "lane-label");
-      text.setAttribute("data-kind", "lane");
-      text.setAttribute("data-index", laneIndex);
-      text.setAttribute("data-role", "label");
       // Fill comes from the (configurable) .lane-label / .sub-lane-label CSS.
-      // Lane names may use '|' for line breaks; stack the lines upward so the
+      // Lane names may use '|' for line breaks; stack the top labels upward so the
       // bottom line keeps its usual position just above the lifeline. (#11)
-      const laneFontSize = isSubLane ? textCfg.subLane.size : textCfg.lane.size;
-      const laneLineHeight = laneFontSize * 1.2;
-      const laneLabelLines = String(cleanLane).split('|');
-      text.setAttribute("y", laneTop - 10 - (laneLabelLines.length - 1) * laneLineHeight);
-      laneLabelLines.forEach((ln, i) => {
-        const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-        tspan.setAttribute("x", x);
-        tspan.setAttribute("dy", i === 0 ? 0 : laneLineHeight);
-        tspan.textContent = ln;
-        text.appendChild(tspan);
-      });
-      tempSvg.appendChild(text);
+      appendLaneLabel(
+        x,
+        laneTop - 10 - (meta.lines.length - 1) * meta.lineHeight,
+        meta.lines,
+        meta.lineHeight,
+        meta.isSubLane ? "sub-lane-label" : "lane-label",
+        { "data-kind": "lane", "data-index": laneIndex, "data-role": "label" }
+      );
     });
 
     // Draw Lane Groups
@@ -783,7 +833,33 @@ function renderGraph() {
       }
     });
 
-    // Draw states (unchanged)
+    // Uniform state widths (options.graph.uniformStateWidth): a first measuring
+    // pass finds the widest state box per lane, so the draw loop below can widen
+    // every state in that lane to match — same metrics (font, padding, floor) as
+    // the loop's own sizing. (graph)
+    const laneStateMaxWidth = {};
+    if (uniformStateWidth && showStates) {
+      const minStateBoxWidth = 50, paddingX = 6;
+      states.forEach((state) => {
+        const fontSize = textCfg.state.size;
+        const lineHeight = fontSize * 1.2;
+        const lines = String(state.label || '').split('|');
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", 0); t.setAttribute("class", "state-label"); t.style.fontSize = fontSize + "px";
+        lines.forEach((line, i) => {
+          const ts = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          ts.setAttribute("x", 0); ts.setAttribute("dy", i === 0 ? 0 : lineHeight); ts.textContent = line;
+          t.appendChild(ts);
+        });
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        g.appendChild(t); tempSvg.appendChild(g);
+        const w = Math.max(minStateBoxWidth, t.getBBox().width + 2 * paddingX);
+        tempSvg.removeChild(g);
+        laneStateMaxWidth[state.lane] = Math.max(laneStateMaxWidth[state.lane] || 0, w);
+      });
+    }
+
+    // Draw states
     states.forEach((state, stateIndex) => {
       if (!showStates) return;
       // Find the original lane string (with prefix) for this state
@@ -854,7 +930,10 @@ function renderGraph() {
       // box; keep minStateBoxWidth only as a floor so short labels still get a
       // reasonably sized box. (A small character count can still be wide — large
       // fonts or wide glyphs — so we must not key off line length.)
-      const stateBoxWidth = Math.max(minStateBoxWidth, stateBbox.width + 2 * paddingX);
+      let stateBoxWidth = Math.max(minStateBoxWidth, stateBbox.width + 2 * paddingX);
+      // Widen to the lane's widest state when uniform widths are on (centered on the
+      // lifeline, so the boxes align as a column). (graph)
+      if (uniformStateWidth && laneStateMaxWidth[state.lane]) stateBoxWidth = laneStateMaxWidth[state.lane];
 
       const stateBoxX = laneX - (stateBoxWidth / 2);
       
@@ -1118,6 +1197,27 @@ function renderGraph() {
           group.appendChild(labelBg);
           group.appendChild(text);
           tempSvg.appendChild(group);
+        }
+      });
+    }
+
+    // Repeated lane labels (opt-in: options.repeatLaneLabels). Drawn here — AFTER
+    // all messages/states/info/legend — so they sit on top and stay legible
+    // instead of being buried. A plain label sits below each lifeline; faint
+    // chipped repeats mark it at a fixed interval down the page. Purely visual
+    // (no data-kind), and fully deterministic, so the editor matches exportSVG and
+    // any external renderer. (repeat-lane-labels)
+    if (repeatLaneLabels) {
+      lanes.forEach((lane) => {
+        const x = lanePositions[lane];
+        const meta = laneLabelMeta(lane);
+        const cls = meta.isSubLane ? "sub-lane-label" : "lane-label";
+        // bottom label under the lifeline
+        appendRepeatLaneLabel(x, lifelineEndY + meta.lineHeight, meta, cls, repeatLabelOpacity);
+        contentBottom = Math.max(contentBottom, lifelineEndY + meta.lineHeight * meta.lines.length + 10);
+        // mid-lifeline repeats every `laneLabelInterval` TIME units
+        for (let t = laneLabelInterval; t < lifelineBottom; t += laneLabelInterval) {
+          appendRepeatLaneLabel(x, laneTop + t * timeStep, meta, cls, repeatLabelOpacity);
         }
       });
     }

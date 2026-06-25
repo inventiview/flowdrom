@@ -89,7 +89,7 @@ Other actions in an item's menu:
 - **Lane** — adds a lane at the clicked position (you give it a name).
 - **Legend entry** — adds a legend line: enter its label, then pick a color and a solid/dashed style.
 - **Lane group (select lanes)** — then click the lanes to include and press **Create**.
-- **Text styling…** — opens a panel to set font size/color per element type (this edits the `options` block; see [Display Options](#8-display-options)).
+- **Styling…** — opens a panel to set per-element text size/color and whole-diagram **graph styling** (this edits the `options` block; see [Display Options](#8-display-options)).
 
 > Note: JSON **comments are not supported**. Graphical edits may not behave correctly if the JSON in the editor contains comments.
 
@@ -425,13 +425,35 @@ Example — bigger, high-contrast lanes and messages while leaving everything el
 
 Add the `options` object to your config in the JSON panel and click **Render**. Type `options` in the editor for an autocomplete snippet to get started. Because the setting lives in the config, it round-trips through Export/Load SVG.
 
-You can also set it visually: right-click the canvas → **Text styling…** opens a panel with a size/color field per element type.
+You can also set it visually: right-click the canvas → **Styling…** opens a panel with a size/color field per element type (plus the **Graph styling** options below).
 
 #### Make it persistent (apply to every graph)
 
-The Text styling panel has a **Make persistent** toggle. When on, your current styling is saved in the browser and automatically applied to every graph you create or open — so you don't have to re-set it each time. Editing a field while it's on updates the saved styling too; turning it off forgets it.
+The Styling panel has a **Make persistent** toggle. When on, your current styling is saved in the browser and automatically applied to every graph you create or open — so you don't have to re-set it each time. Editing a field while it's on updates the saved styling too; turning it off forgets it.
 
-Because persistence would otherwise silently change a diagram that has its own styling, Flowdrom asks first: when you **Load SVG** (or hand-edit the styling and press **Render**) and the diagram's styling differs from your saved one, a prompt lets you **keep the diagram's** styling or **use your saved** styling.
+Because persistence would otherwise silently change a diagram that has its own styling, Flowdrom asks first: when you **Load SVG** (or hand-edit the styling and press **Render**) and the diagram's styling differs from your saved one, a prompt lets you **keep the diagram's** styling or **use your saved** styling. Persistence covers **all** of the Styling panel — text styling and graph styling alike.
+
+#### Graph styling
+
+A separate **`options.graph`** block holds whole-diagram layout aids. They're **off by default**, and — like text styling — they're part of the config, so they round-trip through Export/Load SVG and are honored by any renderer (the editor and the exported SVG always match).
+
+```js
+options: {
+  graph: {
+    repeatLaneLabels: true,   // repeat each lane name down the page + below its lifeline
+    laneLabelInterval: 6,     // ...every N TIME units (default 5)
+    opacity: 0.5,             // 0–1: how faint the repeated labels are (default 0.5)
+    uniformStateWidth: true   // make every state box in a lane as wide as that lane's widest
+  }
+}
+```
+
+- **`repeatLaneLabels`** — for tall diagrams, repeats each lane's name at a fixed vertical interval (and once below its lifeline) so you can tell lanes apart when scrolled away from the top. The repeats use an outlined "word-art" style and are drawn on top, so they stay legible over messages and states. They're purely visual — not editable handles.
+- **`laneLabelInterval`** — spacing between repeats, in **time units** (the same scale as `fromTime`/`toTime`), so it tracks the diagram's own grid.
+- **`opacity`** — fades the repeated labels (0 = invisible, 1 = solid).
+- **`uniformStateWidth`** — widens every state box in a lane to match that lane's widest state, so a lane's states line up as a neat column. The width is computed per lane.
+
+Set these visually under right-click → **Styling…** → **Graph styling**, or edit the `options.graph` block directly.
 
 > Persistence is stored per browser (it doesn't follow you across machines or browsers), and private/incognito windows forget it when closed.
 

@@ -1949,7 +1949,7 @@
     addRow(menu, '+  Lane here', () => { closeMenu(); addLaneAt(clientX, clientY); });
     addRow(menu, '+  Legend entry', () => { closeMenu(); addLegendEntry(clientX, clientY); });
     addRow(menu, '+  Lane group (select lanes)', () => { closeMenu(); startGroupSelect(); });
-    addRow(menu, '⚙  Text styling…', () => { closeMenu(); showOptionsPanel(); });
+    addRow(menu, '⚙  Styling…', () => { closeMenu(); showOptionsPanel(); });
   }
 
   // ---- persistent text styling (saved in localStorage, applied to every graph) ----
@@ -2050,15 +2050,17 @@
     const opts = (parseModel() || {}).options || {};
     const panel = document.createElement('div');
     panel.className = 'flowdrom-options-panel';
-    const h = document.createElement('div'); h.textContent = 'Text styling (blank = default)'; h.style.cssText = 'font-weight:600;margin-bottom:8px;font-size:15px;'; panel.appendChild(h);
-    // Persist toggle: when on, this styling is saved and stamped onto every graph.
+    const h = document.createElement('div'); h.textContent = 'Styling'; h.style.cssText = 'font-weight:600;margin-bottom:8px;font-size:15px;'; panel.appendChild(h);
+    // Persist toggle (panel-level): when on, ALL of this styling — text AND graph —
+    // is saved and stamped onto every graph.
     const persist = document.createElement('label');
-    persist.style.cssText = 'display:flex;align-items:center;gap:7px;margin-bottom:10px;font-size:13px;cursor:pointer;';
+    persist.style.cssText = 'display:flex;align-items:center;gap:7px;margin-bottom:12px;font-size:13px;cursor:pointer;';
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = isStylePersistent();
     const cbl = document.createElement('span'); cbl.textContent = 'Make persistent (apply this styling to every graph)';
     persist.appendChild(cb); persist.appendChild(cbl);
     cb.addEventListener('change', () => { if (cb.checked) savePersistentStyle(currentOptions()); else clearPersistentStyle(); });
     panel.appendChild(persist);
+    const th = document.createElement('div'); th.textContent = 'Text styling (blank = default)'; th.style.cssText = 'font-weight:600;margin-bottom:8px;font-size:13px;color:var(--text-secondary);'; panel.appendChild(th);
     const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:auto 70px 110px;gap:6px 10px;align-items:center;'; panel.appendChild(grid);
     const hdr = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'color:var(--text-tertiary);font-size:11px;'; return d; };
     grid.appendChild(hdr('Entity')); grid.appendChild(hdr('Size')); grid.appendChild(hdr('Color'));
@@ -2073,6 +2075,47 @@
       color.addEventListener('change', () => { const v = color.value.trim() === '' ? null : color.value.trim(); commitStyle(setOption(ed.getValue(), ent, 'textColor', v)); });
       grid.appendChild(name); grid.appendChild(size); grid.appendChild(color);
     });
+
+    // ---- Graph styling: repeated lane labels (declarative options.graph.*) ----
+    const graph = opts.graph || {};
+    const gsh = document.createElement('div');
+    gsh.textContent = 'Graph styling';
+    gsh.style.cssText = 'font-weight:600;margin:16px 0 8px;font-size:13px;color:var(--text-secondary);';
+    panel.appendChild(gsh);
+
+    // Feature 1 — repeated lane labels: toggle + its two sub-options grouped
+    // together (they configure one feature), boxed and indented.
+    const repeatBox = document.createElement('div');
+    repeatBox.style.cssText = 'border:0.5px solid var(--separator);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:10px;';
+    const rl = document.createElement('label');
+    rl.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;font-weight:500;';
+    const rcb = document.createElement('input'); rcb.type = 'checkbox'; rcb.checked = !!graph.repeatLaneLabels;
+    const rlbl = document.createElement('span'); rlbl.textContent = 'Repeat lane labels down the page';
+    rl.appendChild(rcb); rl.appendChild(rlbl); repeatBox.appendChild(rl);
+    rcb.addEventListener('change', () => { commitStyle(setOption(ed.getValue(), 'graph', 'repeatLaneLabels', rcb.checked ? true : null)); });
+
+    const ggrid = document.createElement('div');
+    ggrid.style.cssText = 'display:grid;grid-template-columns:auto 90px;gap:6px 10px;align-items:center;font-size:13px;margin:8px 0 0 26px;';
+    const grow = (labelText, inputEl) => { const d = document.createElement('div'); d.textContent = labelText; ggrid.appendChild(d); ggrid.appendChild(inputEl); };
+    const interval = document.createElement('input'); interval.type = 'number'; interval.min = '0.1'; interval.step = '0.1'; interval.placeholder = '5'; interval.style.width = '80px';
+    if (typeof graph.laneLabelInterval === 'number') interval.value = graph.laneLabelInterval;
+    interval.addEventListener('change', () => { const v = interval.value.trim() === '' ? null : parseFloat(interval.value); commitStyle(setOption(ed.getValue(), 'graph', 'laneLabelInterval', v)); });
+    const opacity = document.createElement('input'); opacity.type = 'number'; opacity.min = '0'; opacity.max = '1'; opacity.step = '0.05'; opacity.placeholder = '0.5'; opacity.style.width = '80px';
+    if (typeof graph.opacity === 'number') opacity.value = graph.opacity;
+    opacity.addEventListener('change', () => { let v = opacity.value.trim() === '' ? null : parseFloat(opacity.value); if (v != null) v = Math.max(0, Math.min(1, v)); commitStyle(setOption(ed.getValue(), 'graph', 'opacity', v)); });
+    grow('Repeat every (time)', interval);
+    grow('Label opacity (0–1)', opacity);
+    repeatBox.appendChild(ggrid);
+    panel.appendChild(repeatBox);
+
+    // Feature 2 — uniform state widths (independent toggle).
+    const usw = document.createElement('label');
+    usw.style.cssText = 'display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:13px;cursor:pointer;';
+    const ucb = document.createElement('input'); ucb.type = 'checkbox'; ucb.checked = !!graph.uniformStateWidth;
+    const ulbl = document.createElement('span'); ulbl.textContent = 'Align state widths per lane (match the widest)';
+    usw.appendChild(ucb); usw.appendChild(ulbl); panel.appendChild(usw);
+    ucb.addEventListener('change', () => { commitStyle(setOption(ed.getValue(), 'graph', 'uniformStateWidth', ucb.checked ? true : null)); });
+
     const close = document.createElement('button'); close.textContent = 'Close'; close.className = 'btn'; close.style.marginTop = '10px'; close.addEventListener('click', () => panel.remove());
     panel.appendChild(close);
     document.body.appendChild(panel);
