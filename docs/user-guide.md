@@ -4,8 +4,14 @@
 
 ## Table of Contents
 - [Getting Started](#getting-started)
-- [The Graphical Editor](#the-graphical-editor)
 - [Basic Concepts](#basic-concepts)
+- [The Graphical Editor](#the-graphical-editor)
+  - [Start a new diagram](#start-a-new-diagram)
+  - [Select an item](#select-an-item)
+  - [Zoom and fit the canvas](#zoom-and-fit-the-canvas)
+  - [Move and edit existing items](#move-and-edit-existing-items)
+  - [Select multiple items](#select-multiple-items)
+  - [Add items](#add-items)
 - [Feature Examples](#feature-examples)
   - [1. Two-Lane Communication](#1-two-lane-communication)
     - [Simple Two-Lane Communication](#simple-two-lane-communication)
@@ -17,6 +23,7 @@
   - [6. Complex Transactions](#6-complex-transactions)
   - [7. Legends](#7-legends)
   - [8. Display Options](#8-display-options)
+- [HTML / CSS named colors](#html--css-named-colors)
 - [JSON Schema Reference](#json-schema-reference)
 
 ## Getting Started
@@ -27,7 +34,24 @@
 4. Use **"Export SVG"** or **"Export PNG"** to save your diagram
 5. Use **"Load SVG"** to edit existing diagrams
 
-> **The interface** has a **toolbar** across the top, the **source panel** (JSON) on the left, and the **canvas** on the right. Drag the divider between them to resize, or use the toolbar's pane toggle (top-left) to hide the source and give the canvas full width.
+> **The interface** has a **toolbar** across the top, the **source panel** (JSON) on the left, and the **canvas** on the right. Drag the divider between them to resize, or use the toolbar's pane toggle (top-left) to hide the source and give the canvas full width. Toolbar actions include **Render**, **Canonize** (reformat the JSON to the canonical guide style), **Fit** (fit the diagram to the canvas — see [Zoom and fit](#zoom-and-fit-the-canvas)), **Undo / Redo**, **Export SVG / PNG**, and **Load SVG**.
+
+## Basic Concepts
+
+Flowdrom diagrams consist of:
+- **Lanes**: Vertical columns representing entities (processors, agents, memory, etc.). A lane name may use `|` for a line break in its label (e.g. `'Caching|Agent'`).
+- **Messages**: Arrows between lanes showing communication
+- **States**: Boxes showing state changes within lanes
+- **Time**: Horizontal axis showing sequence of events
+- **Lane Groups**: Visual grouping of related lanes
+- **Info Boxes**: Annotations explaining specific events
+
+### Lane Positioning and Manual Adjustment
+
+- By default, lanes are spaced evenly.
+- To manually shift a lane horizontally, prefix its name with `>` (right) or `<` (left). Each symbol shifts by 20 pixels.
+  - Example: `>CA0` shifts CA0 right by 20px, `<<CA1` shifts CA1 left by 40px.
+- This affects all diagram elements referencing that lane (messages, states, info boxes, groups).
 
 ## The Graphical Editor
 
@@ -93,27 +117,10 @@ Other actions in an item's menu:
 
 > Note: JSON **comments are not supported**. Graphical edits may not behave correctly if the JSON in the editor contains comments.
 
-## Basic Concepts
-
-Flowdrom diagrams consist of:
-- **Lanes**: Vertical columns representing entities (processors, agents, memory, etc.). A lane name may use `|` for a line break in its label (e.g. `'Caching|Agent'`).
-- **Messages**: Arrows between lanes showing communication
-- **States**: Boxes showing state changes within lanes
-- **Time**: Horizontal axis showing sequence of events
-- **Lane Groups**: Visual grouping of related lanes
-- **Info Boxes**: Annotations explaining specific events
-
-### Lane Positioning and Manual Adjustment
-
-- By default, lanes are spaced evenly.
-- To manually shift a lane horizontally, prefix its name with `>` (right) or `<` (left). Each symbol shifts by 20 pixels.
-  - Example: `>CA0` shifts CA0 right by 20px, `<<CA1` shifts CA1 left by 40px.
-- This affects all diagram elements referencing that lane (messages, states, info boxes, groups).
-
 ## Feature Examples
 
 ### 1. Two-Lane Communication
-#### simple-two-lane-communication
+#### Simple Two-Lane Communication
 Let's start with the simplest possible diagram - two entities exchanging a message:
 
 ```js
@@ -122,8 +129,8 @@ Let's start with the simplest possible diagram - two entities exchanging a messa
   lanes: ['Source', 'Target'],
   messages: [
     { path: 'Source->Target', label: 'Hello', fromTime: 0, toTime: 1 },
-    { path: 'Target->Source', label: 'World', fromTime: 1, toTime: 2 },
-  ],  
+    { path: 'Target->Source', label: 'World', fromTime: 1, toTime: 2 }
+  ]
 }
 ```
 ![Hello-World](images/01-Hello-world.svg)
@@ -146,7 +153,7 @@ Adding color and style.
 
 This creates a simple sequence showing a client sending a request to a server and receiving a response.
 
-#### unordered-two-lane-communication
+#### Unordered Two-Lane Communication
 Since flowdrom is not just a sequence graph generator but actually has timing parameters, it opens the possibilities to create unordered sequences / non linear sequences.
 
 ```js
@@ -166,7 +173,7 @@ Since flowdrom is not just a sequence graph generator but actually has timing pa
 
 Here source and target sequences are different. 
 
-#### message label syntax
+#### Message Label Syntax
 
 use '|' to create a multi line message label. In case of collisions (message label obscures another graph element) you can use prefix '>' or '<' in the label text to shift the message right or left accordingly along its arrow (can also use multiple for bigger distance '>>>label').
 
@@ -631,29 +638,32 @@ You can use any standard HTML/CSS named color in your diagrams (for message colo
 ```
 
 ### Options Object
-Each key is a text entity with an optional `textSize` (number, px) and `textColor` (CSS color). Defaults shown:
+All optional — omit `options` entirely for the standard look. See [Display Options](#8-display-options) for full details and defaults. Two parts:
+
 ```js
 {
-  lane:        { textSize: 18, textColor: '#2a5eb2' },
-  subLane:     { textSize: 12, textColor: '#2a5eb2' },
-  laneGroup:   { textSize: 14, textColor: '#6699cc' },
-  message:     { textSize: 15, textColor: 'default' },  // 'default' = each arrow's color
-  info:        { textSize: 12, textColor: '#333' },
-  legend:      { textSize: 27, textColor: 'default' },  // 'default' = each entry's color
-  legendTitle: { textSize: 16, textColor: '#2a5eb2' },
-  state:       { textSize: 11, textColor: 'black' },
-  time:        { textSize: 12, textColor: '#666' },
-  title:       { textSize: 24, textColor: '#2a5eb2' }
+  // Per-entity TEXT styling: one key per text entity, each { textSize, textColor }.
+  // Entities: lane, subLane, laneGroup, message, info, legend, legendTitle, state, time, title.
+  // Any field may be the string 'default' (or omitted) for that entity's built-in default.
+  lane: { textSize: 18, textColor: '#2a5eb2' },   // e.g.
+
+  // Whole-diagram GRAPH styling (all off / defaulted unless set):
+  graph: {
+    repeatLaneLabels: false,   // repeat lane names down tall diagrams (+ a bottom label)
+    laneLabelInterval: 5,      // repeat spacing, in TIME units
+    opacity: 0.5,              // 0–1, faintness of the repeated labels
+    labelStyle: 'outline',     // 'outline' | 'white' | 'solid'
+    uniformStateWidth: false   // widen every state box in a lane to that lane's widest
+  }
 }
 ```
-> Everything is optional. Omit `options` entirely for the standard look. Any `textSize`/`textColor` may be the string `'default'` (or omitted) to use that entity's built-in default.
 
 ### Message Object
 ```js
 {
   path: 'Source->Target',    // Lane1->Lane2 format
-  label: 'Message text',     // Use | for line breaks
-  color: 'red|blue|green|purple|orange', // Message color
+  label: 'Message text',     // Use | for line breaks; lead with >/< to slide the label
+  color: 'red',              // Any CSS color name or hex
   style: 'solid|dashed',     // Line style
   fromTime: 0,               // Start time (number)
   toTime: 1                  // End time (number)
