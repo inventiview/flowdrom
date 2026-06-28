@@ -289,14 +289,16 @@ corpus.forEach(({ name, text }) => {
 // ---------------------------------------------------------------------------
 section('Auto-arrange — Phase 2 helpers (insertGapAtTime, state sequentialize, boxesOverlap)');
 {
-  // insertGapAtTime: times after the point shift; straddling elements stretch;
-  // earlier ones untouched. Order preserved.
+  // insertGapAtTime: times after the point shift; messages straddling stretch;
+  // states are RIGID (never stretched — duration preserved); earlier ones untouched.
   const m = { messages: [{ path: 'A->B', fromTime: 0, toTime: 2 }, { path: 'B->A', fromTime: 3, toTime: 4 }],
-              states: [{ lane: 'A', fromTime: 1, toTime: 5 }], infoBoxes: [{ lane: 'A', time: 4 }] };
+              states: [{ lane: 'A', fromTime: 1, toTime: 5 }, { lane: 'B', fromTime: 3, toTime: 6 }],
+              infoBoxes: [{ lane: 'A', time: 4 }] };
   const g = E.insertGapAtTime(m, 2, 1); // add 1 unit after t=2
   eq([g.messages[0].fromTime, g.messages[0].toTime], [0, 2], 'insertGap: element entirely <= point is untouched');
   eq([g.messages[1].fromTime, g.messages[1].toTime], [4, 5], 'insertGap: element entirely after the point shifts down');
-  eq([g.states[0].fromTime, g.states[0].toTime], [1, 6], 'insertGap: element straddling the point stretches');
+  eq([g.states[0].fromTime, g.states[0].toTime], [1, 5], 'insertGap: state straddling the point stays put (rigid, not stretched)');
+  eq([g.states[1].fromTime, g.states[1].toTime], [4, 7], 'insertGap: state entirely after the point shifts whole, duration preserved');
   eq([g.infoBoxes[0].time], [5], 'insertGap: info time after the point shifts');
 
   // overlappingStatePairs + sequentializeStates

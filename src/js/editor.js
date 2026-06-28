@@ -1796,14 +1796,22 @@
     return (ox > 0 && oy > 0) ? ox * oy : 0;
   }
 
-  // Insert `delta` time units at `atTime`: every later time shifts down (elements
-  // straddling it stretch; those entirely before/after only shift). Monotonic, so
-  // order is preserved. Pure; unit-tested. (#auto-arrange P2)
+  // Insert `delta` time units at `atTime`: every later time shifts down. Monotonic,
+  // so order is preserved. States are RIGID — a state is shifted whole (both ends)
+  // iff it starts after the gap, never stretched, so its duration (which may carry
+  // meaning) is always preserved. Pure; unit-tested. (#auto-arrange P2)
   function insertGapAtTime(model, atTime, delta) {
     const out = JSON.parse(JSON.stringify(model));
     const sh = (v) => (typeof v === 'number' && v > atTime + 1e-9) ? Math.round((v + delta) * 10) / 10 : v;
     (out.messages || []).forEach((m) => { m.fromTime = sh(m.fromTime); m.toTime = sh(m.toTime); });
-    (out.states || []).forEach((st) => { st.fromTime = sh(st.fromTime); if (typeof st.toTime === 'number') st.toTime = sh(st.toTime); });
+    (out.states || []).forEach((st) => {
+      // Decide by the state's start so from/to move together (no stretching). A state
+      // straddling the gap (start <= atTime < end) stays put, keeping its length.
+      if (typeof st.fromTime === 'number' && st.fromTime > atTime + 1e-9) {
+        st.fromTime = Math.round((st.fromTime + delta) * 10) / 10;
+        if (typeof st.toTime === 'number') st.toTime = Math.round((st.toTime + delta) * 10) / 10;
+      }
+    });
     (out.infoBoxes || []).forEach((b) => { b.time = sh(b.time); });
     return out;
   }
@@ -1964,9 +1972,12 @@
            _segIntersect(x1, y1, x2, y2, b.x, b.y + b.h, b.x + b.w, b.y + b.h) ||
            _segIntersect(x1, y1, x2, y2, b.x, b.y, b.x, b.y + b.h);
   }
-  // Endpoint time is causal if it exactly matches any state boundary (within 0.01).
-  function _isCausal(t, states) {
+  // An endpoint is causal only if it lines up with a state boundary ON ITS OWN LANE
+  // (within 0.01) — e.g. a message arriving on lane X exactly when a state on X starts
+  // or ends. Boundaries on other lanes are coincidental and must not pin the message.
+  function _isCausal(t, states, lane) {
     return (states || []).some(s => {
+      if (lane != null && s.lane !== lane) return false;
       const lo = Math.min(s.fromTime || 0, s.toTime != null ? s.toTime : s.fromTime || 0);
       const hi = Math.max(s.fromTime || 0, s.toTime != null ? s.toTime : s.fromTime || 0);
       return Math.abs(t - lo) < 0.01 || Math.abs(t - hi) < 0.01;
@@ -2018,8 +2029,9 @@
         const y2 = laneTop + (msg.toTime || 0) * timeStep;
         if (!stateBoxes.some(sb => _lineInBox(x1, y1, x2, y2, { x: sb.x, y: sb.y, w: sb.w, h: sb.h }))) return;
 
-        for (const [field, t] of [['fromTime', msg.fromTime || 0], ['toTime', msg.toTime || 0]]) {
-          if (_isCausal(t, states)) continue;
+        // fromTime is anchored to the from-lane, toTime to the to-lane.
+        for (const [field, t, lane] of [['fromTime', msg.fromTime || 0, parts[0]], ['toTime', msg.toTime || 0, parts[1]]]) {
+          if (_isCausal(t, states, lane)) continue;
           for (const delta of DELTAS) {
             const cand = JSON.parse(JSON.stringify(cur));
             cand.messages[i][field] = t + delta;
