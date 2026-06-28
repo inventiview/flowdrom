@@ -247,6 +247,133 @@ section('Sub-lanes — migrate legacy "Sub.Parent" to order-based "Parent.Sub"')
 }
 
 // ---------------------------------------------------------------------------
+section('Auto-arrange — Phase 1 even re-timing preserves order, equality, structure');
+corpus.forEach(({ name, text }) => {
+  const model = JSON5.parse(text);
+  const anchors = E.arrangeTimeAnchors(model);
+
+  // anchors are strictly ascending & unique
+  let sortedUnique = true;
+  for (let i = 1; i < anchors.length; i++) if (!(anchors[i] > anchors[i - 1])) sortedUnique = false;
+  ok(sortedUnique, `${name}: time anchors are sorted & unique`);
+
+  const arranged = E.autoArrangeTimes(model);
+  const map = E.evenTimeMap(anchors);
+
+  // even spacing: arranged distinct times are the contiguous grid 0..n-1
+  const arrAnchors = E.arrangeTimeAnchors(arranged);
+  ok(arrAnchors.every((v, i) => v === i), `${name}: arranged times form an even 0..n grid`);
+
+  // the core safety invariant: the remap preserves the order AND equality of
+  // every pair of anchors (so no element can change its place in time).
+  let orderOk = true;
+  for (let i = 0; i < anchors.length && orderOk; i++) {
+    for (let j = 0; j < anchors.length; j++) {
+      if (Math.sign(anchors[i] - anchors[j]) !== Math.sign(map.get(anchors[i]) - map.get(anchors[j]))) { orderOk = false; break; }
+    }
+  }
+  ok(orderOk, `${name}: remap preserves order + equality of every anchor pair`);
+
+  // only time fields change — everything else (paths, labels, colors, lanes,
+  // options, …) is identical.
+  const stripTimes = (m) => {
+    const c = JSON.parse(JSON.stringify(m));
+    (c.messages || []).forEach((x) => { delete x.fromTime; delete x.toTime; });
+    (c.states || []).forEach((x) => { delete x.fromTime; delete x.toTime; });
+    (c.infoBoxes || []).forEach((x) => { delete x.time; });
+    return c;
+  };
+  eq(canon(stripTimes(arranged)), canon(stripTimes(model)), `${name}: arrange changes only time fields`);
+
+  // every state keeps its original duration (relative length carries meaning).
+  let dursOk = true;
+  (model.states || []).forEach((s, i) => {
+    if (typeof s.fromTime !== 'number' || typeof s.toTime !== 'number') return;
+    const a = arranged.states[i];
+    if (Math.abs((a.toTime - a.fromTime) - (s.toTime - s.fromTime)) > 1e-6) dursOk = false;
+  });
+  ok(dursOk, `${name}: Phase 1 preserves every state's duration`);
+});
+
+// ---------------------------------------------------------------------------
+section('Auto-arrange — Phase 1 keeps state durations while gridding events');
+{
+  const model = {
+    messages: [{ path: 'A->B', fromTime: 0, toTime: 1 }, { path: 'B->A', fromTime: 4, toTime: 7.4 }],
+    states: [
+      { lane: 'A', label: 'short', fromTime: 0, toTime: 0.5 },
+      { lane: 'B', label: 'long', fromTime: 2, toTime: 6 },
+    ],
+  };
+  const out = E.autoArrangeTimes(model);
+  // Event anchors (msg endpoints + state starts): 0,1,2,4,7.4 -> 0,1,2,3,4
+  eq(out.messages[1].fromTime, 3, 'event time 4 maps to its grid rank');
+  eq(out.messages[1].toTime, 4, 'event time 7.4 maps to its grid rank');
+  eq([out.states[0].fromTime, out.states[0].toTime], [0, 0.5], 'short state: start gridded, 0.5 duration kept');
+  eq([out.states[1].fromTime, out.states[1].toTime], [2, 6], 'long state: start->rank 2, original duration 4 kept (ends past neighbours)');
+}
+
+// ---------------------------------------------------------------------------
+section('Auto-arrange — overlapping same-lane states stay adjacent (consecutive)');
+{
+  // I->UD (0-0.5) and ssadas (0.3-1.2) overlap on CA0 → meant to be consecutive.
+  const model = {
+    messages: [{ path: 'CA0->HN', fromTime: 0, toTime: 1 }],
+    states: [
+      { lane: 'CA0', label: 'I->UD', fromTime: 0, toTime: 0.5 },
+      { lane: 'CA0', label: 'ssadas', fromTime: 0.3, toTime: 1.2 },
+    ],
+  };
+  eq(E.secondaryOverlapStateIndices(model).has(1), true, 'ssadas flagged as a secondary (overlapping) state');
+  eq(E.secondaryOverlapStateIndices(model).has(0), false, 'first state of the chain is not secondary');
+
+  const out = E.autoArrangeTimes(model);
+  const s0 = out.states[0], s1 = out.states[1];
+  ok(Math.abs(s1.fromTime - s0.toTime) < 1e-9, 'second state starts exactly where the first ends (adjacent, no gap)');
+  eq(Math.round((s0.toTime - s0.fromTime) * 10) / 10, 0.5, 'first state keeps its 0.5 duration');
+  eq(Math.round((s1.toTime - s1.fromTime) * 10) / 10, 0.9, 'second state keeps its 0.9 duration');
+
+  // idempotent: arranging the already-arranged model leaves it unchanged.
+  const out2 = E.autoArrangeTimes(out);
+  eq(canon(out2), canon(out), 'autoArrangeTimes is idempotent on its own output');
+}
+
+// ---------------------------------------------------------------------------
+section('Auto-arrange — Phase 2 helpers (insertGapAtTime, state sequentialize, boxesOverlap)');
+{
+  // insertGapAtTime: times after the point shift; messages straddling stretch;
+  // states are RIGID (never stretched — duration preserved); earlier ones untouched.
+  const m = { messages: [{ path: 'A->B', fromTime: 0, toTime: 2 }, { path: 'B->A', fromTime: 3, toTime: 4 }],
+              states: [{ lane: 'A', fromTime: 1, toTime: 5 }, { lane: 'B', fromTime: 3, toTime: 6 }],
+              infoBoxes: [{ lane: 'A', time: 4 }] };
+  const g = E.insertGapAtTime(m, 2, 1); // add 1 unit after t=2
+  eq([g.messages[0].fromTime, g.messages[0].toTime], [0, 2], 'insertGap: element entirely <= point is untouched');
+  eq([g.messages[1].fromTime, g.messages[1].toTime], [4, 5], 'insertGap: element entirely after the point shifts down');
+  eq([g.states[0].fromTime, g.states[0].toTime], [1, 5], 'insertGap: state straddling the point stays put (rigid, not stretched)');
+  eq([g.states[1].fromTime, g.states[1].toTime], [4, 7], 'insertGap: state entirely after the point shifts whole, duration preserved');
+  eq([g.infoBoxes[0].time], [5], 'insertGap: info time after the point shifts');
+
+  // overlappingStatePairs + sequentializeStates
+  const sm = { states: [
+    { lane: 'X', label: 'a', fromTime: 0, toTime: 4 },
+    { lane: 'X', label: 'b', fromTime: 2, toTime: 3 },   // overlaps 'a' on lane X
+    { lane: 'Y', label: 'c', fromTime: 0, toTime: 1 },
+  ] };
+  eq(E.overlappingStatePairs(sm).length, 1, 'overlappingStatePairs finds the one same-lane time overlap');
+  const seq = E.sequentializeStates(sm);
+  eq(E.overlappingStatePairs(seq).length, 0, 'sequentializeStates removes the overlap');
+  ok(seq.states[1].fromTime >= seq.states[0].toTime - 1e-9, 'sequentialized state starts at/after the previous ends');
+  ok((seq.states[1].toTime - seq.states[1].fromTime) === 1, 'sequentialize preserves the moved state duration');
+
+  // boxesOverlap
+  const A = { x: 0, y: 0, w: 10, h: 10 };
+  ok(E.boxesOverlap(A, { x: 5, y: 5, w: 10, h: 10 }), 'overlapping boxes detected');
+  ok(!E.boxesOverlap(A, { x: 20, y: 0, w: 5, h: 5 }), 'separated boxes do not overlap');
+  ok(!E.boxesOverlap(A, { x: 11, y: 0, w: 5, h: 5 }), 'touching-with-1px-gap boxes do not overlap (gap 0)');
+  ok(E.boxesOverlap(A, { x: 12, y: 0, w: 5, h: 5 }, 3), 'margin makes near boxes count as overlapping');
+}
+
+// ---------------------------------------------------------------------------
 console.log(`\n${'='.repeat(60)}\n${pass} passed, ${fail} failed`);
 if (fail) { console.error('\nFAILURES:\n - ' + failures.join('\n - ')); process.exit(1); }
 console.log('All green.');

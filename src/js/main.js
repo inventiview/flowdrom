@@ -236,8 +236,14 @@ function parseCssColor(str) {
   } catch (e) { return null; }
 }
 
-function renderGraph() {
-  document.querySelectorAll('.flowdrom-editpop').forEach(el => el.remove());
+// Renders the diagram. With no arguments it reads the JSON from #input and
+// commits the result to #svg-container (the normal path, used by the page and by
+// any external tool). When `modelOverride` is supplied with `measureOnly` true,
+// it builds the SAME svg off-screen and returns { layout, boxes } WITHOUT
+// touching the live view — the shared build core behind window.flowdromMeasure,
+// used by the editor's auto-arrange for collision detection. (auto-arrange)
+function renderGraph(modelOverride, measureOnly) {
+  if (!measureOnly) document.querySelectorAll('.flowdrom-editpop').forEach(el => el.remove());
   const svgContainer = document.getElementById("svg-container");
 
   const tempSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -248,8 +254,8 @@ function renderGraph() {
   tempSvg.appendChild(defs);
 
   try {
-    const input = JSON5.parse(document.getElementById("input").value);
-    currentConfig = input;
+    const input = modelOverride || JSON5.parse(document.getElementById("input").value);
+    if (!measureOnly) currentConfig = input;
 
     const lanes = input.lanes || [];
     const messages = input.messages || [];
@@ -1244,38 +1250,59 @@ function renderGraph() {
     tempSvg.setAttribute('height', finalHeight);
     tempSvg.setAttribute('viewBox', `0 ${finalTop} ${svgWidth} ${finalHeight}`);
 
+    // Layout metadata for the editor (and the measure path) to map pixels back
+    // to model values. Inert for headless renders; never affects the SVG.
+    const layout = {
+      laneTop: laneTop,
+      timeStep: timeStep,
+      startX: startX,
+      laneSpacing: laneSpacing,
+      maxTime: maxTime,
+      lanes: lanes.map((laneStr, i) => ({
+        index: i,
+        key: laneStr,
+        clean: parseLaneNameOffset(laneStr).cleanLane,
+        x: lanePositions[laneStr],
+      })),
+    };
+
+    if (measureOnly) {
+      // Off-screen measurement: every tagged element's bounding box in diagram
+      // units (with its role), for the editor's collision detection. Then discard.
+      const boxes = [];
+      tempSvg.querySelectorAll('[data-kind][data-index]').forEach((el) => {
+        let b; try { b = el.getBBox(); } catch (err) { return; }
+        if (!b || (!b.width && !b.height)) return;
+        boxes.push({
+          kind: el.getAttribute('data-kind'),
+          index: parseInt(el.getAttribute('data-index'), 10),
+          role: el.getAttribute('data-role') || null,
+          x: b.x, y: b.y, w: b.width, h: b.height,
+        });
+      });
+      document.body.removeChild(tempSvg);
+      return { layout: layout, boxes: boxes };
+    }
+
     const exportedSvg = exportSVG(false, tempSvg);
     svgContainer.innerHTML = exportedSvg;
     document.body.removeChild(tempSvg);
-
-    // Expose layout metadata for the browser editor (editor.js) to map pixels
-    // back to model values. Inert for the headless engine/extension and does
-    // not affect the rendered SVG in any way.
-    if (typeof window !== 'undefined') {
-      window.flowdromLayout = {
-        laneTop: laneTop,
-        timeStep: timeStep,
-        startX: startX,
-        laneSpacing: laneSpacing,
-        maxTime: maxTime,
-        lanes: lanes.map((laneStr, i) => ({
-          index: i,
-          key: laneStr,
-          clean: parseLaneNameOffset(laneStr).cleanLane,
-          x: lanePositions[laneStr],
-        })),
-      };
-    }
+    if (typeof window !== 'undefined') window.flowdromLayout = layout;
 
   } catch (e) {
+    if (tempSvg && tempSvg.parentNode) document.body.removeChild(tempSvg);
+    if (measureOnly) throw e; // let the caller (auto-arrange) handle a bad candidate
     console.error("Error parsing JSON: " + e.message);
     svgContainer.innerHTML = `<div style="color: red; padding: 20px;">Error parsing JSON: ${e.message}. Please check your input.</div>`;
-    
-    const tempSvg = document.getElementById("temp-graph");
-    if (tempSvg) {
-      document.body.removeChild(tempSvg);
-    }
   }
+}
+
+// Off-screen measurement API for the editor's auto-arrange: render a candidate
+// model and get back { layout, boxes } without disturbing the live view. Uses the
+// internal (un-hooked) renderGraph binding, so the editor's render hook (overlay
+// rebuild, zoom, etc.) does not fire for a measurement. (auto-arrange)
+if (typeof window !== 'undefined') {
+  window.flowdromMeasure = function (model) { return renderGraph(model, true); };
 }
 
 function exportSVG(download = true, svgElement = null) {
