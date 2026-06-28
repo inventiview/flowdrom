@@ -1741,6 +1741,238 @@
     if (typeof window.renderGraph === 'function') window.renderGraph();
   }
 
+  // ========================================================================
+  // Auto-arrange (#auto-arrange): rewrite the model so a normal render looks
+  // tidy, WITHOUT changing the order of anything in time. The only operation on
+  // the time axis is a monotonic remap (a < b → a' < b', a == b → a' == b'),
+  // which provably preserves every ordering/causal relation. Phase 1 (here)
+  // evens out the spacing; Phase 2 (collision-aware spreading via
+  // window.flowdromMeasure) layers on top in autoArrange().
+  // ========================================================================
+
+  // Every distinct time value used anywhere in the model, ascending.
+  function arrangeTimeAnchors(model) {
+    const s = new Set();
+    (model.messages || []).forEach((m) => { if (typeof m.fromTime === 'number') s.add(m.fromTime); if (typeof m.toTime === 'number') s.add(m.toTime); });
+    (model.states || []).forEach((st) => { if (typeof st.fromTime === 'number') s.add(st.fromTime); if (typeof st.toTime === 'number') s.add(st.toTime); });
+    (model.infoBoxes || []).forEach((b) => { if (typeof b.time === 'number') s.add(b.time); });
+    return Array.from(s).sort((a, b) => a - b);
+  }
+  // Even spacing: map the k-th distinct time onto integer rank k. Order- and
+  // equality-preserving by construction.
+  function evenTimeMap(anchors) {
+    const map = new Map();
+    anchors.forEach((v, i) => map.set(v, i));
+    return map;
+  }
+  // Return a deep copy of the model with every time value passed through the map.
+  function remapModelTimes(model, valueMap) {
+    const out = JSON.parse(JSON.stringify(model));
+    const rt = (v) => (typeof v === 'number' && valueMap.has(v)) ? valueMap.get(v) : v;
+    (out.messages || []).forEach((m) => { if (typeof m.fromTime === 'number') m.fromTime = rt(m.fromTime); if (typeof m.toTime === 'number') m.toTime = rt(m.toTime); });
+    (out.states || []).forEach((st) => { if (typeof st.fromTime === 'number') st.fromTime = rt(st.fromTime); if (typeof st.toTime === 'number') st.toTime = rt(st.toTime); });
+    (out.infoBoxes || []).forEach((b) => { if (typeof b.time === 'number') b.time = rt(b.time); });
+    return out;
+  }
+  // Phase 1, end to end: even, order-preserving re-timing.
+  function autoArrangeTimes(model) {
+    return remapModelTimes(model, evenTimeMap(arrangeTimeAnchors(model)));
+  }
+
+  // ---- Phase 2: collision-aware cleanup (browser-only; uses flowdromMeasure) ----
+  // Every transform below is GUARDED by a measured overlap score: a candidate is
+  // kept only if it strictly reduces total label/box overlap. So Arrange can only
+  // improve or no-op — it can never make the diagram worse than the input.
+
+  // Axis-aligned overlap test (+ optional margin) and overlap area. Boxes are
+  // { x, y, w, h }. Pure; unit-tested.
+  function boxesOverlap(a, b, gap) {
+    gap = gap || 0;
+    return a.x < b.x + b.w + gap && a.x + a.w + gap > b.x && a.y < b.y + b.h + gap && a.y + a.h + gap > b.y;
+  }
+  function boxOverlapArea(a, b) {
+    const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    return (ox > 0 && oy > 0) ? ox * oy : 0;
+  }
+
+  // Insert `delta` time units at `atTime`: every later time shifts down (elements
+  // straddling it stretch; those entirely before/after only shift). Monotonic, so
+  // order is preserved. Pure; unit-tested. (#auto-arrange P2)
+  function insertGapAtTime(model, atTime, delta) {
+    const out = JSON.parse(JSON.stringify(model));
+    const sh = (v) => (typeof v === 'number' && v > atTime + 1e-9) ? Math.round((v + delta) * 10) / 10 : v;
+    (out.messages || []).forEach((m) => { m.fromTime = sh(m.fromTime); m.toTime = sh(m.toTime); });
+    (out.states || []).forEach((st) => { st.fromTime = sh(st.fromTime); if (typeof st.toTime === 'number') st.toTime = sh(st.toTime); });
+    (out.infoBoxes || []).forEach((b) => { b.time = sh(b.time); });
+    return out;
+  }
+
+  // States that overlap IN TIME on the same lane (a data error re-timing can't fix
+  // while keeping order). Returns [[i,j], …]. Pure; unit-tested.
+  function overlappingStatePairs(model) {
+    const byLane = {}, pairs = [];
+    (model.states || []).forEach((s, i) => { (byLane[s.lane] = byLane[s.lane] || []).push({ i: i, from: s.fromTime, to: (s.toTime != null ? s.toTime : s.fromTime) }); });
+    Object.keys(byLane).forEach((lane) => {
+      const arr = byLane[lane].slice().sort((a, b) => a.from - b.from);
+      for (let k = 1; k < arr.length; k++) if (arr[k].from < arr[k - 1].to - 1e-9) pairs.push([arr[k - 1].i, arr[k].i]);
+    });
+    return pairs;
+  }
+  // Opt-in fix: push same-lane states to be back-to-back (preserving each lane's
+  // order + durations). Changes timing — relaxes the order invariant for states.
+  // Pure; unit-tested.
+  function sequentializeStates(model) {
+    const out = JSON.parse(JSON.stringify(model));
+    const byLane = {};
+    (out.states || []).forEach((s, i) => { (byLane[s.lane] = byLane[s.lane] || []).push(i); });
+    Object.keys(byLane).forEach((lane) => {
+      const idxs = byLane[lane].sort((a, b) => out.states[a].fromTime - out.states[b].fromTime);
+      for (let k = 1; k < idxs.length; k++) {
+        const prev = out.states[idxs[k - 1]], cur = out.states[idxs[k]];
+        const prevTo = (prev.toTime != null ? prev.toTime : prev.fromTime);
+        if (cur.fromTime < prevTo) {
+          const dur = (cur.toTime != null ? cur.toTime : cur.fromTime) - cur.fromTime;
+          cur.fromTime = Math.round(prevTo * 10) / 10;
+          if (cur.toTime != null) cur.toTime = Math.round((prevTo + dur) * 10) / 10;
+        }
+      }
+    });
+    return out;
+  }
+
+  // Reduce measured boxes to one collision item per labelled element (message
+  // LABEL only; whole state / info box) with its pixel box + time extent.
+  function collisionItems(model, boxes) {
+    const byId = new Map();
+    (boxes || []).forEach((bx) => {
+      const take = bx.kind === 'message' ? (bx.role === 'label') : (bx.kind === 'state' || bx.kind === 'infoBox');
+      if (!take) return;
+      const id = bx.kind + ':' + bx.index, e = byId.get(id);
+      if (!e) byId.set(id, { kind: bx.kind, index: bx.index, x: bx.x, y: bx.y, r: bx.x + bx.w, b: bx.y + bx.h });
+      else { e.x = Math.min(e.x, bx.x); e.y = Math.min(e.y, bx.y); e.r = Math.max(e.r, bx.x + bx.w); e.b = Math.max(e.b, bx.y + bx.h); }
+    });
+    const out = [];
+    byId.forEach((e) => {
+      let tT = 0, tB = 0;
+      if (e.kind === 'message') { const m = (model.messages || [])[e.index] || {}; tT = Math.min(m.fromTime || 0, m.toTime || 0); tB = Math.max(m.fromTime || 0, m.toTime || 0); }
+      else if (e.kind === 'state') { const s = (model.states || [])[e.index] || {}; tT = s.fromTime || 0; tB = (s.toTime != null ? s.toTime : s.fromTime) || 0; }
+      else { const ib = (model.infoBoxes || [])[e.index] || {}; tT = tB = ib.time || 0; }
+      out.push({ kind: e.kind, index: e.index, box: { x: e.x, y: e.y, w: e.r - e.x, h: e.b - e.y }, repTime: (tT + tB) / 2 });
+    });
+    return out;
+  }
+  function totalOverlap(items) {
+    let s = 0;
+    for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) s += boxOverlapArea(items[i].box, items[j].box);
+    return s;
+  }
+
+  // Pass A — push apart vertical overlaps between DIFFERENT-time elements by
+  // inserting a local time gap between them. Greedy, strictly improving, guarded.
+  function spreadDifferentTimes(model, measure) {
+    const MARGIN = 6, CAP = 40;
+    let cur = model, m = measure(cur), ts = (m.layout && m.layout.timeStep) || 50;
+    let items = collisionItems(cur, m.boxes), score = totalOverlap(items);
+    for (let it = 0; it < CAP && score > 0; it++) {
+      let best = null;
+      for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+        const A = items[i], B = items[j];
+        if (Math.abs(A.repTime - B.repTime) < 0.05) continue; // same time → Pass B
+        if (!boxesOverlap(A.box, B.box, MARGIN)) continue;
+        const oy = Math.min(A.box.y + A.box.h, B.box.y + B.box.h) - Math.max(A.box.y, B.box.y);
+        if (oy > 0 && (!best || oy > best.oy)) best = { A: A, B: B, oy: oy };
+      }
+      if (!best) break;
+      const T = (best.A.repTime + best.B.repTime) / 2;
+      const delta = Math.max(0.1, Math.round(((best.oy + MARGIN) / ts) * 10) / 10);
+      const cand = insertGapAtTime(cur, T, delta);
+      const cm = measure(cand), ci = collisionItems(cand, cm.boxes), cs = totalOverlap(ci);
+      if (cs < score - 1e-6) { cur = cand; items = ci; score = cs; ts = (cm.layout && cm.layout.timeStep) || ts; }
+      else break;
+    }
+    return cur;
+  }
+
+  // Pass B — same-time message labels: slide each along its arrow (>/< markers) in
+  // opposite directions. Guarded: kept only if it reduces overlap.
+  function slideSameTimeLabels(model, measure) {
+    const MARGIN = 6, CAP = 30;
+    let cur = model, m = measure(cur), score = totalOverlap(collisionItems(cur, m.boxes));
+    for (let it = 0; it < CAP; it++) {
+      const msgs = collisionItems(cur, m.boxes).filter((x) => x.kind === 'message');
+      let pair = null;
+      for (let i = 0; i < msgs.length && !pair; i++) for (let j = i + 1; j < msgs.length; j++) {
+        if (Math.abs(msgs[i].repTime - msgs[j].repTime) < 0.05 && boxesOverlap(msgs[i].box, msgs[j].box, MARGIN)) { pair = [msgs[i].index, msgs[j].index]; break; }
+      }
+      if (!pair) break;
+      const cand = JSON.parse(JSON.stringify(cur));
+      const set = (idx, ratio) => { const msg = cand.messages && cand.messages[idx]; if (msg) msg.label = markersFromRatio(ratio) + parseLabelMarkers(msg.label || '').text; };
+      set(pair[0], -0.25); set(pair[1], 0.25);
+      const cm = measure(cand), cs = totalOverlap(collisionItems(cand, cm.boxes));
+      if (cs < score - 1e-6) { cur = cand; m = cm; score = cs; } else break;
+    }
+    return cur;
+  }
+
+  function collisionSpread(model, measure) {
+    return slideSameTimeLabels(spreadDifferentTimes(model, measure), measure);
+  }
+
+  // Brief non-blocking status toast (bottom-center), auto-dismissed.
+  function arrangeToast(text) {
+    let t = document.querySelector('.flowdrom-toast');
+    if (!t) { t = document.createElement('div'); t.className = 'flowdrom-toast'; document.body.appendChild(t); }
+    t.textContent = text; t.style.opacity = '1';
+    clearTimeout(arrangeToast._t);
+    arrangeToast._t = setTimeout(() => { t.style.opacity = '0'; }, 4000);
+  }
+  // Only a SUBSTANTIAL 2D overlap counts as a real collision worth reporting — at
+  // least a quarter of the smaller box covered — so a few pixels of padding/graze
+  // between adjacent labels doesn't raise a false alarm.
+  function significantOverlap(a, b) {
+    const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    if (ox <= 0 || oy <= 0) return false;
+    const minArea = Math.min(a.w * a.h, b.w * b.h);
+    return minArea > 0 && (ox * oy) >= 0.25 * minArea;
+  }
+  function significantOverlaps(model, measure) {
+    const items = collisionItems(model, measure(model).boxes), out = [];
+    for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+      if (significantOverlap(items[i].box, items[j].box)) out.push(items[i].kind + '[' + items[i].index + '] ↔ ' + items[j].kind + '[' + items[j].index + ']');
+    }
+    return out;
+  }
+
+  // The Arrange button: Phase 1 even re-timing, an optional confirm to sequentialize
+  // genuinely time-overlapping same-lane states, then (in the browser) the guarded
+  // Phase 2 cleanup. One undoable edit. Falls back gracefully without measurement.
+  function autoArrange() {
+    const ed = getEditor(); const model = parseModel(); const J = getJSON5();
+    if (!ed || !model || !J) return;
+    let candidate = autoArrangeTimes(model);
+    const ov = overlappingStatePairs(candidate);
+    if (ov.length && typeof window !== 'undefined' && typeof window.confirm === 'function' &&
+        window.confirm(ov.length + ' state(s) overlap in time on a lane — Arrange can\'t fix that while keeping every element\'s order. Make those states sequential? (This changes their timing.)')) {
+      candidate = autoArrangeTimes(sequentializeStates(candidate));
+    }
+    const measure = (typeof window !== 'undefined') ? window.flowdromMeasure : null;
+    if (typeof measure === 'function') {
+      try { candidate = collisionSpread(candidate, measure); } catch (e) { /* keep Phase 1 */ }
+    }
+    const changed = stableStr(candidate) !== stableStr(model);
+    applyText(J.stringify(candidate));
+    if (typeof measure === 'function') {
+      try {
+        const sig = significantOverlaps(candidate, measure);
+        if (sig.length) { arrangeToast((changed ? 'Arranged' : 'Already tidy') + ' — ' + sig.length + ' overlap(s) need a manual fix (simultaneous labels or crossings).'); console.warn('Arrange — remaining overlaps:', sig); }
+        else arrangeToast(changed ? 'Arranged.' : 'Already tidy — nothing to change.');
+      } catch (e) { /* ignore */ }
+    }
+  }
+  if (typeof window !== 'undefined') window.flowdromArrange = autoArrange;
+
   // Undo/redo for graphical edits. Each graphical edit calls ed.setValue with a
   // non-coalescing "setValue" origin, so CodeMirror's own history already records
   // one step per edit. We drive it through here so undo/redo also work from the
@@ -2457,7 +2689,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption };
+    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption, arrangeTimeAnchors, evenTimeMap, remapModelTimes, autoArrangeTimes, boxesOverlap, insertGapAtTime, overlappingStatePairs, sequentializeStates };
   }
 
   if (typeof document !== 'undefined') {

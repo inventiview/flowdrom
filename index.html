@@ -68,6 +68,8 @@
                 title="Sort, order and compact the JSON to the canonical guide style">Canonize</button>
         <button class="btn" type="button" onclick="(window.flowdromFitCanvas||function(){})()"
                 title="Fit the diagram to the canvas and resume auto-fit on resize (after manual Ctrl+wheel zoom)">Fit</button>
+        <button class="btn" type="button" onclick="(window.flowdromArrange||function(){})()"
+                title="Auto-arrange: tidy spacing and reduce overlaps, keeping every element's order in time (one undo step)">Arrange</button>
         <span class="toolbar__sep" aria-hidden="true"></span>
         <button class="btn" type="button" onclick="exportSVG(true)">Export SVG</button>
         <button class="btn" type="button" onclick="exportPNG()">Export PNG</button>

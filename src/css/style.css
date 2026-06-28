@@ -389,6 +389,26 @@ body { margin: 0; padding: 0; overflow: hidden; }
    with the rest of the app and adapts to dark mode.
    ========================================================================== */
 
+/* ---- Transient status toast (e.g. Arrange result) ---------------------- */
+.flowdrom-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 10000;
+  max-width: 70vw;
+  padding: 9px 16px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-on-accent);
+  background: var(--text-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-standard);
+  pointer-events: none;
+}
+
 /* ---- Contextual menu (picker / actions / add / color) ------------------ */
 .flowdrom-menu {
   position: fixed;
