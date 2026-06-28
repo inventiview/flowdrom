@@ -1915,8 +1915,162 @@
     return cur;
   }
 
+  // Pass C — slide message labels away from overlapping state/infoBox items.
+  // Tries all four >/< offsets and keeps the best strictly-improving candidate.
+  function slideMsgStateLabels(model, measure) {
+    const MARGIN = 6, CAP = 20;
+    let cur = model, m = measure(cur), score = totalOverlap(collisionItems(cur, m.boxes));
+    for (let it = 0; it < CAP && score > 0; it++) {
+      const allItems = collisionItems(cur, m.boxes);
+      const msgs = allItems.filter((x) => x.kind === 'message');
+      const fixed = allItems.filter((x) => x.kind !== 'message');
+      let best = null;
+      for (const msg of msgs) {
+        for (const fix of fixed) {
+          if (!boxesOverlap(msg.box, fix.box, MARGIN)) continue;
+          for (const ratio of [-0.25, 0.25, -0.5, 0.5]) {
+            const cand = JSON.parse(JSON.stringify(cur));
+            const msgObj = cand.messages && cand.messages[msg.index];
+            if (!msgObj) continue;
+            msgObj.label = markersFromRatio(ratio) + parseLabelMarkers(msgObj.label || '').text;
+            const cm = measure(cand), cs = totalOverlap(collisionItems(cand, cm.boxes));
+            if (cs < score - 1e-6 && (!best || cs < best.cs)) best = { cand, cs, cm };
+          }
+        }
+      }
+      if (!best) break;
+      cur = best.cand; m = best.cm; score = best.cs;
+    }
+    return cur;
+  }
+
+  // Geometry helpers shared by Pass D and the unfixable-crossing reporter.
+  function _getLaneX(layoutLanes, cleanName) {
+    const lo = (layoutLanes || []).find(l => l.clean === cleanName);
+    return lo != null ? lo.x : null;
+  }
+  function _segIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+    const d = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+    if (Math.abs(d) < 1e-10) return false;
+    const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / d;
+    const u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / d;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  }
+  function _lineInBox(x1, y1, x2, y2, b) {
+    const inB = (px, py) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
+    if (inB(x1, y1) || inB(x2, y2)) return true;
+    return _segIntersect(x1, y1, x2, y2, b.x, b.y, b.x + b.w, b.y) ||
+           _segIntersect(x1, y1, x2, y2, b.x + b.w, b.y, b.x + b.w, b.y + b.h) ||
+           _segIntersect(x1, y1, x2, y2, b.x, b.y + b.h, b.x + b.w, b.y + b.h) ||
+           _segIntersect(x1, y1, x2, y2, b.x, b.y, b.x, b.y + b.h);
+  }
+  // Endpoint time is causal if it exactly matches any state boundary (within 0.01).
+  function _isCausal(t, states) {
+    return (states || []).some(s => {
+      const lo = Math.min(s.fromTime || 0, s.toTime != null ? s.toTime : s.fromTime || 0);
+      const hi = Math.max(s.fromTime || 0, s.toTime != null ? s.toTime : s.fromTime || 0);
+      return Math.abs(t - lo) < 0.01 || Math.abs(t - hi) < 0.01;
+    });
+  }
+  function _crossingScore(mdl, meas) {
+    const { layout, boxes } = meas;
+    if (!layout || !boxes) return 0;
+    const { laneTop, timeStep } = layout;
+    const stateBoxes = boxes.filter(b => b.kind === 'state');
+    let score = 0;
+    (mdl.messages || []).forEach(msg => {
+      const parts = (msg.path || '').split('->');
+      if (parts.length !== 2) return;
+      const x1 = _getLaneX(layout.lanes, parts[0]), x2 = _getLaneX(layout.lanes, parts[1]);
+      if (x1 == null || x2 == null) return;
+      const y1 = laneTop + (msg.fromTime || 0) * timeStep;
+      const y2 = laneTop + (msg.toTime || 0) * timeStep;
+      stateBoxes.forEach(sb => {
+        if (_lineInBox(x1, y1, x2, y2, { x: sb.x, y: sb.y, w: sb.w, h: sb.h })) score++;
+      });
+    });
+    return score;
+  }
+
+  // Pass D — nudge message endpoints to prevent the arrow body crossing a state box.
+  // Uses exact pixel coordinates from the layout for a proper line-segment-vs-rectangle
+  // test, so it catches both same-lane endpoint crossings AND middle-of-line crossings
+  // through intermediate lanes. Causal endpoints (time == any state boundary) are left alone.
+  function nudgeToAvoidLineCrossings(model, measure) {
+    const DELTAS = [0.5, 1, 1.5, -0.5, -1, -1.5], CAP = 20;
+    let cur = model, m = measure(cur), sc = _crossingScore(cur, m);
+    if (sc === 0) return cur;
+
+    for (let it = 0; it < CAP && sc > 0; it++) {
+      const { layout, boxes } = m;
+      if (!layout || !boxes) break;
+      const { laneTop, timeStep } = layout;
+      const stateBoxes = boxes.filter(b => b.kind === 'state');
+      const states = cur.states || [];
+      let best = null;
+
+      (cur.messages || []).forEach((msg, i) => {
+        const parts = (msg.path || '').split('->');
+        if (parts.length !== 2) return;
+        const x1 = _getLaneX(layout.lanes, parts[0]), x2 = _getLaneX(layout.lanes, parts[1]);
+        if (x1 == null || x2 == null) return;
+        const y1 = laneTop + (msg.fromTime || 0) * timeStep;
+        const y2 = laneTop + (msg.toTime || 0) * timeStep;
+        if (!stateBoxes.some(sb => _lineInBox(x1, y1, x2, y2, { x: sb.x, y: sb.y, w: sb.w, h: sb.h }))) return;
+
+        for (const [field, t] of [['fromTime', msg.fromTime || 0], ['toTime', msg.toTime || 0]]) {
+          if (_isCausal(t, states)) continue;
+          for (const delta of DELTAS) {
+            const cand = JSON.parse(JSON.stringify(cur));
+            cand.messages[i][field] = t + delta;
+            const cm = measure(cand), cs = _crossingScore(cand, cm);
+            if (cs < sc && (!best || cs < best.cs)) best = { cand, cs, cm };
+          }
+        }
+      });
+      if (!best) break;
+      cur = best.cand; m = best.cm; sc = best.cs;
+    }
+    return cur;
+  }
+
+  // Count remaining line-body crossings for the toast report.
+  // Only counts pure middle crossings (neither message endpoint is inside the state
+  // box) — excludes arrows that naturally start/end at a state boundary on their own
+  // lane, which are expected causal patterns and not visual problems.
+  function remainingLineCrossings(model, measure) {
+    try {
+      const meas = measure(model);
+      const { layout, boxes } = meas;
+      if (!layout || !boxes) return 0;
+      const { laneTop, timeStep } = layout;
+      const stateBoxes = boxes.filter(b => b.kind === 'state');
+      let count = 0;
+      (model.messages || []).forEach(msg => {
+        const parts = (msg.path || '').split('->');
+        if (parts.length !== 2) return;
+        const x1 = _getLaneX(layout.lanes, parts[0]), x2 = _getLaneX(layout.lanes, parts[1]);
+        if (x1 == null || x2 == null) return;
+        const y1 = laneTop + (msg.fromTime || 0) * timeStep;
+        const y2 = laneTop + (msg.toTime || 0) * timeStep;
+        stateBoxes.forEach(sb => {
+          const b = { x: sb.x, y: sb.y, w: sb.w, h: sb.h };
+          if (!_lineInBox(x1, y1, x2, y2, b)) return;
+          const inB = (px, py) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
+          if (!inB(x1, y1) && !inB(x2, y2)) count++;
+        });
+      });
+      return count;
+    } catch (e) { return 0; }
+  }
+
+  // Run passes in order: gap-spread → endpoint-nudge → label-slide → msg-state-label-slide.
+  // D runs before B/C so geometry is fixed before cosmetic label markers are added.
   function collisionSpread(model, measure) {
-    return slideSameTimeLabels(spreadDifferentTimes(model, measure), measure);
+    const p1 = spreadDifferentTimes(model, measure);
+    const p2 = nudgeToAvoidLineCrossings(p1, measure);
+    const p3 = slideSameTimeLabels(p2, measure);
+    return slideMsgStateLabels(p3, measure);
   }
 
   // Brief non-blocking status toast (bottom-center), auto-dismissed.
@@ -1966,8 +2120,18 @@
     if (typeof measure === 'function') {
       try {
         const sig = significantOverlaps(candidate, measure);
-        if (sig.length) { arrangeToast((changed ? 'Arranged' : 'Already tidy') + ' — ' + sig.length + ' overlap(s) need a manual fix (simultaneous labels or crossings).'); console.warn('Arrange — remaining overlaps:', sig); }
-        else arrangeToast(changed ? 'Arranged.' : 'Already tidy — nothing to change.');
+        const lc = remainingLineCrossings(candidate, measure);
+        const prefix = changed ? 'Arranged' : 'Already tidy';
+        if (sig.length || lc) {
+          const parts = [];
+          if (sig.length) parts.push(sig.length + ' label overlap(s)');
+          if (lc) parts.push(lc + ' line crossing(s) through a state (causal — not moved)');
+          arrangeToast(prefix + ' — ' + parts.join('; ') + '.');
+          if (sig.length) console.warn('Arrange — remaining label overlaps:', sig);
+          if (lc) console.warn('Arrange — unfixable line crossings (causal constraints):', lc);
+        } else {
+          arrangeToast(changed ? 'Arranged.' : 'Already tidy — nothing to change.');
+        }
       } catch (e) { /* ignore */ }
     }
   }
