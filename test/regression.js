@@ -284,7 +284,34 @@ corpus.forEach(({ name, text }) => {
     return c;
   };
   eq(canon(stripTimes(arranged)), canon(stripTimes(model)), `${name}: arrange changes only time fields`);
+
+  // every state keeps its original duration (relative length carries meaning).
+  let dursOk = true;
+  (model.states || []).forEach((s, i) => {
+    if (typeof s.fromTime !== 'number' || typeof s.toTime !== 'number') return;
+    const a = arranged.states[i];
+    if (Math.abs((a.toTime - a.fromTime) - (s.toTime - s.fromTime)) > 1e-6) dursOk = false;
+  });
+  ok(dursOk, `${name}: Phase 1 preserves every state's duration`);
 });
+
+// ---------------------------------------------------------------------------
+section('Auto-arrange — Phase 1 keeps state durations while gridding events');
+{
+  const model = {
+    messages: [{ path: 'A->B', fromTime: 0, toTime: 1 }, { path: 'B->A', fromTime: 4, toTime: 7.4 }],
+    states: [
+      { lane: 'A', label: 'short', fromTime: 0, toTime: 0.5 },
+      { lane: 'B', label: 'long', fromTime: 2, toTime: 6 },
+    ],
+  };
+  const out = E.autoArrangeTimes(model);
+  // Event anchors (msg endpoints + state starts): 0,1,2,4,7.4 -> 0,1,2,3,4
+  eq(out.messages[1].fromTime, 3, 'event time 4 maps to its grid rank');
+  eq(out.messages[1].toTime, 4, 'event time 7.4 maps to its grid rank');
+  eq([out.states[0].fromTime, out.states[0].toTime], [0, 0.5], 'short state: start gridded, 0.5 duration kept');
+  eq([out.states[1].fromTime, out.states[1].toTime], [2, 6], 'long state: start->rank 2, original duration 4 kept (ends past neighbours)');
+}
 
 // ---------------------------------------------------------------------------
 section('Auto-arrange — Phase 2 helpers (insertGapAtTime, state sequentialize, boxesOverlap)');

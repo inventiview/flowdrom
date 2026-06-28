@@ -1750,11 +1750,14 @@
   // window.flowdromMeasure) layers on top in autoArrange().
   // ========================================================================
 
-  // Every distinct time value used anywhere in the model, ascending.
+  // Every distinct EVENT time that defines a grid column, ascending. Events are
+  // message endpoints, info boxes, and state STARTS. State ENDS are deliberately
+  // excluded: a state keeps its original duration (relative length carries meaning),
+  // so its end is derived from its start, not snapped to the grid.
   function arrangeTimeAnchors(model) {
     const s = new Set();
     (model.messages || []).forEach((m) => { if (typeof m.fromTime === 'number') s.add(m.fromTime); if (typeof m.toTime === 'number') s.add(m.toTime); });
-    (model.states || []).forEach((st) => { if (typeof st.fromTime === 'number') s.add(st.fromTime); if (typeof st.toTime === 'number') s.add(st.toTime); });
+    (model.states || []).forEach((st) => { if (typeof st.fromTime === 'number') s.add(st.fromTime); });
     (model.infoBoxes || []).forEach((b) => { if (typeof b.time === 'number') s.add(b.time); });
     return Array.from(s).sort((a, b) => a - b);
   }
@@ -1774,9 +1777,17 @@
     (out.infoBoxes || []).forEach((b) => { if (typeof b.time === 'number') b.time = rt(b.time); });
     return out;
   }
-  // Phase 1, end to end: even, order-preserving re-timing.
+  // Phase 1, end to end: even, order-preserving re-timing of events, with each
+  // state's original duration preserved (end = remapped start + original length).
   function autoArrangeTimes(model) {
-    return remapModelTimes(model, evenTimeMap(arrangeTimeAnchors(model)));
+    const out = remapModelTimes(model, evenTimeMap(arrangeTimeAnchors(model)));
+    (out.states || []).forEach((st, i) => {
+      const orig = (model.states || [])[i];
+      if (orig && typeof orig.fromTime === 'number' && typeof orig.toTime === 'number' && typeof st.fromTime === 'number') {
+        st.toTime = Math.round((st.fromTime + (orig.toTime - orig.fromTime)) * 10) / 10;
+      }
+    });
+    return out;
   }
 
   // ---- Phase 2: collision-aware cleanup (browser-only; uses flowdromMeasure) ----
