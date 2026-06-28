@@ -314,6 +314,31 @@ section('Auto-arrange — Phase 1 keeps state durations while gridding events');
 }
 
 // ---------------------------------------------------------------------------
+section('Auto-arrange — overlapping same-lane states stay adjacent (consecutive)');
+{
+  // I->UD (0-0.5) and ssadas (0.3-1.2) overlap on CA0 → meant to be consecutive.
+  const model = {
+    messages: [{ path: 'CA0->HN', fromTime: 0, toTime: 1 }],
+    states: [
+      { lane: 'CA0', label: 'I->UD', fromTime: 0, toTime: 0.5 },
+      { lane: 'CA0', label: 'ssadas', fromTime: 0.3, toTime: 1.2 },
+    ],
+  };
+  eq(E.secondaryOverlapStateIndices(model).has(1), true, 'ssadas flagged as a secondary (overlapping) state');
+  eq(E.secondaryOverlapStateIndices(model).has(0), false, 'first state of the chain is not secondary');
+
+  const out = E.autoArrangeTimes(model);
+  const s0 = out.states[0], s1 = out.states[1];
+  ok(Math.abs(s1.fromTime - s0.toTime) < 1e-9, 'second state starts exactly where the first ends (adjacent, no gap)');
+  eq(Math.round((s0.toTime - s0.fromTime) * 10) / 10, 0.5, 'first state keeps its 0.5 duration');
+  eq(Math.round((s1.toTime - s1.fromTime) * 10) / 10, 0.9, 'second state keeps its 0.9 duration');
+
+  // idempotent: arranging the already-arranged model leaves it unchanged.
+  const out2 = E.autoArrangeTimes(out);
+  eq(canon(out2), canon(out), 'autoArrangeTimes is idempotent on its own output');
+}
+
+// ---------------------------------------------------------------------------
 section('Auto-arrange — Phase 2 helpers (insertGapAtTime, state sequentialize, boxesOverlap)');
 {
   // insertGapAtTime: times after the point shift; messages straddling stretch;

@@ -1750,14 +1750,34 @@
   // window.flowdromMeasure) layers on top in autoArrange().
   // ========================================================================
 
+  // Same-lane states that overlap (or touch) their predecessor in time were meant
+  // to run consecutively. Returns the set of "secondary" state indices (every chain
+  // member after the first). Their starts are derived (kept adjacent), not gridded.
+  function secondaryOverlapStateIndices(model) {
+    const set = new Set(), byLane = {};
+    (model.states || []).forEach((s, i) => { (byLane[s.lane] = byLane[s.lane] || []).push(i); });
+    Object.keys(byLane).forEach((lane) => {
+      const idxs = byLane[lane].slice().sort((a, b) => (model.states[a].fromTime || 0) - (model.states[b].fromTime || 0));
+      for (let k = 1; k < idxs.length; k++) {
+        const prev = model.states[idxs[k - 1]];
+        const opTo = (prev.toTime != null ? prev.toTime : prev.fromTime) || 0;
+        if ((model.states[idxs[k]].fromTime || 0) <= opTo + 1e-9) set.add(idxs[k]);
+      }
+    });
+    return set;
+  }
+
   // Every distinct EVENT time that defines a grid column, ascending. Events are
   // message endpoints, info boxes, and state STARTS. State ENDS are deliberately
   // excluded: a state keeps its original duration (relative length carries meaning),
-  // so its end is derived from its start, not snapped to the grid.
+  // so its end is derived from its start, not snapped to the grid. Starts of
+  // overlapping ("consecutive") secondary states are excluded too — they're pinned
+  // adjacent to their predecessor, so they must not perturb the grid.
   function arrangeTimeAnchors(model) {
     const s = new Set();
+    const secondary = secondaryOverlapStateIndices(model);
     (model.messages || []).forEach((m) => { if (typeof m.fromTime === 'number') s.add(m.fromTime); if (typeof m.toTime === 'number') s.add(m.toTime); });
-    (model.states || []).forEach((st) => { if (typeof st.fromTime === 'number') s.add(st.fromTime); });
+    (model.states || []).forEach((st, i) => { if (typeof st.fromTime === 'number' && !secondary.has(i)) s.add(st.fromTime); });
     (model.infoBoxes || []).forEach((b) => { if (typeof b.time === 'number') s.add(b.time); });
     return Array.from(s).sort((a, b) => a - b);
   }
@@ -1777,16 +1797,41 @@
     (out.infoBoxes || []).forEach((b) => { if (typeof b.time === 'number') b.time = rt(b.time); });
     return out;
   }
-  // Phase 1, end to end: even, order-preserving re-timing of events, with each
-  // state's original duration preserved (end = remapped start + original length).
+  // Snap each overlapping ("consecutive") secondary state to start exactly where its
+  // same-lane predecessor ends, so a chain that overlapped in the original stays
+  // adjacent (back-to-back) after gridding. Durations are preserved. Pure.
+  function adjacentizeOverlappingStates(arranged, original) {
+    const out = JSON.parse(JSON.stringify(arranged));
+    const oStates = original.states || [], aStates = out.states || [], byLane = {};
+    oStates.forEach((s, i) => { (byLane[s.lane] = byLane[s.lane] || []).push(i); });
+    Object.keys(byLane).forEach((lane) => {
+      const idxs = byLane[lane].slice().sort((a, b) => (oStates[a].fromTime || 0) - (oStates[b].fromTime || 0));
+      for (let k = 1; k < idxs.length; k++) {
+        const pi = idxs[k - 1], ci = idxs[k];
+        const opTo = (oStates[pi].toTime != null ? oStates[pi].toTime : oStates[pi].fromTime) || 0;
+        if ((oStates[ci].fromTime || 0) <= opTo + 1e-9) {
+          const prevEnd = (aStates[pi].toTime != null ? aStates[pi].toTime : aStates[pi].fromTime) || 0;
+          const dur = (oStates[ci].toTime != null ? oStates[ci].toTime : oStates[ci].fromTime) - oStates[ci].fromTime;
+          aStates[ci].fromTime = Math.round(prevEnd * 10) / 10;
+          if (aStates[ci].toTime != null) aStates[ci].toTime = Math.round((prevEnd + dur) * 10) / 10;
+        }
+      }
+    });
+    return out;
+  }
+
+  // Phase 1, end to end: even, order-preserving re-timing of events; each state's
+  // original duration preserved (end = remapped start + length); and same-lane
+  // states that overlapped in the original kept adjacent (consecutive).
   function autoArrangeTimes(model) {
-    const out = remapModelTimes(model, evenTimeMap(arrangeTimeAnchors(model)));
+    let out = remapModelTimes(model, evenTimeMap(arrangeTimeAnchors(model)));
     (out.states || []).forEach((st, i) => {
       const orig = (model.states || [])[i];
       if (orig && typeof orig.fromTime === 'number' && typeof orig.toTime === 'number' && typeof st.fromTime === 'number') {
         st.toTime = Math.round((st.fromTime + (orig.toTime - orig.fromTime)) * 10) / 10;
       }
     });
+    out = adjacentizeOverlappingStates(out, model);
     return out;
   }
 
@@ -2122,21 +2167,40 @@
     return out;
   }
 
-  // The Arrange button: Phase 1 even re-timing, an optional confirm to sequentialize
-  // genuinely time-overlapping same-lane states, then (in the browser) the guarded
-  // Phase 2 cleanup. One undoable edit. Falls back gracefully without measurement.
+  // Tidiness score for picking between candidate arrangements: total label/box
+  // overlap area dominates, line crossings break ties. Lower is better.
+  function arrangeScore(model, measure) {
+    try { const meas = measure(model); return totalOverlap(collisionItems(model, meas.boxes)) * 1000 + _crossingScore(model, meas); }
+    catch (e) { return Infinity; }
+  }
+
+  // The Arrange button: Phase 1 even re-timing (durations preserved, overlapping
+  // states kept adjacent) + the guarded Phase 2 collision cleanup, iterated to a
+  // stable fixed point. Phase 2 emits fractional times that the next re-grid snaps
+  // back, which can make two near-equal layouts alternate; we collect the distinct
+  // results and deterministically keep the tidiest, so pressing Arrange again is a
+  // no-op. One undoable edit. Falls back to Phase 1 only without measurement.
   function autoArrange() {
     const ed = getEditor(); const model = parseModel(); const J = getJSON5();
     if (!ed || !model || !J) return;
-    let candidate = autoArrangeTimes(model);
-    const ov = overlappingStatePairs(candidate);
-    if (ov.length && typeof window !== 'undefined' && typeof window.confirm === 'function' &&
-        window.confirm(ov.length + ' state(s) overlap in time on a lane — Arrange can\'t fix that while keeping every element\'s order. Make those states sequential? (This changes their timing.)')) {
-      candidate = autoArrangeTimes(sequentializeStates(candidate));
-    }
     const measure = (typeof window !== 'undefined') ? window.flowdromMeasure : null;
+    let candidate;
     if (typeof measure === 'function') {
-      try { candidate = collisionSpread(candidate, measure); } catch (e) { /* keep Phase 1 */ }
+      const cands = new Map();
+      let cur = model;
+      for (let i = 0; i < 8; i++) {
+        let next;
+        try { next = collisionSpread(autoArrangeTimes(cur), measure); } catch (e) { next = autoArrangeTimes(cur); }
+        const key = stableStr(next);
+        if (cands.has(key)) break;        // converged or entered a cycle
+        cands.set(key, next);
+        cur = next;
+      }
+      let best = null;
+      cands.forEach((m, k) => { const s = arrangeScore(m, measure); if (!best || s < best.s || (s === best.s && k < best.k)) best = { m: m, s: s, k: k }; });
+      candidate = best ? best.m : autoArrangeTimes(model);
+    } else {
+      candidate = autoArrangeTimes(model);
     }
     const changed = stableStr(candidate) !== stableStr(model);
     applyText(J.stringify(candidate));
@@ -2876,7 +2940,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption, arrangeTimeAnchors, evenTimeMap, remapModelTimes, autoArrangeTimes, boxesOverlap, insertGapAtTime, overlappingStatePairs, sequentializeStates };
+    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption, arrangeTimeAnchors, evenTimeMap, remapModelTimes, autoArrangeTimes, boxesOverlap, insertGapAtTime, overlappingStatePairs, sequentializeStates, secondaryOverlapStateIndices, adjacentizeOverlappingStates };
   }
 
   if (typeof document !== 'undefined') {
