@@ -2256,6 +2256,7 @@
   // ========================================================================
   let canvasZoom = 1;
   let zoomUserSet = false; // until the user wheels, keep auto-fitting to the container width
+  let lastFitWidth = -1;   // container width at the last auto-fit (for the resize loop guard)
   // Intrinsic (zoom = 1) diagram size from the viewBox (the renderer keeps it fixed).
   function diagramBaseSize(svg) {
     const vb = svg.getAttribute('viewBox');
@@ -2273,6 +2274,7 @@
     if (!zoomUserSet) {
       const avail = container.clientWidth - 8;
       canvasZoom = avail > 0 ? Math.min(1, avail / b.w) : 1;
+      lastFitWidth = container.clientWidth; // remember what we fitted to (loop guard)
     }
     // The injected SVG carries inline `max-width:100%; height:auto`, which clamps
     // it to the container and blocks zoom-in. Override that, then size the viewport
@@ -2829,7 +2831,14 @@
         if (resizeRAF) return;
         resizeRAF = requestAnimationFrame(function () {
           resizeRAF = 0;
-          applyCanvasZoom(); // re-fits when !zoomUserSet; keeps the manual zoom otherwise
+          // A vertical scrollbar appearing/disappearing nudges clientWidth by ~15px.
+          // Re-fitting on that resizes the svg, which toggles the scrollbar again →
+          // an infinite re-fit loop (flicker/freeze) for diagrams whose fitted height
+          // sits right at the container height. Skip the re-fit for such sub-scrollbar
+          // width changes; real resizes (boundary drags) clear the slop. (#3 loop guard)
+          const skip = !zoomUserSet && lastFitWidth >= 0 &&
+            Math.abs(container.clientWidth - lastFitWidth) <= 24;
+          if (!skip) applyCanvasZoom(); // re-fits when !zoomUserSet; keeps manual zoom otherwise
           invalidateCandidates();
           rebuildOverlay();
           if (dragItem) highlightItem(dragItem);
