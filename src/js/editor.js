@@ -1750,34 +1750,14 @@
   // window.flowdromMeasure) layers on top in autoArrange().
   // ========================================================================
 
-  // Same-lane states that overlap (or touch) their predecessor in time were meant
-  // to run consecutively. Returns the set of "secondary" state indices (every chain
-  // member after the first). Their starts are derived (kept adjacent), not gridded.
-  function secondaryOverlapStateIndices(model) {
-    const set = new Set(), byLane = {};
-    (model.states || []).forEach((s, i) => { (byLane[s.lane] = byLane[s.lane] || []).push(i); });
-    Object.keys(byLane).forEach((lane) => {
-      const idxs = byLane[lane].slice().sort((a, b) => (model.states[a].fromTime || 0) - (model.states[b].fromTime || 0));
-      for (let k = 1; k < idxs.length; k++) {
-        const prev = model.states[idxs[k - 1]];
-        const opTo = (prev.toTime != null ? prev.toTime : prev.fromTime) || 0;
-        if ((model.states[idxs[k]].fromTime || 0) <= opTo + 1e-9) set.add(idxs[k]);
-      }
-    });
-    return set;
-  }
-
-  // Every distinct EVENT time that defines a grid column, ascending. Events are
-  // message endpoints, info boxes, and state STARTS. State ENDS are deliberately
-  // excluded: a state keeps its original duration (relative length carries meaning),
-  // so its end is derived from its start, not snapped to the grid. Starts of
-  // overlapping ("consecutive") secondary states are excluded too — they're pinned
-  // adjacent to their predecessor, so they must not perturb the grid.
+  // Every distinct time value used anywhere in the model, ascending. Gridding ALL of
+  // them (message endpoints, state starts AND ends, info boxes) onto an even integer
+  // scale is a monotonic remap, so it strictly preserves the order of every event —
+  // the core safety invariant. State durations scale with the grid.
   function arrangeTimeAnchors(model) {
     const s = new Set();
-    const secondary = secondaryOverlapStateIndices(model);
     (model.messages || []).forEach((m) => { if (typeof m.fromTime === 'number') s.add(m.fromTime); if (typeof m.toTime === 'number') s.add(m.toTime); });
-    (model.states || []).forEach((st, i) => { if (typeof st.fromTime === 'number' && !secondary.has(i)) s.add(st.fromTime); });
+    (model.states || []).forEach((st) => { if (typeof st.fromTime === 'number') s.add(st.fromTime); if (typeof st.toTime === 'number') s.add(st.toTime); });
     (model.infoBoxes || []).forEach((b) => { if (typeof b.time === 'number') s.add(b.time); });
     return Array.from(s).sort((a, b) => a - b);
   }
@@ -1797,42 +1777,12 @@
     (out.infoBoxes || []).forEach((b) => { if (typeof b.time === 'number') b.time = rt(b.time); });
     return out;
   }
-  // Snap each overlapping ("consecutive") secondary state to start exactly where its
-  // same-lane predecessor ends, so a chain that overlapped in the original stays
-  // adjacent (back-to-back) after gridding. Durations are preserved. Pure.
-  function adjacentizeOverlappingStates(arranged, original) {
-    const out = JSON.parse(JSON.stringify(arranged));
-    const oStates = original.states || [], aStates = out.states || [], byLane = {};
-    oStates.forEach((s, i) => { (byLane[s.lane] = byLane[s.lane] || []).push(i); });
-    Object.keys(byLane).forEach((lane) => {
-      const idxs = byLane[lane].slice().sort((a, b) => (oStates[a].fromTime || 0) - (oStates[b].fromTime || 0));
-      for (let k = 1; k < idxs.length; k++) {
-        const pi = idxs[k - 1], ci = idxs[k];
-        const opTo = (oStates[pi].toTime != null ? oStates[pi].toTime : oStates[pi].fromTime) || 0;
-        if ((oStates[ci].fromTime || 0) <= opTo + 1e-9) {
-          const prevEnd = (aStates[pi].toTime != null ? aStates[pi].toTime : aStates[pi].fromTime) || 0;
-          const dur = (oStates[ci].toTime != null ? oStates[ci].toTime : oStates[ci].fromTime) - oStates[ci].fromTime;
-          aStates[ci].fromTime = Math.round(prevEnd * 10) / 10;
-          if (aStates[ci].toTime != null) aStates[ci].toTime = Math.round((prevEnd + dur) * 10) / 10;
-        }
-      }
-    });
-    return out;
-  }
-
-  // Phase 1, end to end: even, order-preserving re-timing of events; each state's
-  // original duration preserved (end = remapped start + length); and same-lane
-  // states that overlapped in the original kept adjacent (consecutive).
+  // Phase 1, end to end: even, order-preserving re-timing of every event (durations
+  // scale with the grid), then push any same-lane states that overlap in time to be
+  // back-to-back — they were meant to run consecutively. sequentializeStates is
+  // defined below; both are hoisted, so the forward reference is fine.
   function autoArrangeTimes(model) {
-    let out = remapModelTimes(model, evenTimeMap(arrangeTimeAnchors(model)));
-    (out.states || []).forEach((st, i) => {
-      const orig = (model.states || [])[i];
-      if (orig && typeof orig.fromTime === 'number' && typeof orig.toTime === 'number' && typeof st.fromTime === 'number') {
-        st.toTime = Math.round((st.fromTime + (orig.toTime - orig.fromTime)) * 10) / 10;
-      }
-    });
-    out = adjacentizeOverlappingStates(out, model);
-    return out;
+    return sequentializeStates(remapModelTimes(model, evenTimeMap(arrangeTimeAnchors(model))));
   }
 
   // ---- Phase 2: collision-aware cleanup (browser-only; uses flowdromMeasure) ----
@@ -2174,6 +2124,23 @@
     catch (e) { return Infinity; }
   }
 
+  // Sanity check on a measurement: some environments return garbage from off-screen
+  // getBBox (non-finite values, or a single text element measured wider than the
+  // whole diagram). Acting on that produces phantom collisions and bad nudges, so we
+  // detect it and skip Phase 2 entirely, keeping the pure Phase 1 result instead.
+  function measurementSane(meas) {
+    if (!meas || !meas.boxes || !meas.layout) return false;
+    const lanes = meas.layout.lanes || [];
+    const maxX = lanes.reduce((m, l) => Math.max(m, l.x || 0), meas.layout.startX || 0);
+    const widthBound = (maxX + (meas.layout.laneSpacing || 250)) * 1.5; // generous
+    for (let i = 0; i < meas.boxes.length; i++) {
+      const b = meas.boxes[i];
+      if (![b.x, b.y, b.w, b.h].every(Number.isFinite)) return false;
+      if (b.w > widthBound) return false; // no real label/box is this wide
+    }
+    return true;
+  }
+
   // The Arrange button: Phase 1 even re-timing (durations preserved, overlapping
   // states kept adjacent) + the guarded Phase 2 collision cleanup, iterated to a
   // stable fixed point. Phase 2 emits fractional times that the next re-grid snaps
@@ -2183,7 +2150,14 @@
   function autoArrange() {
     const ed = getEditor(); const model = parseModel(); const J = getJSON5();
     if (!ed || !model || !J) return;
-    const measure = (typeof window !== 'undefined') ? window.flowdromMeasure : null;
+    // Use measurement only if it's trustworthy. Probe once on the gridded model; if
+    // getBBox is returning garbage, fall back to the pure Phase 1 result (which needs
+    // no measurement) rather than spreading on bad data. (#arrange-robust)
+    const rawMeasure = (typeof window !== 'undefined') ? window.flowdromMeasure : null;
+    let measure = null;
+    if (typeof rawMeasure === 'function') {
+      try { if (measurementSane(rawMeasure(autoArrangeTimes(model)))) measure = rawMeasure; } catch (e) { measure = null; }
+    }
     let candidate;
     if (typeof measure === 'function') {
       const cands = new Map();
@@ -2220,6 +2194,9 @@
           arrangeToast(changed ? 'Arranged.' : 'Already tidy — nothing to change.');
         }
       } catch (e) { /* ignore */ }
+    } else {
+      // Phase 1 only (no reliable measurement): times/order tidied, collisions not.
+      arrangeToast(changed ? 'Arranged (spacing only).' : 'Already tidy — nothing to change.');
     }
   }
   if (typeof window !== 'undefined') window.flowdromArrange = autoArrange;
@@ -2279,6 +2256,7 @@
   // ========================================================================
   let canvasZoom = 1;
   let zoomUserSet = false; // until the user wheels, keep auto-fitting to the container width
+  let lastFitWidth = -1;   // container width at the last auto-fit (for the resize loop guard)
   // Intrinsic (zoom = 1) diagram size from the viewBox (the renderer keeps it fixed).
   function diagramBaseSize(svg) {
     const vb = svg.getAttribute('viewBox');
@@ -2296,6 +2274,7 @@
     if (!zoomUserSet) {
       const avail = container.clientWidth - 8;
       canvasZoom = avail > 0 ? Math.min(1, avail / b.w) : 1;
+      lastFitWidth = container.clientWidth; // remember what we fitted to (loop guard)
     }
     // The injected SVG carries inline `max-width:100%; height:auto`, which clamps
     // it to the container and blocks zoom-in. Override that, then size the viewport
@@ -2852,7 +2831,14 @@
         if (resizeRAF) return;
         resizeRAF = requestAnimationFrame(function () {
           resizeRAF = 0;
-          applyCanvasZoom(); // re-fits when !zoomUserSet; keeps the manual zoom otherwise
+          // A vertical scrollbar appearing/disappearing nudges clientWidth by ~15px.
+          // Re-fitting on that resizes the svg, which toggles the scrollbar again →
+          // an infinite re-fit loop (flicker/freeze) for diagrams whose fitted height
+          // sits right at the container height. Skip the re-fit for such sub-scrollbar
+          // width changes; real resizes (boundary drags) clear the slop. (#3 loop guard)
+          const skip = !zoomUserSet && lastFitWidth >= 0 &&
+            Math.abs(container.clientWidth - lastFitWidth) <= 24;
+          if (!skip) applyCanvasZoom(); // re-fits when !zoomUserSet; keeps manual zoom otherwise
           invalidateCandidates();
           rebuildOverlay();
           if (dragItem) highlightItem(dragItem);
@@ -2940,7 +2926,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption, arrangeTimeAnchors, evenTimeMap, remapModelTimes, autoArrangeTimes, boxesOverlap, insertGapAtTime, overlappingStatePairs, sequentializeStates, secondaryOverlapStateIndices, adjacentizeOverlappingStates };
+    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption, arrangeTimeAnchors, evenTimeMap, remapModelTimes, autoArrangeTimes, boxesOverlap, insertGapAtTime, overlappingStatePairs, sequentializeStates };
   }
 
   if (typeof document !== 'undefined') {

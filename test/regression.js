@@ -260,9 +260,11 @@ corpus.forEach(({ name, text }) => {
   const arranged = E.autoArrangeTimes(model);
   const map = E.evenTimeMap(anchors);
 
-  // even spacing: arranged distinct times are the contiguous grid 0..n-1
-  const arrAnchors = E.arrangeTimeAnchors(arranged);
-  ok(arrAnchors.every((v, i) => v === i), `${name}: arranged times form an even 0..n grid`);
+  // even spacing: the pure remap (before any state sequentialization) maps every
+  // distinct time onto the contiguous grid 0..n-1.
+  const remapped = E.remapModelTimes(model, map);
+  const remapAnchors = E.arrangeTimeAnchors(remapped);
+  ok(remapAnchors.every((v, i) => v === i), `${name}: remap forms an even 0..n grid`);
 
   // the core safety invariant: the remap preserves the order AND equality of
   // every pair of anchors (so no element can change its place in time).
@@ -285,18 +287,12 @@ corpus.forEach(({ name, text }) => {
   };
   eq(canon(stripTimes(arranged)), canon(stripTimes(model)), `${name}: arrange changes only time fields`);
 
-  // every state keeps its original duration (relative length carries meaning).
-  let dursOk = true;
-  (model.states || []).forEach((s, i) => {
-    if (typeof s.fromTime !== 'number' || typeof s.toTime !== 'number') return;
-    const a = arranged.states[i];
-    if (Math.abs((a.toTime - a.fromTime) - (s.toTime - s.fromTime)) > 1e-6) dursOk = false;
-  });
-  ok(dursOk, `${name}: Phase 1 preserves every state's duration`);
+  // no same-lane state overlaps remain after Phase 1 (they're sequentialized).
+  eq(E.overlappingStatePairs(arranged).length, 0, `${name}: no same-lane state overlaps after arrange`);
 });
 
 // ---------------------------------------------------------------------------
-section('Auto-arrange — Phase 1 keeps state durations while gridding events');
+section('Auto-arrange — Phase 1 grids events and scales durations (order preserved)');
 {
   const model = {
     messages: [{ path: 'A->B', fromTime: 0, toTime: 1 }, { path: 'B->A', fromTime: 4, toTime: 7.4 }],
@@ -306,17 +302,19 @@ section('Auto-arrange — Phase 1 keeps state durations while gridding events');
     ],
   };
   const out = E.autoArrangeTimes(model);
-  // Event anchors (msg endpoints + state starts): 0,1,2,4,7.4 -> 0,1,2,3,4
-  eq(out.messages[1].fromTime, 3, 'event time 4 maps to its grid rank');
-  eq(out.messages[1].toTime, 4, 'event time 7.4 maps to its grid rank');
-  eq([out.states[0].fromTime, out.states[0].toTime], [0, 0.5], 'short state: start gridded, 0.5 duration kept');
-  eq([out.states[1].fromTime, out.states[1].toTime], [2, 6], 'long state: start->rank 2, original duration 4 kept (ends past neighbours)');
+  // All distinct times 0,0.5,1,2,4,6,7.4 -> ranks 0..6.
+  eq(out.messages[1].fromTime, 4, 'event time 4 maps to its grid rank (4)');
+  eq(out.messages[1].toTime, 6, 'event time 7.4 maps to its grid rank (6)');
+  eq([out.states[0].fromTime, out.states[0].toTime], [0, 1], 'short state gridded (0->0.5 becomes 0->1)');
+  eq([out.states[1].fromTime, out.states[1].toTime], [3, 5], 'long state gridded (2->6 becomes rank 3->5), order preserved');
+  // a long state no longer overshoots a later event: long.toTime(5) < B->A.toTime(6)
+  ok(out.states[1].toTime <= out.messages[1].toTime, 'state end does not leapfrog a later event (order safe)');
 }
 
 // ---------------------------------------------------------------------------
-section('Auto-arrange — overlapping same-lane states stay adjacent (consecutive)');
+section('Auto-arrange — overlapping same-lane states become adjacent (sequentialized)');
 {
-  // I->UD (0-0.5) and ssadas (0.3-1.2) overlap on CA0 → meant to be consecutive.
+  // I->UD (0-0.5) and ssadas (0.3-1.2) overlap on CA0 → pushed back-to-back.
   const model = {
     messages: [{ path: 'CA0->HN', fromTime: 0, toTime: 1 }],
     states: [
@@ -324,18 +322,10 @@ section('Auto-arrange — overlapping same-lane states stay adjacent (consecutiv
       { lane: 'CA0', label: 'ssadas', fromTime: 0.3, toTime: 1.2 },
     ],
   };
-  eq(E.secondaryOverlapStateIndices(model).has(1), true, 'ssadas flagged as a secondary (overlapping) state');
-  eq(E.secondaryOverlapStateIndices(model).has(0), false, 'first state of the chain is not secondary');
-
   const out = E.autoArrangeTimes(model);
   const s0 = out.states[0], s1 = out.states[1];
+  eq(E.overlappingStatePairs(out).length, 0, 'no same-lane overlap remains');
   ok(Math.abs(s1.fromTime - s0.toTime) < 1e-9, 'second state starts exactly where the first ends (adjacent, no gap)');
-  eq(Math.round((s0.toTime - s0.fromTime) * 10) / 10, 0.5, 'first state keeps its 0.5 duration');
-  eq(Math.round((s1.toTime - s1.fromTime) * 10) / 10, 0.9, 'second state keeps its 0.9 duration');
-
-  // idempotent: arranging the already-arranged model leaves it unchanged.
-  const out2 = E.autoArrangeTimes(out);
-  eq(canon(out2), canon(out), 'autoArrangeTimes is idempotent on its own output');
 }
 
 // ---------------------------------------------------------------------------
