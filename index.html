@@ -120,7 +120,10 @@
 
           <!-- CodeMirror editor container -->
           <div class="editor-wrap">
-            <button type="button" class="copy-json-btn" title="Copy JSON to clipboard" onclick="copyEditorJson(this)">Copy</button>
+            <div class="editor-btns">
+              <button type="button" class="copy-json-btn" title="Replace the JSON with the clipboard contents (Ctrl+Z undoes)" onclick="pasteEditorJson(this)">Paste</button>
+              <button type="button" class="copy-json-btn" title="Copy JSON to clipboard" onclick="copyEditorJson(this)">Copy</button>
+            </div>
             <div id="codemirror-container"></div>
           </div>
         </div>
@@ -390,13 +393,36 @@
       try { document.execCommand('copy'); done && done(); } catch (e) { /* ignore */ }
       document.body.removeChild(t);
     }
+
+    // Replace the editor's JSON with the clipboard contents and re-render (the
+    // overwrite is a single CodeMirror history step, so Ctrl+Z restores the
+    // previous text). Clipboard READ is permission-gated and unavailable in some
+    // browsers/contexts — on failure, hint at plain Ctrl+V instead of erroring.
+    // Invalid JSON is pasted anyway: the canvas shows the usual parse-error box,
+    // exactly as if it had been typed.
+    function pasteEditorJson(btn) {
+      const flash = (label) => {
+        if (!btn) return;
+        const prev = btn.textContent;
+        btn.textContent = label;
+        setTimeout(() => { btn.textContent = prev; }, 1600);
+      };
+      if (!(navigator.clipboard && navigator.clipboard.readText)) { flash('Use Ctrl+V'); return; }
+      navigator.clipboard.readText().then((text) => {
+        if (!text || !text.trim()) { flash('Empty'); return; }
+        document.getElementById('input').value = text;
+        if (codeMirrorEditor) codeMirrorEditor.setValue(text);
+        renderGraph();
+        flash('Pasted!');
+      }).catch(() => flash('Use Ctrl+V'));
+    }
   </script>
 
   <!-- load your renderer -->
-  <script src="src/js/main.js?v=7"></script>
+  <script src="src/js/main.js?v=11"></script>
 
   <!-- graphical editor layer (browser-only; never loaded by the headless engine/extension) -->
-  <script src="src/js/editor.js?v=14"></script>
+  <script src="src/js/editor.js?v=17"></script>
 </body>
 </html>
 

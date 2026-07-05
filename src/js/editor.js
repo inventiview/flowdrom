@@ -20,20 +20,24 @@
 
   const SVGNS = 'http://www.w3.org/2000/svg';
   const SNAP_TIME = 0.1; // grid snap for times; all time edits snap to this
-  const DRAGGABLE = { message: true, state: true, infoBox: true, lane: true };
-  const DELETABLE = { message: true, state: true, infoBox: true, legend: true, laneGroup: true };
+  // Frame (interaction-scope) default side margins, px — MUST match main.js
+  // FRAME_DEFAULT_{L,R}_MARGIN so the editor's geometry agrees with the render.
+  // No vertical margin: top/bottom sit exactly on fromTime/toTime. (#frames)
+  const FRAME_L_MARGIN = 40, FRAME_R_MARGIN = 40;
+  const DRAGGABLE = { message: true, state: true, infoBox: true, lane: true, frame: true };
+  const DELETABLE = { message: true, state: true, infoBox: true, legend: true, laneGroup: true, frame: true };
   const HAS_COLOR = { message: true, legend: true, state: true }; // have a color field
   const HAS_STYLE = { message: true, legend: true };               // have solid/dashed
-  const TEXTABLE = { message: true, state: true, infoBox: true, legend: true, title: true, laneGroup: true };
+  const TEXTABLE = { message: true, state: true, infoBox: true, legend: true, title: true, laneGroup: true, frame: true };
   const PALETTE = ['black', 'red', 'blue', 'green', 'purple', 'orange', 'teal', 'brown', 'gray', 'deeppink', 'goldenrod', 'seagreen'];
   // states render a pastel background keyed off these named colors (engine getPastelColor)
   const STATE_PALETTE = ['yellow', 'red', 'blue', 'green', 'orange', 'cyan', 'purple', 'pink'];
   // entities configurable via the options block (global text styling)
-  const OPTION_ENTITIES = ['title', 'lane', 'subLane', 'laneGroup', 'message', 'state', 'info', 'legend', 'legendTitle', 'time'];
+  const OPTION_ENTITIES = ['title', 'lane', 'subLane', 'laneGroup', 'message', 'state', 'info', 'legend', 'legendTitle', 'time', 'frame'];
 
   const SECTION_BY_KIND = {
     lane: 'lanes', message: 'messages', state: 'states',
-    infoBox: 'infoBoxes', laneGroup: 'laneGroups', legend: 'legend',
+    infoBox: 'infoBoxes', laneGroup: 'laneGroups', legend: 'legend', frame: 'frames',
   };
 
   function getEditor() {
@@ -43,6 +47,14 @@
   }
   function getJSON5() {
     return (typeof window !== 'undefined' && window.JSON5) || (typeof JSON5 !== 'undefined' ? JSON5 : null); // eslint-disable-line no-undef
+  }
+  // Semantic message-path info via the engine's parsePath (a global from
+  // main.js, which always loads first in the browser). Null when the engine
+  // isn't present (headless text-helper tests) or the path has no arrow.
+  // (#self-message)
+  function pathInfo(msg) {
+    if (typeof parsePath !== 'function') return null; // eslint-disable-line no-undef
+    return parsePath(msg && msg.path); // eslint-disable-line no-undef
   }
 
   // Measure rendered text width for a given CSS font shorthand (cached canvas
@@ -270,11 +282,15 @@
     out = setLanes(out, newLanes);
 
     (model.messages || []).forEach((msg, i) => {
-      const parts = String(msg.path || '').split('->').map((s) => s.trim());
+      // Paths may use '->' or '<-' (back arrow / self-message side); rename
+      // through whichever separator is present and KEEP the notation. (#self-message)
+      const raw = String(msg.path || '');
+      const sep = raw.indexOf('->') >= 0 ? '->' : (raw.indexOf('<-') >= 0 ? '<-' : '->');
+      const parts = raw.split(sep).map((s) => s.trim());
       const np = parts.map((p) => renameLaneToken(p, oldClean, newClean));
-      if (np.join('->') !== parts.join('->')) {
+      if (np.join(sep) !== parts.join(sep)) {
         const span = locateArrayElement(out, 'messages', i);
-        if (span) out = replaceFieldValue(out, span, 'path', quote(np.join('->')));
+        if (span) out = replaceFieldValue(out, span, 'path', quote(np.join(sep)));
       }
     });
     (model.states || []).forEach((st, i) => {
@@ -299,7 +315,7 @@
   function countLaneRefs(model, clean) {
     let n = 0;
     const hit = (t) => { const s = String(t == null ? '' : t).trim(); const p = s.split('.'); return s === clean || (p.length === 2 && (p[0] === clean || p[1] === clean)); };
-    (model.messages || []).forEach((m) => { if (String(m.path || '').split('->').map((s) => s.trim()).some(hit)) n++; });
+    (model.messages || []).forEach((m) => { if (String(m.path || '').split(/<-|->/).map((s) => s.trim()).some(hit)) n++; });
     (model.states || []).forEach((s) => { if (hit(s.lane)) n++; });
     (model.infoBoxes || []).forEach((b) => { if (hit(b.lane)) n++; });
     (model.laneGroups || []).forEach((g) => { if ((g.lanes || []).some(hit)) n++; });
@@ -324,7 +340,7 @@
     let out = setLanes(text, (model.lanes || []).filter((raw) => !removeNames.has(parseLanePrefix(raw).clean)));
     const delHi = (key, idxs) => { idxs.sort((a, b) => b - a).forEach((i) => { const t = deleteArrayElement(out, key, i); if (t != null) out = t; }); };
 
-    delHi('messages', (model.messages || []).map((m, i) => [m, i]).filter(([m]) => String(m.path || '').split('->').map((s) => s.trim()).some(ref)).map(([, i]) => i));
+    delHi('messages', (model.messages || []).map((m, i) => [m, i]).filter(([m]) => String(m.path || '').split(/<-|->/).map((s) => s.trim()).some(ref)).map(([, i]) => i));
     delHi('states', (model.states || []).map((s, i) => [s, i]).filter(([s]) => ref(s.lane)).map(([, i]) => i));
     delHi('infoBoxes', (model.infoBoxes || []).map((b, i) => [b, i]).filter(([b]) => ref(b.lane)).map(([, i]) => i));
 
@@ -490,6 +506,39 @@
   }
   function timeToY(t) { const L = layout(); return L.laneTop + t * L.timeStep; }
   function yToTime(y) { const L = layout(); return (y - L.laneTop) / L.timeStep; }
+  // Resolve a frame's left/right margins, honoring the legacy single xMargin. (#frames)
+  function frameMarginsE(frame) {
+    const f = frame || {};
+    const legacy = (typeof f.xMargin === 'number') ? f.xMargin : null;
+    return {
+      lm: (typeof f.lMargin === 'number') ? f.lMargin : (legacy != null ? legacy : FRAME_L_MARGIN),
+      rm: (typeof f.rMargin === 'number') ? f.rMargin : (legacy != null ? legacy : FRAME_R_MARGIN),
+    };
+  }
+  // Frame geometry in diagram units — mirrors main.js so hit-testing and handles
+  // agree with the drawn box. Returns null if the frame references no known lane.
+  // leftClean/rightClean are the frame's extreme lanes; lm/rm the resolved
+  // margins (for horizontal stretch). No vertical margin. (#frames)
+  function frameBox(frame) {
+    const L = layout(); if (!L || !frame) return null;
+    const lanesArr = (frame.lanes || []).map((n) => L.lanes.find((l) => l.clean === n)).filter(Boolean);
+    if (!lanesArr.length) return null;
+    const { lm, rm } = frameMarginsE(frame);
+    let leftLane = lanesArr[0], rightLane = lanesArr[0];
+    lanesArr.forEach((l) => { if (l.x < leftLane.x) leftLane = l; if (l.x > rightLane.x) rightLane = l; });
+    const t0 = Math.min(frame.fromTime, frame.toTime), t1 = Math.max(frame.fromTime, frame.toTime);
+    const x = leftLane.x - lm;
+    return {
+      x: x, y: timeToY(t0),
+      w: (rightLane.x + rm) - x, h: (t1 - t0) * L.timeStep,
+      leftX: leftLane.x, rightX: rightLane.x, leftClean: leftLane.clean, rightClean: rightLane.clean, lm: lm, rm: rm,
+    };
+  }
+  // Main-lane clean names ordered left→right (frame horizontal span uses these). (#frames)
+  function mainLanesLR() {
+    const L = layout(); if (!L) return [];
+    return L.lanes.filter((l) => l.clean.indexOf('.') === -1).slice().sort((a, b) => a.x - b.x).map((l) => l.clean);
+  }
   // Snap to the time grid. Dividing/multiplying by 0.1 leaves binary FP noise
   // (e.g. 2.8000000000000003), so scale by the integer inverse and round the
   // result to keep clean values like 2.8.
@@ -549,7 +598,7 @@
 
   // ---- multi-selection (ctrl+click) -------------------------------------
   // Only time-bearing kinds can take part in a shared time shift.
-  const SHIFTABLE = { message: true, state: true, infoBox: true };
+  const SHIFTABLE = { message: true, state: true, infoBox: true, frame: true };
 
   function toggleSelection(it) {
     const i = selection.findIndex((s) => s.kind === it.kind && s.index === it.index);
@@ -605,6 +654,7 @@
         if (it.kind === 'message') { const m = model.messages[it.index]; min = Math.min(min, m.fromTime, m.toTime); }
         else if (it.kind === 'state') { const s = model.states[it.index]; min = Math.min(min, s.fromTime, s.toTime != null ? s.toTime : s.fromTime); }
         else if (it.kind === 'infoBox') { min = Math.min(min, model.infoBoxes[it.index].time); }
+        else if (it.kind === 'frame') { const f = model.frames[it.index]; min = Math.min(min, f.fromTime, f.toTime); }
       } catch (e) { /* ignore */ }
     });
     return isFinite(min) ? min : 0;
@@ -630,6 +680,10 @@
       } else if (it.kind === 'infoBox') {
         const b = model.infoBoxes[it.index]; if (!b) return;
         text = setOrInsertField(text, 'infoBoxes', it.index, 'time', numLiteral(b.time + dt)) || text;
+      } else if (it.kind === 'frame') {
+        const f = model.frames[it.index]; if (!f) return;
+        text = setOrInsertField(text, 'frames', it.index, 'fromTime', numLiteral(f.fromTime + dt)) || text;
+        text = setOrInsertField(text, 'frames', it.index, 'toTime', numLiteral(f.toTime + dt)) || text;
       }
     });
     applyText(text);
@@ -770,7 +824,7 @@
   }
   function cloneWithOffset(obj, kind, dt) {
     const c = Object.assign({}, obj); const r3 = (x) => parseFloat((x).toFixed(3));
-    if (kind === 'message' || kind === 'state') { if (c.fromTime != null) c.fromTime = r3(c.fromTime + dt); if (c.toTime != null) c.toTime = r3(c.toTime + dt); }
+    if (kind === 'message' || kind === 'state' || kind === 'frame') { if (c.fromTime != null) c.fromTime = r3(c.fromTime + dt); if (c.toTime != null) c.toTime = r3(c.toTime + dt); }
     else if (kind === 'infoBox') { if (c.time != null) c.time = r3(c.time + dt); }
     return c;
   }
@@ -780,8 +834,8 @@
     const ed = getEditor(); const model = parseModel(); const J = getJSON5();
     if (!ed || !model || !J || !items.length) return;
     const dt = 1; let text = ed.getValue(); const newSel = [];
-    const arrs = { message: model.messages || [], state: model.states || [], infoBox: model.infoBoxes || [], legend: model.legend || [] };
-    const counts = { message: arrs.message.length, state: arrs.state.length, infoBox: arrs.infoBox.length, legend: arrs.legend.length };
+    const arrs = { message: model.messages || [], state: model.states || [], infoBox: model.infoBoxes || [], legend: model.legend || [], frame: model.frames || [] };
+    const counts = { message: arrs.message.length, state: arrs.state.length, infoBox: arrs.infoBox.length, legend: arrs.legend.length, frame: arrs.frame.length };
     items.forEach((it) => {
       const arr = arrs[it.kind]; if (!arr || !arr[it.index]) return;
       const key = SECTION_BY_KIND[it.kind]; if (!key) return;
@@ -799,10 +853,20 @@
   function duplicateSelection() { duplicateItems(selection); }
   function showSelectionColorMenu(clientX, clientY) {
     const colorable = selection.filter((s) => HAS_COLOR[s.kind]);
-    const menu = buildMenu(clientX, clientY);
-    addHeader(menu, 'Color ' + colorable.length + ' items:');
-    PALETTE.forEach((c) => addRow(menu, c, () => { closeMenu(); setSelectionField(colorable, 'color', quote(c)); }, { swatch: c }));
-    addRow(menu, 'Custom…', () => { showTextInput(clientX, clientY, '', (v) => { if (v && v.trim()) setSelectionField(colorable, 'color', quote(v.trim())); }, 'Custom color'); });
+    if (!colorable.length) return;
+    // Reuse the shared picker so a multi-selection gets the same "most used
+    // colors first" section as a single item. A single-kind selection is scoped
+    // to that kind (right palette + its own used colors — states get pastels);
+    // a mixed selection aggregates used colors across all colorable kinds.
+    const kinds = Array.from(new Set(colorable.map((s) => s.kind)));
+    const kind = kinds.length === 1 ? kinds[0] : null;
+    // Pre-fill Custom with the current color when the whole selection agrees.
+    const model = parseModel();
+    const colors = Array.from(new Set(colorable.map((s) => currentField(model, s, 'color') || '')));
+    const current = colors.length === 1 ? colors[0] : '';
+    showColorPicker(kind, clientX, clientY, current,
+      (c) => setSelectionField(colorable, 'color', quote(c)),
+      'Color ' + colorable.length + ' items:');
   }
   function showSelectionMenu(clientX, clientY) {
     const menu = buildMenu(clientX, clientY);
@@ -828,7 +892,9 @@
     const els = itemElements(item.kind, item.index);
     if (!els.length) { clearSelBox(); return; }
     let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
-    for (const e of els) { const cr = e.getBoundingClientRect(); l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
+    // Zero-size rects (empty text nodes) sit at stray anchors — never union them.
+    for (const e of els) { const cr = e.getBoundingClientRect(); if (!cr.width && !cr.height) continue; l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
+    if (l === Infinity) { clearSelBox(); return; }
     const container = getContainer(); const c = container.getBoundingClientRect(); const ov = selBox(); const pad = 4;
     ov.style.left = l - c.left + container.scrollLeft - pad + 'px';
     ov.style.top = t - c.top + container.scrollTop - pad + 'px';
@@ -864,7 +930,9 @@
     const els = itemElements(item.kind, item.index);
     if (!els.length) { clearHover(); return; }
     let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
-    for (const e of els) { const cr = e.getBoundingClientRect(); l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
+    // Zero-size rects (empty text nodes) sit at stray anchors — never union them.
+    for (const e of els) { const cr = e.getBoundingClientRect(); if (!cr.width && !cr.height) continue; l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
+    if (l === Infinity) { clearHover(); return; }
     const container = getContainer(); const c = container.getBoundingClientRect(); const ov = hoverEl(); const pad = 3;
     ov.style.left = l - c.left + container.scrollLeft - pad + 'px';
     ov.style.top = t - c.top + container.scrollTop - pad + 'px';
@@ -894,6 +962,7 @@
       if (item.kind === 'infoBox') { const x = m.infoBoxes[item.index]; return 'Info @ ' + x.lane + '  t' + x.time; }
       if (item.kind === 'lane') { return 'Lane  ' + m.lanes[item.index]; }
       if (item.kind === 'laneGroup') { return 'Group  ' + m.laneGroups[item.index].label; }
+      if (item.kind === 'frame') { const x = m.frames[item.index]; return 'Frame  “' + (x.label || '') + '”'; }
       if (item.kind === 'legend') { const x = m.legend[item.index]; return 'Legend  “' + (x.label || '') + '”'; }
       if (item.kind === 'legendBox') { return 'Legend (whole)  ' + ((m.legend || []).length) + ' entries'; }
       if (item.kind === 'title') { return 'Title  “' + (m.title || '') + '”'; }
@@ -937,12 +1006,37 @@
       const scale = (vbW ? svg.getBoundingClientRect().width / vbW : 1) || 1;
       const tolMsg = 10 / scale, tolLane = 6 / scale;
       (model.messages || []).forEach((msg, i) => {
-        const parts = String(msg.path || '').split('->').map((s) => s.trim());
-        const x1 = laneX(parts[0]), y1 = timeToY(msg.fromTime), x2 = laneX(parts[1]), y2 = timeToY(msg.toTime);
-        if (x1 != null && x2 != null && distToSeg(p.x, p.y, x1, y1, x2, y2) <= tolMsg) add('message', i);
+        const pp = pathInfo(msg);
+        if (!pp) return;
+        const x1 = laneX(pp.from), y1 = timeToY(msg.fromTime), x2 = laneX(pp.to), y2 = timeToY(msg.toTime);
+        if (x1 == null || x2 == null) return;
+        if (pp.self) {
+          // Self loop: test its three segments (out, far vertical, back) with
+          // the same geometry the renderer uses. (#self-message)
+          const dir = pp.side === 'left' ? -1 : 1;
+          const gph = (model.options && model.options.graph) || {};
+          const w = (gph.selfMessageWidth > 0) ? gph.selfMessageWidth : 45;
+          const yb = (Math.abs(y2 - y1) < L.timeStep * 0.25) ? y1 + L.timeStep * 0.25 : y2;
+          const xf = x1 + dir * w;
+          if (distToSeg(p.x, p.y, x1, y1, xf, y1) <= tolMsg ||
+              distToSeg(p.x, p.y, xf, y1, xf, yb) <= tolMsg ||
+              distToSeg(p.x, p.y, xf, yb, x1, yb) <= tolMsg) add('message', i);
+        } else if (distToSeg(p.x, p.y, x1, y1, x2, y2) <= tolMsg) add('message', i);
       });
       const top = L.laneTop, bot = L.laneTop + L.maxTime * L.timeStep;
       (L.lanes || []).forEach((ln) => { if (Math.abs(p.x - ln.x) <= tolLane && p.y >= top - tolLane && p.y <= bot + tolLane) add('lane', ln.index); });
+      // Frames: hit on the BORDER (not the transparent interior, which would
+      // shadow everything inside). Near any of the 4 edges = a hit; the label
+      // tab is a filled shape caught by the exact-hit pass above. (#frames)
+      const tolFrame = 7 / scale;
+      (model.frames || []).forEach((frame, i) => {
+        const fb = frameBox(frame); if (!fb) return;
+        const nearV = (p.y >= fb.y - tolFrame && p.y <= fb.y + fb.h + tolFrame);
+        const nearH = (p.x >= fb.x - tolFrame && p.x <= fb.x + fb.w + tolFrame);
+        const onLeft = Math.abs(p.x - fb.x) <= tolFrame, onRight = Math.abs(p.x - (fb.x + fb.w)) <= tolFrame;
+        const onTop = Math.abs(p.y - fb.y) <= tolFrame, onBot = Math.abs(p.y - (fb.y + fb.h)) <= tolFrame;
+        if ((nearV && (onLeft || onRight)) || (nearH && (onTop || onBot))) add('frame', i);
+      });
     }
 
     // 3) bounding-box proximity for small / thin boxed items whose strokes are
@@ -965,6 +1059,19 @@
         const g = groups[id];
         if (clientX >= g.l - TOL_PX && clientX <= g.r + TOL_PX && clientY >= g.t - TOL_PX && clientY <= g.b + TOL_PX) add(g.kind, g.i);
       });
+    }
+
+    // Among overlapping states (nested activation bars), prefer the SMALLER
+    // one: a thin bar inside a wide 'busy' state is the harder target and
+    // nearly always the intended one — otherwise the container's exact hit
+    // outranks the bar whenever the pointer is merely NEAR it. Reorders only
+    // the state entries, in place, by ascending bbox area. (#activation)
+    const stateSlots = [];
+    out.forEach((c, idx) => { if (c.kind === 'state') stateSlots.push(idx); });
+    if (stateSlots.length > 1) {
+      const area = (c) => { const g = groups['state:' + c.index]; return g ? (g.r - g.l) * (g.b - g.t) : Infinity; };
+      const sorted = stateSlots.map((idx) => out[idx]).sort((a, b) => area(a) - area(b));
+      stateSlots.forEach((slot, k) => { out[slot] = sorted[k]; });
     }
 
     // Container kinds (the whole-legend box) should rank below the individual
@@ -1071,6 +1178,20 @@
       addRow(menu, label, () => { editText(item, clientX, clientY); });
     }
     if (HAS_COLOR[item.kind]) addRow(menu, '●  Change color ▸', () => { showColorMenu(item, clientX, clientY); });
+    if (item.kind === 'state') {
+      const w = currentField(model, item, 'width');
+      addRow(menu, '↔  Width… ' + (typeof w === 'number' ? '(' + w + 'px)' : '(auto)'),
+        () => { setStateWidth(item, clientX, clientY); });
+    }
+    if (item.kind === 'frame') {
+      const fr = (model.frames || [])[item.index] || {};
+      const lg = (typeof fr.xMargin === 'number') ? fr.xMargin : null;
+      const lm = (typeof fr.lMargin === 'number') ? fr.lMargin : (lg != null ? lg : FRAME_L_MARGIN);
+      const rm = (typeof fr.rMargin === 'number') ? fr.rMargin : (lg != null ? lg : FRAME_R_MARGIN);
+      addRow(menu, '●  Background… ' + (fr.background ? '(' + fr.background + ')' : '(none)'), () => { setFrameBackground(item, clientX, clientY); });
+      addRow(menu, '↤  Left margin… (' + lm + 'px)', () => { setFrameMargin(item, 'lMargin', clientX, clientY); });
+      addRow(menu, '↦  Right margin… (' + rm + 'px)', () => { setFrameMargin(item, 'rMargin', clientX, clientY); });
+    }
     if (HAS_STYLE[item.kind]) {
       const style = (currentField(model, item, 'style') === 'dashed') ? 'solid' : 'dashed';
       addRow(menu, '┄  Make ' + style, () => { closeMenu(); setItemField(item, 'style', quote(style)); });
@@ -1195,13 +1316,16 @@
   const USED_LABEL = { message: 'Used by messages:', state: 'Used by states:', legend: 'Used by legend:' };
 
   // Reusable color picker menu. `kind` selects the right palette (states use the
-  // pastel-keyed STATE_PALETTE); `current` pre-fills the Custom field; `onPick`
-  // receives the chosen color string (raw, unquoted). Shared by "Change color"
-  // and the add-element flow so colour input is consistent everywhere. (#2)
-  function showColorPicker(kind, clientX, clientY, current, onPick) {
+  // pastel-keyed STATE_PALETTE; null aggregates used colors across all kinds);
+  // `current` pre-fills the Custom field; `onPick` receives the chosen color
+  // string (raw, unquoted); `title` adds a context header (e.g. the selection
+  // count). Shared by "Change color" (single + multi-selection) and the
+  // add-element flow so colour input is consistent everywhere. (#2)
+  function showColorPicker(kind, clientX, clientY, current, onPick, title) {
     const model = parseModel();
     const base = (kind === 'state' ? STATE_PALETTE : PALETTE);
     const menu = buildMenu(clientX, clientY);
+    if (title) addHeader(menu, title);
     const swatch = (c) => { addRow(menu, c, () => { closeMenu(); onPick(c); }, { swatch: c }); };
 
     // 1) colors already used by this kind (top), 2) the rest of the palette, 3) custom.
@@ -1232,6 +1356,69 @@
     addHeader(menu, 'Line style:');
     addRow(menu, '─  Solid', () => { closeMenu(); onPick('solid'); });
     addRow(menu, '┄  Dashed', () => { closeMenu(); onPick('dashed'); });
+  }
+
+  // Prompt for a state's fixed width (activation-style bar). Pre-filled with the
+  // current value; a number commits `width`, while empty (or non-numeric) input
+  // clears the field entirely — back to automatic text-based sizing — by
+  // rewriting the element without it (applyText re-canonizes the result). (#activation)
+  function setStateWidth(item, clientX, clientY) {
+    const model = parseModel(); const ed = getEditor(); const J = getJSON5();
+    if (!model || !ed || !J) return;
+    const st = (model.states || [])[item.index]; if (!st) return;
+    const cur = (typeof st.width === 'number') ? String(st.width) : '';
+    showTextInput(clientX, clientY, cur, (v) => {
+      const n = parseFloat(v);
+      const text = ed.getValue();
+      if (v != null && String(v).trim() !== '' && isFinite(n) && n > 0) {
+        const t = setOrInsertField(text, 'states', item.index, 'width', numLiteral(n));
+        if (t != null) applyText(t);
+      } else if (typeof st.width === 'number') {
+        const obj = Object.assign({}, st); delete obj.width;
+        const span = locateArrayElement(text, 'states', item.index); if (!span) return;
+        applyText(text.slice(0, span.start) + J.stringify(obj) + text.slice(span.end));
+      }
+    }, 'State width in px (empty = auto)', false);
+  }
+
+  // Prompt for a frame's lMargin / rMargin. A number commits the field; empty (or
+  // non-numeric) clears it back to the default. (#frames)
+  function setFrameMargin(item, field, clientX, clientY) {
+    const model = parseModel(); const ed = getEditor(); const J = getJSON5();
+    if (!model || !ed || !J) return;
+    const fr = (model.frames || [])[item.index]; if (!fr) return;
+    const cur = (typeof fr[field] === 'number') ? String(fr[field]) : '';
+    const def = field === 'lMargin' ? FRAME_L_MARGIN : FRAME_R_MARGIN;
+    showTextInput(clientX, clientY, cur, (v) => {
+      const n = parseFloat(v);
+      const text = ed.getValue();
+      if (v != null && String(v).trim() !== '' && isFinite(n) && n >= 0) {
+        const t = setOrInsertField(text, 'frames', item.index, field, numLiteral(n));
+        if (t != null) applyText(t);
+      } else if (typeof fr[field] === 'number') {
+        const obj = Object.assign({}, fr); delete obj[field];
+        const span = locateArrayElement(text, 'frames', item.index); if (!span) return;
+        applyText(text.slice(0, span.start) + J.stringify(obj) + text.slice(span.end));
+      }
+    }, field + ' in px (empty = default ' + def + ')', false);
+  }
+  // Frame background color picker. Picking a color sets `background`; the picker's
+  // Custom → empty clears it (no fill). (#frames)
+  function setFrameBackground(item, clientX, clientY) {
+    const model = parseModel(); const ed = getEditor(); const J = getJSON5();
+    if (!model || !ed || !J) return;
+    const fr = (model.frames || [])[item.index]; if (!fr) return;
+    showColorPicker(null, clientX, clientY, fr.background || '', (c) => {
+      const text = ed.getValue();
+      if (c && String(c).trim() && String(c).trim().toLowerCase() !== 'none') {
+        const t = setOrInsertField(text, 'frames', item.index, 'background', quote(String(c).trim()));
+        if (t != null) applyText(t);
+      } else if (fr.background != null) {
+        const obj = Object.assign({}, fr); delete obj.background;
+        const span = locateArrayElement(text, 'frames', item.index); if (!span) return;
+        applyText(text.slice(0, span.start) + J.stringify(obj) + text.slice(span.end));
+      }
+    }, 'Frame background (Custom → "none" to clear):');
   }
 
   function renameLanePrompt(item, clientX, clientY) {
@@ -1294,7 +1481,9 @@
   // clicking away) saves; Alt+Enter inserts a line break. The value is converted
   // back to '|' for the model, so callers keep passing/receiving '|'-encoded
   // text. The popover width fits the longest line. (#12)
-  function showTextInput(clientX, clientY, initial, onCommit, label, multiline) {
+  // `opts.checkbox` adds a labelled check mark row (e.g. "Vertical text") whose
+  // state is passed to onCommit as the second argument. (#activation)
+  function showTextInput(clientX, clientY, initial, onCommit, label, multiline, opts) {
     closeMenu();
     const pop = document.createElement('div');
     pop.className = 'flowdrom-editpop';
@@ -1317,6 +1506,23 @@
       inp.wrap = 'off'; // lines break only on Enter; long lines scroll, not soft-wrap
     }
     pop.appendChild(inp);
+
+    // Optional check mark row (e.g. "Vertical text" for states). mousedown is
+    // prevented so ticking it doesn't blur the input (which would commit-close);
+    // the click still toggles the box — same trick as the footer buttons.
+    let cb = null;
+    if (opts && opts.checkbox) {
+      const cbRow = document.createElement('label');
+      cbRow.className = 'flowdrom-editpop-check';
+      cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!opts.checked;
+      const cbTxt = document.createElement('span');
+      cbTxt.textContent = opts.checkbox;
+      cbRow.appendChild(cb); cbRow.appendChild(cbTxt);
+      cbRow.addEventListener('mousedown', (e) => e.preventDefault());
+      pop.appendChild(cbRow);
+    }
 
     // Footer: short hint + explicit Cancel/Save buttons, so multi-line edits have
     // an obvious save target instead of relying on a key chord. (#12)
@@ -1369,8 +1575,9 @@
     const finish = (commit) => {
       if (done) return; done = true;
       const v = multiline ? inp.value.replace(/\n/g, '|') : inp.value;
+      const checked = cb ? cb.checked : undefined;
       if (pop.parentNode) pop.parentNode.removeChild(pop);
-      if (commit) onCommit(v);
+      if (commit) onCommit(v, checked);
     };
     inp.addEventListener('keydown', (e) => {
       // A lone Alt would otherwise move focus to the browser menu bar (blurring
@@ -1417,12 +1624,33 @@
     const commit = (mk) => (text) => { if (text != null) applyText(text); };
     if (item.kind === 'message' || item.kind === 'legend') {
       const arr = item.kind === 'message' ? model.messages : model.legend;
-      const pm = parseLabelMarkers((arr[item.index] || {}).label || '');
-      showTextInput(clientX, clientY, pm.text, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(pm.markers + v))), item.kind === 'legend' ? 'Legend label' : 'Message label', true);
+      const msg = arr[item.index] || {};
+      const pp = item.kind === 'message' ? pathInfo(msg) : null;
+      if (pp && pp.self) {
+        // Self message: '>'/'<' slide markers don't apply; a leading '^' flips
+        // the on-loop label to horizontal-upright. Surface that as a check mark,
+        // stripped for editing and re-added per the box. (#self-message)
+        const raw = String(msg.label || '').replace(/^[<>]+/, '');
+        const wasFlipped = raw.charAt(0) === '^';
+        showTextInput(clientX, clientY, wasFlipped ? raw.slice(1) : raw,
+          (v, flip) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote((flip ? '^' : '') + v))),
+          'Message label', true, { checkbox: 'Horizontal label (upright)', checked: wasFlipped });
+      } else {
+        const pm = parseLabelMarkers(msg.label || '');
+        showTextInput(clientX, clientY, pm.text, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(pm.markers + v))), item.kind === 'legend' ? 'Legend label' : 'Message label', true);
+      }
     } else if (item.kind === 'state') {
-      showTextInput(clientX, clientY, (model.states[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'State label', true);
+      // The '^' vertical-text modifier surfaces as a check mark, not a literal
+      // character to remember: strip it for editing, re-add per the box. (#activation)
+      const rawLabel = (model.states[item.index] || {}).label || '';
+      const wasVertical = rawLabel.charAt(0) === '^';
+      showTextInput(clientX, clientY, wasVertical ? rawLabel.slice(1) : rawLabel,
+        (v, vert) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote((vert ? '^' : '') + v))),
+        'State label', true, { checkbox: 'Vertical text (reads downward)', checked: wasVertical });
     } else if (item.kind === 'laneGroup') {
       showTextInput(clientX, clientY, (model.laneGroups[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Group name', true);
+    } else if (item.kind === 'frame') {
+      showTextInput(clientX, clientY, (model.frames[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Frame label (e.g. loop, alt, opt)', false);
     } else if (item.kind === 'infoBox') {
       const off = parseInfoOffset((model.infoBoxes[item.index] || {}).text || '');
       showTextInput(clientX, clientY, off.rest, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'text', quote(buildInfoText(off.x, off.y, v)))), 'Info box text', true);
@@ -1437,6 +1665,7 @@
       if (item.kind === 'legend') return !!parseLabelMarkers(model.legend[item.index].label || '').text;
       if (item.kind === 'state') return !!(model.states[item.index].label || '');
       if (item.kind === 'laneGroup') return !!(model.laneGroups[item.index].label || '');
+      if (item.kind === 'frame') return !!(model.frames[item.index].label || '');
       if (item.kind === 'infoBox') return !!parseInfoOffset(model.infoBoxes[item.index].text || '').rest;
       if (item.kind === 'title') return !!(model.title || '');
     } catch (e) { /* ignore */ }
@@ -1514,13 +1743,14 @@
     if (dragItem.kind === 'message') {
       const msg = (model.messages || [])[dragItem.index];
       if (msg) {
-        const [from, to] = String(msg.path || '').split('->').map((s) => s.trim());
-        const x1 = laneX(from), y1 = timeToY(msg.fromTime), x2 = laneX(to), y2 = timeToY(msg.toTime);
+        const pp = pathInfo(msg) || { from: '', to: '', self: false };
+        const x1 = laneX(pp.from), y1 = timeToY(msg.fromTime), x2 = laneX(pp.to), y2 = timeToY(msg.toTime);
         addHandle(x1, y1, { 'data-h': 'msg', 'data-i': dragItem.index, 'data-end': 'from' });
         addHandle(x2, y2, { 'data-h': 'msg', 'data-i': dragItem.index, 'data-end': 'to' });
         // label-position handle (orange), only when the message has visible text
+        // (self-message labels sit fixed beside the loop — no slide handle)
         const pm = parseLabelMarkers(msg.label || '');
-        if (pm.text && x1 != null && x2 != null) {
+        if (pm.text && x1 != null && x2 != null && !pp.self) {
           const len = Math.hypot(x2 - x1, y2 - y1) || 1;
           const ratio = ratioFromMarkers(pm.markers);
           const lx = (x1 + x2) / 2 + ratio * (x2 - x1), ly = (y1 + y2) / 2 + ratio * (y2 - y1);
@@ -1546,6 +1776,19 @@
     } else if (dragItem.kind === 'lane') {
       const ln = L.lanes[dragItem.index];
       if (ln) addHandle(ln.x, L.laneTop - 25, { 'data-h': 'lane', 'data-i': dragItem.index, 'data-mode': dragItem.mode || 'reorder' });
+    } else if (dragItem.kind === 'frame') {
+      const frame = (model.frames || [])[dragItem.index];
+      const fb = frame && frameBox(frame);
+      if (fb) {
+        const midX = fb.x + fb.w / 2, midY = fb.y + fb.h / 2;
+        // Edge handles resize time (top/bottom) and lane span (left/right);
+        // the center handle moves the whole frame in time. (#frames)
+        addHandle(midX, fb.y, { 'data-h': 'frame', 'data-i': dragItem.index, 'data-end': 'top' }, '#0071e3');
+        addHandle(midX, fb.y + fb.h, { 'data-h': 'frame', 'data-i': dragItem.index, 'data-end': 'bottom' }, '#0071e3');
+        addHandle(fb.x, midY, { 'data-h': 'frame', 'data-i': dragItem.index, 'data-end': 'left' }, '#0071e3');
+        addHandle(fb.x + fb.w, midY, { 'data-h': 'frame', 'data-i': dragItem.index, 'data-end': 'right' }, '#0071e3');
+        addHandle(midX, midY, { 'data-h': 'frame', 'data-i': dragItem.index, 'data-end': 'move' });
+      }
     }
   }
 
@@ -1616,8 +1859,8 @@
       const model = parseModel();
       const msg = model && model.messages ? model.messages[drag.index] : null;
       if (msg) {
-        const parts = String(msg.path || '').split('->').map((s) => s.trim());
-        const x1 = laneX(parts[0]), y1 = timeToY(msg.fromTime), x2 = laneX(parts[1]), y2 = timeToY(msg.toTime);
+        const pp = pathInfo(msg) || { from: '', to: '' };
+        const x1 = laneX(pp.from), y1 = timeToY(msg.fromTime), x2 = laneX(pp.to), y2 = timeToY(msg.toTime);
         const dx = x2 - x1, dy = y2 - y1, len2 = (dx * dx + dy * dy) || 1;
         const t = ((p.x - x1) * dx + (p.y - y1) * dy) / len2; // param along the arrow
         const ratio = Math.max(-0.4, Math.min(0.4, t - 0.5));
@@ -1628,7 +1871,69 @@
     } else if (drag.kind === 'lane') {
       drag.handle.setAttribute('cx', p.x);
       drag.preview = { x: p.x };
+    } else if (drag.kind === 'frame') {
+      const model = parseModel();
+      const frame = model && model.frames ? model.frames[drag.index] : null;
+      if (frame) {
+        const f0 = Math.min(frame.fromTime, frame.toTime), f1 = Math.max(frame.fromTime, frame.toTime);
+        const prev = {};
+        if (drag.end === 'top') { prev.fromTime = Math.min(snapTime(yToTime(p.y)), f1); }
+        else if (drag.end === 'bottom') { prev.toTime = Math.max(snapTime(yToTime(p.y)), f0); }
+        else if (drag.end === 'move') {
+          const dur = f1 - f0; const nf = Math.max(0, snapTime(f0 + (yToTime(p.y) - (f0 + f1) / 2)));
+          prev.fromTime = nf; prev.toTime = nf + dur;
+        } else if (drag.end === 'left' || drag.end === 'right') {
+          // Adjust the side MARGIN continuously; once the pointer crosses an
+          // adjacent lane, that lane joins/leaves the span and the margin is
+          // recomputed relative to the new boundary lane. (#frames)
+          const fb0 = frameBox(frame); const order = mainLanesLR();
+          const xOf = (c) => { const l = layout().lanes.find((z) => z.clean === c); return l ? l.x : 0; };
+          const xs = order.map(xOf);
+          if (drag.end === 'left') {
+            const rightIdx = order.indexOf(fb0.rightClean);
+            const px = Math.min(p.x, (fb0.rightX + fb0.rm) - 12); // don't cross the right edge
+            let i = 0; while (i < order.length && xs[i] < px) i++; // first lane at/after px
+            i = Math.min(i, rightIdx);
+            prev.lanes = order.slice(i, rightIdx + 1);
+            prev.lMargin = Math.round(xs[i] - px);
+          } else {
+            const leftIdx = order.indexOf(fb0.leftClean);
+            const px = Math.max(p.x, (fb0.leftX - fb0.lm) + 12);
+            let i = order.length - 1; while (i >= 0 && xs[i] > px) i--; // last lane at/before px
+            i = Math.max(i, leftIdx);
+            prev.lanes = order.slice(leftIdx, i + 1);
+            prev.rMargin = Math.round(px - xs[i]);
+          }
+        }
+        drag.preview = prev;
+        rebuildFramePreview(drag.index, prev);
+      }
     }
+  }
+
+  // Live-update the drawn frame box + its handles as it's dragged, without a full
+  // re-render (which would reparse/rebuild everything). (#frames)
+  function rebuildFramePreview(index, prev) {
+    const model = parseModel(); if (!model) return;
+    const orig = frameBox(model.frames[index]);
+    const merged = Object.assign({}, model.frames[index], prev);
+    const fb = frameBox(merged); if (!fb) return;
+    const svg = diagramSvg();
+    if (svg) {
+      const box = svg.querySelector('rect[data-kind="frame"][data-index="' + index + '"][data-role="box"]');
+      if (box) { box.setAttribute('x', fb.x); box.setAttribute('y', fb.y); box.setAttribute('width', fb.w); box.setAttribute('height', fb.h); }
+      // The label tab sits at the frame's top-left corner; translate it (and the
+      // label) by the corner's delta so they track the box during the drag.
+      if (orig) {
+        const dx = fb.x - orig.x, dy = fb.y - orig.y, tr = 'translate(' + dx + ',' + dy + ')';
+        svg.querySelectorAll('[data-kind="frame"][data-index="' + index + '"][data-role="tab"], [data-kind="frame"][data-index="' + index + '"][data-role="label"]')
+          .forEach((el) => el.setAttribute('transform', tr));
+      }
+    }
+    // Reposition the overlay handles to the new box.
+    const ov = overlayEl(); const midX = fb.x + fb.w / 2, midY = fb.y + fb.h / 2;
+    const set = (end, cx, cy) => { const h = ov.querySelector('circle[data-h="frame"][data-end="' + end + '"]'); if (h) { h.setAttribute('cx', cx); h.setAttribute('cy', cy); } };
+    set('top', midX, fb.y); set('bottom', midX, fb.y + fb.h); set('left', fb.x, midY); set('right', fb.x + fb.w, midY); set('move', midX, midY);
   }
 
   function onUp() {
@@ -1645,10 +1950,14 @@
     let text = ed.getValue();
     if (d.kind === 'msg') {
       const msg = (model.messages || [])[d.index]; if (!msg) return;
-      const parts = String(msg.path).split('->').map((s) => s.trim());
-      if (d.end === 'from') parts[0] = d.preview.lane; else parts[1] = d.preview.lane;
+      const pp = pathInfo(msg) || { from: '', to: '', side: 'right' };
+      let from = pp.from, to = pp.to;
+      if (d.end === 'from') from = d.preview.lane; else to = d.preview.lane;
+      // Rebuild in semantic order; keep the '<-' notation when the result is a
+      // self message written (or dropped) as left-handed. (#self-message)
+      const newPath = (from === to && pp.side === 'left') ? (to + '<-' + from) : (from + '->' + to);
       text = setElementFields(text, 'messages', d.index, [
-        { field: 'path', literal: quote(parts.join('->')) },
+        { field: 'path', literal: quote(newPath) },
         { field: d.end === 'from' ? 'fromTime' : 'toTime', literal: numLiteral(d.preview.t) },
       ]);
     } else if (d.kind === 'state') {
@@ -1666,8 +1975,38 @@
       const pm = parseLabelMarkers(msg.label || '');
       text = setOrInsertField(text, 'messages', d.index, 'label', quote(markersFromRatio(d.preview.ratio) + pm.text));
     } else if (d.kind === 'infoanchor') {
-      text = setOrInsertField(text, 'infoBoxes', d.index, 'lane', quote(d.preview.lane));
+      // Re-anchor the tether ONLY — the box keeps its absolute canvas position.
+      // The <x,y> offset is anchor-relative, so re-express it from the new
+      // anchor; without this the whole box rides along with the tether. Box and
+      // tether move independently, like a message's two endpoints.
+      const info = (model.infoBoxes || [])[d.index]; if (!info) return;
+      const ox = laneX(info.lane), nx = laneX(d.preview.lane);
+      if (ox != null && nx != null) {
+        const off = parseInfoOffset(info.text);
+        const bx = ox + off.x, by = timeToY(info.time) + off.y; // box position today
+        const span = locateArrayElement(text, 'infoBoxes', d.index); if (!span) return;
+        text = replaceFieldValue(text, span, 'text',
+          quote(buildInfoText(bx - nx, by - timeToY(d.preview.time), off.rest)));
+      }
+      if (text != null) text = setOrInsertField(text, 'infoBoxes', d.index, 'lane', quote(d.preview.lane));
       if (text != null) text = setOrInsertField(text, 'infoBoxes', d.index, 'time', numLiteral(d.preview.time));
+    } else if (d.kind === 'frame') {
+      // Rewrite the whole element as one JSON5 object: the per-field helpers
+      // can't replace the array-valued `lanes` (FIELD_VALUE matches scalars
+      // only), and applyText re-canonizes the result anyway. (#frames)
+      const frame = (model.frames || [])[d.index]; const J = getJSON5();
+      if (!frame || !J) { rebuildOverlay(); return; }
+      const pv = d.preview || {};
+      const merged = Object.assign({}, frame);
+      delete merged.xMargin; delete merged.yMargin; // retire the legacy keys on any edit
+      if (pv.fromTime != null) merged.fromTime = pv.fromTime;
+      if (pv.toTime != null) merged.toTime = pv.toTime;
+      if (pv.lanes) merged.lanes = pv.lanes;
+      if (pv.lMargin != null) merged.lMargin = pv.lMargin;
+      if (pv.rMargin != null) merged.rMargin = pv.rMargin;
+      const span = locateArrayElement(text, 'frames', d.index);
+      if (!span) { rebuildOverlay(); return; }
+      text = text.slice(0, span.start) + J.stringify(merged) + text.slice(span.end);
     } else if (d.kind === 'lane') {
       const L = layout(); if (!L) return;
       const dropX = d.preview.x;
@@ -1768,6 +2107,21 @@
     anchors.forEach((v, i) => map.set(v, i));
     return map;
   }
+  // Frames are NOT grid anchors (they must not perturb message/state spacing),
+  // but they should track the remap so they keep scoping the same events. Map a
+  // frame boundary by interpolating between the surrounding anchors' targets;
+  // exact anchor values pass straight through. Pure; unit-tested. (#frames)
+  function interpTime(v, anchors, valueMap) {
+    if (typeof v !== 'number') return v;
+    if (valueMap.has(v)) return valueMap.get(v);
+    if (!anchors.length) return v;
+    const first = anchors[0], last = anchors[anchors.length - 1];
+    if (v <= first) return valueMap.get(first) - (first - v);
+    if (v >= last) return valueMap.get(last) + (v - last);
+    let i = 0; while (i < anchors.length - 1 && anchors[i + 1] < v) i++;
+    const lo = anchors[i], hi = anchors[i + 1], rl = valueMap.get(lo), rh = valueMap.get(hi);
+    return rl + (rh - rl) * (v - lo) / (hi - lo);
+  }
   // Return a deep copy of the model with every time value passed through the map.
   function remapModelTimes(model, valueMap) {
     const out = JSON.parse(JSON.stringify(model));
@@ -1775,6 +2129,10 @@
     (out.messages || []).forEach((m) => { if (typeof m.fromTime === 'number') m.fromTime = rt(m.fromTime); if (typeof m.toTime === 'number') m.toTime = rt(m.toTime); });
     (out.states || []).forEach((st) => { if (typeof st.fromTime === 'number') st.fromTime = rt(st.fromTime); if (typeof st.toTime === 'number') st.toTime = rt(st.toTime); });
     (out.infoBoxes || []).forEach((b) => { if (typeof b.time === 'number') b.time = rt(b.time); });
+    if (out.frames && out.frames.length) {
+      const anchors = Array.from(valueMap.keys()).sort((a, b) => a - b);
+      out.frames.forEach((f) => { f.fromTime = interpTime(f.fromTime, anchors, valueMap); f.toTime = interpTime(f.toTime, anchors, valueMap); });
+    }
     return out;
   }
   // Phase 1, end to end: even, order-preserving re-timing of every event (durations
@@ -1789,6 +2147,15 @@
   // Every transform below is GUARDED by a measured overlap score: a candidate is
   // kept only if it strictly reduces total label/box overlap. So Arrange can only
   // improve or no-op — it can never make the diagram worse than the input.
+  //
+  // HARD INVARIANT (same as Phase 1): the relative order — including ties — of
+  // every ORDER EVENT (message fromTime/toTime, state fromTime/toTime) is
+  // preserved. Two events at the same time are a GLUE POINT (message end feeding
+  // a state start, chained arrows, …) and stay glued. This holds because every
+  // timing transform is either (a) a global monotonic shift applied uniformly to
+  // ALL time fields (insertGapAtTime), or (b) a single-endpoint move that is
+  // forbidden at glue points and confined strictly between the neighbouring
+  // event times (Pass D). Lane shifting (Pass L) never touches time at all.
 
   // Axis-aligned overlap test (+ optional margin) and overlap area. Boxes are
   // { x, y, w, h }. Pure; unit-tested.
@@ -1802,54 +2169,72 @@
     return (ox > 0 && oy > 0) ? ox * oy : 0;
   }
 
-  // Insert `delta` time units at `atTime`: every later time shifts down. Monotonic,
-  // so order is preserved. States are RIGID — a state is shifted whole (both ends)
-  // iff it starts after the gap, never stretched, so its duration (which may carry
-  // meaning) is always preserved. Pure; unit-tested. (#auto-arrange P2)
+  // Insert `delta` time units at `atTime`: every later time value shifts down —
+  // message endpoints, BOTH state boundaries, info boxes — one uniform monotonic
+  // rule (v > atTime → v + delta). Order, ties and glue points are preserved BY
+  // CONSTRUCTION. A state straddling the gap stretches (its end shifts, its start
+  // stays): the old "rigid state" rule kept the duration but let shifted messages
+  // pass an unshifted state end, breaking order and tearing glue points — the
+  // stronger guarantee wins. Pure; unit-tested. (#auto-arrange P2)
   function insertGapAtTime(model, atTime, delta) {
     const out = JSON.parse(JSON.stringify(model));
     const sh = (v) => (typeof v === 'number' && v > atTime + 1e-9) ? Math.round((v + delta) * 10) / 10 : v;
     (out.messages || []).forEach((m) => { m.fromTime = sh(m.fromTime); m.toTime = sh(m.toTime); });
-    (out.states || []).forEach((st) => {
-      // Decide by the state's start so from/to move together (no stretching). A state
-      // straddling the gap (start <= atTime < end) stays put, keeping its length.
-      if (typeof st.fromTime === 'number' && st.fromTime > atTime + 1e-9) {
-        st.fromTime = Math.round((st.fromTime + delta) * 10) / 10;
-        if (typeof st.toTime === 'number') st.toTime = Math.round((st.toTime + delta) * 10) / 10;
-      }
-    });
+    (out.states || []).forEach((st) => { st.fromTime = sh(st.fromTime); st.toTime = sh(st.toTime); });
     (out.infoBoxes || []).forEach((b) => { b.time = sh(b.time); });
+    (out.frames || []).forEach((f) => { f.fromTime = sh(f.fromTime); f.toTime = sh(f.toTime); });
     return out;
   }
 
-  // States that overlap IN TIME on the same lane (a data error re-timing can't fix
-  // while keeping order). Returns [[i,j], …]. Pure; unit-tested.
+  // States that PARTIALLY overlap in time on the same lane (a data error
+  // re-timing can't fix while keeping order). Full containment is NOT reported:
+  // a state fully inside another is an intentional sub-state / nested activation
+  // bar and renders on top of its container. Returns [[i,j], …]. Pure;
+  // unit-tested. (#activation)
   function overlappingStatePairs(model) {
     const byLane = {}, pairs = [];
     (model.states || []).forEach((s, i) => { (byLane[s.lane] = byLane[s.lane] || []).push({ i: i, from: s.fromTime, to: (s.toTime != null ? s.toTime : s.fromTime) }); });
     Object.keys(byLane).forEach((lane) => {
       const arr = byLane[lane].slice().sort((a, b) => a.from - b.from);
-      for (let k = 1; k < arr.length; k++) if (arr[k].from < arr[k - 1].to - 1e-9) pairs.push([arr[k - 1].i, arr[k].i]);
+      for (let k = 1; k < arr.length; k++) {
+        let contained = false, partial = null;
+        for (let j = 0; j < k; j++) {
+          if (arr[k].from >= arr[j].from - 1e-9 && arr[k].to <= arr[j].to + 1e-9) { contained = true; break; }
+          if (arr[k].from < arr[j].to - 1e-9) partial = j;
+        }
+        if (!contained && partial != null) pairs.push([arr[partial].i, arr[k].i]);
+      }
     });
     return pairs;
   }
-  // Opt-in fix: push same-lane states to be back-to-back (preserving each lane's
-  // order + durations). Changes timing — relaxes the order invariant for states.
-  // Pure; unit-tested.
+  // Opt-in fix: push PARTIALLY-overlapping same-lane states to be back-to-back
+  // (preserving each lane's order + durations). Fully-contained states are
+  // intentional nesting (sub-state / activation bar) and are left in place.
+  // Changes timing — relaxes the order invariant for states. Pure; unit-tested.
+  // (#activation)
   function sequentializeStates(model) {
     const out = JSON.parse(JSON.stringify(model));
     const byLane = {};
     (out.states || []).forEach((s, i) => { (byLane[s.lane] = byLane[s.lane] || []).push(i); });
     Object.keys(byLane).forEach((lane) => {
       const idxs = byLane[lane].sort((a, b) => out.states[a].fromTime - out.states[b].fromTime);
+      if (!idxs.length) return;
+      // Running envelope of the lane's occupied range so far: containment is
+      // judged against it (an inner state may follow another inner state), and
+      // partial overlappers are pushed past its end.
+      let envFrom = out.states[idxs[0]].fromTime;
+      let envTo = (out.states[idxs[0]].toTime != null ? out.states[idxs[0]].toTime : out.states[idxs[0]].fromTime);
       for (let k = 1; k < idxs.length; k++) {
-        const prev = out.states[idxs[k - 1]], cur = out.states[idxs[k]];
-        const prevTo = (prev.toTime != null ? prev.toTime : prev.fromTime);
-        if (cur.fromTime < prevTo) {
-          const dur = (cur.toTime != null ? cur.toTime : cur.fromTime) - cur.fromTime;
-          cur.fromTime = Math.round(prevTo * 10) / 10;
-          if (cur.toTime != null) cur.toTime = Math.round((prevTo + dur) * 10) / 10;
+        const cur = out.states[idxs[k]];
+        const curTo = (cur.toTime != null ? cur.toTime : cur.fromTime);
+        if (cur.fromTime >= envFrom - 1e-9 && curTo <= envTo + 1e-9) continue; // nested: keep
+        if (cur.fromTime < envTo) {
+          const dur = curTo - cur.fromTime;
+          cur.fromTime = Math.round(envTo * 10) / 10;
+          if (cur.toTime != null) cur.toTime = Math.round((envTo + dur) * 10) / 10;
         }
+        envFrom = cur.fromTime;
+        envTo = Math.max(envTo, (cur.toTime != null ? cur.toTime : cur.fromTime));
       }
     });
     return out;
@@ -1904,6 +2289,63 @@
       const cm = measure(cand), ci = collisionItems(cand, cm.boxes), cs = totalOverlap(ci);
       if (cs < score - 1e-6) { cur = cand; items = ci; score = cs; ts = (cm.layout && cm.layout.timeStep) || ts; }
       else break;
+    }
+    return cur;
+  }
+
+  // Add `chars` steps of '>' horizontal shift (20px each — the documented lane
+  // prefix convention) to every lane whose CLEAN name is listed in `names`.
+  // Existing '<'/'>' prefixes are netted and re-emitted normalized, so repeated
+  // application accumulates instead of producing mixed '><' prefixes. Everything
+  // else references lanes by clean name, so this is purely visual. Pure; unit-tested.
+  function shiftLanes(lanes, names, chars) {
+    return (lanes || []).map((raw) => {
+      const m = /^([<>]*)([\s\S]*)$/.exec(String(raw == null ? '' : raw));
+      if (names.indexOf(m[2].trim()) === -1) return raw;
+      let net = chars;
+      for (let i = 0; i < m[1].length; i++) net += (m[1][i] === '>' ? 1 : -1);
+      return (net > 0 ? '>'.repeat(net) : net < 0 ? '<'.repeat(-net) : '') + m[2];
+    });
+  }
+
+  // Pass L — widen the horizontal gap between two adjacent MAIN lanes when
+  // colliding items sit on opposite sides of that gap (wide same-time labels, a
+  // state box under a neighbour's label, …). The widening lives in the model
+  // itself, as '>' shifts on every main lane right of the gap (sub-lanes follow
+  // their parent's x automatically), so it survives canonize/undo like any
+  // hand-written prefix. Timing is never touched, so event order is trivially
+  // preserved. Greedy + guarded: kept only if measured overlap strictly drops.
+  function widenLaneGaps(model, measure) {
+    const MARGIN = 6, PX_PER_SHIFT = 20, MAX_SHIFTS = 12, CAP = 8;
+    let cur = model, m = measure(cur);
+    let items = collisionItems(cur, m.boxes), score = totalOverlap(items);
+    for (let it = 0; it < CAP && score > 0; it++) {
+      const mains = ((m.layout && m.layout.lanes) || []).filter(l => l.clean.indexOf('.') === -1)
+        .slice().sort((a, b) => a.x - b.x);
+      if (mains.length < 2) break;
+      let best = null;
+      for (let g = 1; g < mains.length; g++) {
+        const boundary = (mains[g - 1].x + mains[g].x) / 2;
+        // The widest colliding pair whose centers straddle this gap decides how
+        // much room the gap is missing.
+        let need = 0;
+        for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+          const A = items[i].box, B = items[j].box;
+          if (!boxesOverlap(A, B, MARGIN)) continue;
+          if (((A.x + A.w / 2) - boundary) * ((B.x + B.w / 2) - boundary) >= 0) continue;
+          const ox = Math.min(A.x + A.w, B.x + B.w) - Math.max(A.x, B.x);
+          need = Math.max(need, ox + MARGIN);
+        }
+        if (need <= 0) continue;
+        const chars = Math.min(MAX_SHIFTS, Math.max(1, Math.ceil(need / PX_PER_SHIFT)));
+        const names = mains.filter(l => l.x >= mains[g].x - 1e-6).map(l => l.clean);
+        const cand = JSON.parse(JSON.stringify(cur));
+        cand.lanes = shiftLanes(cand.lanes, names, chars);
+        const cm = measure(cand), ci = collisionItems(cand, cm.boxes), cs = totalOverlap(ci);
+        if (cs < score - 1e-6 && (!best || cs < best.cs)) best = { cand, cs, cm, ci };
+      }
+      if (!best) break;
+      cur = best.cand; m = best.cm; items = best.ci; score = best.cs;
     }
     return cur;
   }
@@ -1978,16 +2420,23 @@
            _segIntersect(x1, y1, x2, y2, b.x, b.y + b.h, b.x + b.w, b.y + b.h) ||
            _segIntersect(x1, y1, x2, y2, b.x, b.y, b.x, b.y + b.h);
   }
-  // An endpoint is causal only if it lines up with a state boundary ON ITS OWN LANE
-  // (within 0.01) — e.g. a message arriving on lane X exactly when a state on X starts
-  // or ends. Boundaries on other lanes are coincidental and must not pin the message.
-  function _isCausal(t, states, lane) {
-    return (states || []).some(s => {
-      if (lane != null && s.lane !== lane) return false;
-      const lo = Math.min(s.fromTime || 0, s.toTime != null ? s.toTime : s.fromTime || 0);
-      const hi = Math.max(s.fromTime || 0, s.toTime != null ? s.toTime : s.fromTime || 0);
-      return Math.abs(t - lo) < 0.01 || Math.abs(t - hi) < 0.01;
-    });
+  // Multiset of every order-relevant event time: message from/to and state
+  // from/to — the events whose relative order Arrange must never change. Info
+  // boxes are annotations and deliberately excluded. Sorted ascending. Pure.
+  function orderEventTimes(model) {
+    const ts = [];
+    (model.messages || []).forEach((m) => { if (typeof m.fromTime === 'number') ts.push(m.fromTime); if (typeof m.toTime === 'number') ts.push(m.toTime); });
+    (model.states || []).forEach((s) => { if (typeof s.fromTime === 'number') ts.push(s.fromTime); if (typeof s.toTime === 'number') ts.push(s.toTime); });
+    return ts.sort((a, b) => a - b);
+  }
+  // A time is a GLUE POINT when more than one order event sits on it: a state
+  // starting at a message's end, chained arrows, a horizontal message's own two
+  // ends, … Glued events must move together or not at all — nudging one would
+  // tear the connection — so Pass D skips them entirely. Pure; unit-tested.
+  function isGluedTime(times, t) {
+    let n = 0;
+    for (let i = 0; i < times.length; i++) { if (Math.abs(times[i] - t) < 1e-6 && ++n > 1) return true; }
+    return false;
   }
   function _crossingScore(mdl, meas) {
     const { layout, boxes } = meas;
@@ -1996,9 +2445,9 @@
     const stateBoxes = boxes.filter(b => b.kind === 'state');
     let score = 0;
     (mdl.messages || []).forEach(msg => {
-      const parts = (msg.path || '').split('->');
-      if (parts.length !== 2) return;
-      const x1 = _getLaneX(layout.lanes, parts[0]), x2 = _getLaneX(layout.lanes, parts[1]);
+      const pp = pathInfo(msg);
+      if (!pp || pp.self) return; // self loops hug their own lane — crossing logic N/A (#self-message)
+      const x1 = _getLaneX(layout.lanes, pp.from), x2 = _getLaneX(layout.lanes, pp.to);
       if (x1 == null || x2 == null) return;
       const y1 = laneTop + (msg.fromTime || 0) * timeStep;
       const y2 = laneTop + (msg.toTime || 0) * timeStep;
@@ -2012,9 +2461,12 @@
   // Pass D — nudge message endpoints to prevent the arrow body crossing a state box.
   // Uses exact pixel coordinates from the layout for a proper line-segment-vs-rectangle
   // test, so it catches both same-lane endpoint crossings AND middle-of-line crossings
-  // through intermediate lanes. Causal endpoints (time == any state boundary) are left alone.
+  // through intermediate lanes. ORDER-SAFE by construction: an endpoint moves only
+  // strictly within the open interval between its neighbouring order events (it can
+  // never pass or land on another event), and glue points are never touched — which
+  // also keeps horizontal messages (fromTime == toTime) horizontal.
   function nudgeToAvoidLineCrossings(model, measure) {
-    const DELTAS = [0.5, 1, 1.5, -0.5, -1, -1.5], CAP = 20;
+    const FRACTIONS = [0.35, 0.65], CAP = 20;
     let cur = model, m = measure(cur), sc = _crossingScore(cur, m);
     if (sc === 0) return cur;
 
@@ -2023,26 +2475,35 @@
       if (!layout || !boxes) break;
       const { laneTop, timeStep } = layout;
       const stateBoxes = boxes.filter(b => b.kind === 'state');
-      const states = cur.states || [];
+      const times = orderEventTimes(cur);
       let best = null;
 
       (cur.messages || []).forEach((msg, i) => {
-        const parts = (msg.path || '').split('->');
-        if (parts.length !== 2) return;
-        const x1 = _getLaneX(layout.lanes, parts[0]), x2 = _getLaneX(layout.lanes, parts[1]);
+        const pp = pathInfo(msg);
+        if (!pp || pp.self) return; // self loops can't be nudged off their lane (#self-message)
+        const x1 = _getLaneX(layout.lanes, pp.from), x2 = _getLaneX(layout.lanes, pp.to);
         if (x1 == null || x2 == null) return;
         const y1 = laneTop + (msg.fromTime || 0) * timeStep;
         const y2 = laneTop + (msg.toTime || 0) * timeStep;
         if (!stateBoxes.some(sb => _lineInBox(x1, y1, x2, y2, { x: sb.x, y: sb.y, w: sb.w, h: sb.h }))) return;
 
-        // fromTime is anchored to the from-lane, toTime to the to-lane.
-        for (const [field, t, lane] of [['fromTime', msg.fromTime || 0, parts[0]], ['toTime', msg.toTime || 0, parts[1]]]) {
-          if (_isCausal(t, states, lane)) continue;
-          for (const delta of DELTAS) {
-            const cand = JSON.parse(JSON.stringify(cur));
-            cand.messages[i][field] = t + delta;
-            const cm = measure(cand), cs = _crossingScore(cand, cm);
-            if (cs < sc && (!best || cs < best.cs)) best = { cand, cs, cm };
+        for (const [field, t] of [['fromTime', msg.fromTime || 0], ['toTime', msg.toTime || 0]]) {
+          if (isGluedTime(times, t)) continue; // shared with another event — never tear a glue point
+          // Strict-order window: nearest order events below/above this endpoint.
+          let prev = -Infinity, next = Infinity;
+          for (const v of times) { if (v < t - 1e-6 && v > prev) prev = v; if (v > t + 1e-6 && v < next) next = v; }
+          // Candidate moves: fractions of the way toward each neighbour (one grid
+          // unit of headroom at the extremes), never reaching the neighbour.
+          const up = (next === Infinity ? 1 : next - t), down = (prev === -Infinity ? 1 : t - prev);
+          for (const f of FRACTIONS) {
+            for (const nt0 of [t + f * up, t - f * down]) {
+              const nt = Math.round(nt0 * 100) / 100;
+              if (!(nt > prev + 1e-6 && nt < next - 1e-6)) continue; // rounding must not reach a neighbour
+              const cand = JSON.parse(JSON.stringify(cur));
+              cand.messages[i][field] = nt;
+              const cm = measure(cand), cs = _crossingScore(cand, cm);
+              if (cs < sc && (!best || cs < best.cs)) best = { cand, cs, cm };
+            }
           }
         }
       });
@@ -2065,9 +2526,9 @@
       const stateBoxes = boxes.filter(b => b.kind === 'state');
       let count = 0;
       (model.messages || []).forEach(msg => {
-        const parts = (msg.path || '').split('->');
-        if (parts.length !== 2) return;
-        const x1 = _getLaneX(layout.lanes, parts[0]), x2 = _getLaneX(layout.lanes, parts[1]);
+        const pp = pathInfo(msg);
+        if (!pp || pp.self) return; // self loops are never counted as crossings (#self-message)
+        const x1 = _getLaneX(layout.lanes, pp.from), x2 = _getLaneX(layout.lanes, pp.to);
         if (x1 == null || x2 == null) return;
         const y1 = laneTop + (msg.fromTime || 0) * timeStep;
         const y2 = laneTop + (msg.toTime || 0) * timeStep;
@@ -2082,13 +2543,16 @@
     } catch (e) { return 0; }
   }
 
-  // Run passes in order: gap-spread → endpoint-nudge → label-slide → msg-state-label-slide.
-  // D runs before B/C so geometry is fixed before cosmetic label markers are added.
+  // Run passes in order: vertical gap-spread (A) → lane gap-widen (L) →
+  // endpoint-nudge (D) → label slides (B, C). Geometry passes run before the
+  // cosmetic label markers. Every timing transform is monotonic and glue-aware,
+  // so event order is preserved end to end (see the Phase 2 header).
   function collisionSpread(model, measure) {
     const p1 = spreadDifferentTimes(model, measure);
-    const p2 = nudgeToAvoidLineCrossings(p1, measure);
-    const p3 = slideSameTimeLabels(p2, measure);
-    return slideMsgStateLabels(p3, measure);
+    const p2 = widenLaneGaps(p1, measure);
+    const p3 = nudgeToAvoidLineCrossings(p2, measure);
+    const p4 = slideSameTimeLabels(p3, measure);
+    return slideMsgStateLabels(p4, measure);
   }
 
   // Brief non-blocking status toast (bottom-center), auto-dismissed.
@@ -2186,10 +2650,10 @@
         if (sig.length || lc) {
           const parts = [];
           if (sig.length) parts.push(sig.length + ' label overlap(s)');
-          if (lc) parts.push(lc + ' line crossing(s) through a state (causal — not moved)');
+          if (lc) parts.push(lc + ' line crossing(s) through a state (order/glue-constrained — not moved)');
           arrangeToast(prefix + ' — ' + parts.join('; ') + '.');
           if (sig.length) console.warn('Arrange — remaining label overlaps:', sig);
-          if (lc) console.warn('Arrange — unfixable line crossings (causal constraints):', lc);
+          if (lc) console.warn('Arrange — unfixable line crossings (order/glue constraints):', lc);
         } else {
           arrangeToast(changed ? 'Arranged.' : 'Already tidy — nothing to change.');
         }
@@ -2379,6 +2843,13 @@
   let lastTap = { t: 0, x: -1, y: -1 };
   function onDocPointerDownDbl(e) {
     if (e.button !== 0 || e.ctrlKey || e.metaKey || creating || groupSelecting || subLaneOf) { lastTap.t = 0; return; }
+    // Presses inside the text-edit popover (or the styling panel) belong to
+    // their inputs — caret placement, native double-click word selection —
+    // and must never be hijacked as a canvas double-click on the diagram item
+    // that happens to sit UNDER the popover. Menus stay visible to this
+    // detector on purpose (see the comment above). (#editpop-dblclick)
+    if (e.target && e.target.closest &&
+        e.target.closest('.flowdrom-editpop, .flowdrom-options-panel')) { lastTap.t = 0; return; }
     const container = getContainer(); if (!container) { lastTap.t = 0; return; }
     const r = container.getBoundingClientRect();
     if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) { lastTap.t = 0; return; }
@@ -2408,6 +2879,7 @@
     addRow(menu, '+  Message (drag to draw)', () => { closeMenu(); startCreating('message'); });
     addRow(menu, '+  State (drag to draw)', () => { closeMenu(); startCreating('state'); });
     addRow(menu, '+  Info box (click a lane)', () => { closeMenu(); startCreating('infoBox'); });
+    addRow(menu, '+  Frame (drag across lanes)', () => { closeMenu(); startCreating('frame'); });
     addRow(menu, '+  Lane here', () => { closeMenu(); addLaneAt(clientX, clientY); });
     addRow(menu, '+  Legend entry', () => { closeMenu(); addLegendEntry(clientX, clientY); });
     addRow(menu, '+  Lane group (select lanes)', () => { closeMenu(); startGroupSelect(); });
@@ -2585,6 +3057,15 @@
     usw.appendChild(ucb); usw.appendChild(ulbl); panel.appendChild(usw);
     ucb.addEventListener('change', () => { commitStyle(setOption(ed.getValue(), 'graph', 'uniformStateWidth', ucb.checked ? true : null)); });
 
+    // Feature 3 — self-message loop distance from the lane, px (blank = 45). (#self-message)
+    const smw = document.createElement('div');
+    smw.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px;';
+    const smwLbl = document.createElement('span'); smwLbl.textContent = 'Self-message distance from lane (px)';
+    const smwIn = document.createElement('input'); smwIn.type = 'number'; smwIn.min = '10'; smwIn.step = '5'; smwIn.placeholder = '45'; smwIn.style.width = '80px';
+    if (typeof graph.selfMessageWidth === 'number') smwIn.value = graph.selfMessageWidth;
+    smwIn.addEventListener('change', () => { const v = smwIn.value.trim() === '' ? null : parseFloat(smwIn.value); commitStyle(setOption(ed.getValue(), 'graph', 'selfMessageWidth', v)); });
+    smw.appendChild(smwLbl); smw.appendChild(smwIn); panel.appendChild(smw);
+
     const close = document.createElement('button'); close.textContent = 'Close'; close.className = 'btn'; close.style.marginTop = '10px'; close.addEventListener('click', () => panel.remove());
     panel.appendChild(close);
     document.body.appendChild(panel);
@@ -2658,12 +3139,32 @@
     rebuildOverlay();
   }
 
+  // Self-message loop path in diagram units — mirrors the engine's geometry in
+  // main.js so the creation ghost matches the rendered result. dir = +1 right /
+  // -1 left; w = bulge px. (#self-message)
+  function selfLoopPath(lx, y1, y2, dir, w) {
+    const ts = (layout() && layout().timeStep) || 50;
+    let yb = y2;
+    if (Math.abs(yb - y1) < ts * 0.25) yb = y1 + ts * 0.25;
+    const xf = lx + dir * w;
+    const rr = Math.min(8, w / 2, Math.abs(yb - y1) / 2);
+    return 'M ' + lx + ' ' + y1 +
+      ' L ' + (xf - dir * rr) + ' ' + y1 +
+      ' Q ' + xf + ' ' + y1 + ' ' + xf + ' ' + (y1 + rr) +
+      ' L ' + xf + ' ' + (yb - rr) +
+      ' Q ' + xf + ' ' + yb + ' ' + (xf - dir * rr) + ' ' + yb +
+      ' L ' + lx + ' ' + yb;
+  }
+
   function onCreateDown(ev) {
     const ov = overlayEl();
     const p = pointerToDiagram(ov, ev);
     if (!p) return;
     ev.preventDefault(); ev.stopPropagation();
-    createDrag = { ov: ov, kind: creating, start: p, cur: p, ghost: null };
+    // Snapshot the self-message loop width once (options don't change mid-drag).
+    const gph = ((parseModel() || {}).options || {}).graph || {};
+    const selfW = (gph.selfMessageWidth > 0) ? gph.selfMessageWidth : 45;
+    createDrag = { ov: ov, kind: creating, start: p, cur: p, ghost: null, selfW: selfW };
     window.addEventListener('pointermove', onCreateMove, true);
     window.addEventListener('pointerup', onCreateUp, true);
   }
@@ -2676,10 +3177,21 @@
     const ov = createDrag.ov;
     if (createDrag.ghost) ov.removeChild(createDrag.ghost);
     if (createDrag.kind === 'message') {
-      const x1 = laneX(nearestLaneClean(createDrag.start.x)), y1 = timeToY(snapTime(yToTime(createDrag.start.y)));
-      const x2 = laneX(nearestLaneClean(p.x)), y2 = timeToY(snapTime(yToTime(p.y)));
-      const g = document.createElementNS(SVGNS, 'line');
-      g.setAttribute('x1', x1); g.setAttribute('y1', y1); g.setAttribute('x2', x2); g.setAttribute('y2', y2);
+      const startLane = nearestLaneClean(createDrag.start.x), curLane = nearestLaneClean(p.x);
+      const y1 = timeToY(snapTime(yToTime(createDrag.start.y))), y2 = timeToY(snapTime(yToTime(p.y)));
+      let g;
+      if (startLane != null && startLane === curLane) {
+        // Same lane → self message: preview the loop on the side of the pointer.
+        const lx = laneX(startLane);
+        const dir = p.x >= lx ? 1 : -1;
+        g = document.createElementNS(SVGNS, 'path');
+        g.setAttribute('d', selfLoopPath(lx, y1, y2, dir, createDrag.selfW));
+        g.setAttribute('fill', 'none');
+      } else {
+        g = document.createElementNS(SVGNS, 'line');
+        g.setAttribute('x1', laneX(startLane)); g.setAttribute('y1', y1);
+        g.setAttribute('x2', laneX(curLane)); g.setAttribute('y2', y2);
+      }
       g.setAttribute('stroke', '#0071e3'); g.setAttribute('stroke-width', 2); g.setAttribute('stroke-dasharray', '5,4');
       ov.appendChild(g); createDrag.ghost = g;
     } else if (createDrag.kind === 'state') {
@@ -2696,6 +3208,18 @@
       g.setAttribute('cx', x); g.setAttribute('cy', y); g.setAttribute('r', 6);
       g.setAttribute('fill', 'rgba(46,139,87,0.3)'); g.setAttribute('stroke', '#2e8b57');
       ov.appendChild(g); createDrag.ghost = g;
+    } else if (createDrag.kind === 'frame') {
+      // Preview the frame over the lane span start↔pointer and the time span,
+      // with the default side margins; vertical edges sit exactly on the snapped
+      // times (no vertical margin). (#frames)
+      const xa = laneX(nearestLaneClean(createDrag.start.x)), xb = laneX(nearestLaneClean(p.x));
+      const t0 = snapTime(yToTime(createDrag.start.y)), t1 = snapTime(yToTime(p.y));
+      const left = Math.min(xa, xb) - FRAME_L_MARGIN, right = Math.max(xa, xb) + FRAME_R_MARGIN;
+      const yTop = timeToY(Math.min(t0, t1)), yBot = timeToY(Math.max(t0, t1));
+      const g = document.createElementNS(SVGNS, 'rect');
+      g.setAttribute('x', left); g.setAttribute('y', yTop); g.setAttribute('width', Math.max(2, right - left)); g.setAttribute('height', Math.max(2, yBot - yTop));
+      g.setAttribute('rx', '2'); g.setAttribute('fill', 'rgba(0,113,227,0.06)'); g.setAttribute('stroke', '#0071e3'); g.setAttribute('stroke-dasharray', '4,3');
+      ov.appendChild(g); createDrag.ghost = g;
     }
   }
 
@@ -2704,7 +3228,10 @@
   // pre-filled with its default and applied live, so the element updates after
   // every Enter. A field left at its default is skipped (no edit), so accepting
   // defaults doesn't pile up undo steps. `geom` holds the fixed fields
-  // (path/lane/times); `fields` is { key, label, def, omitIfEmpty, multiline }.
+  // (path/lane/times); `fields` is { key, label, def, omitIfEmpty, multiline,
+  // numeric, checkbox }: `numeric` commits a number literal (empty = skip, so a
+  // plain Enter keeps the automatic behavior), `checkbox` adds the vertical-text
+  // check mark whose tick prefixes the committed value with '^'. (#activation)
   // Esc/Cancel just stops prompting — the element drawn so far stays. (add-element prompts)
   function createWithPrompts(kind, geom, fields, clientX, clientY) {
     const J = getJSON5(); const ed = getEditor(); if (!J || !ed) return;
@@ -2726,8 +3253,10 @@
     function commitFieldValue(f, desired) {
       const m = parseModel();
       const cur = (m && m[key] && m[key][index]) ? m[key][index][f.key] : undefined;
+      if (f.numeric && desired !== '' && !isFinite(parseFloat(desired))) desired = ''; // garbage → keep auto
       if (desired !== '' && String(cur == null ? '' : cur) !== desired) {
-        const t = setOrInsertField(ed.getValue(), key, index, f.key, quote(desired));
+        const lit = f.numeric ? numLiteral(parseFloat(desired)) : quote(desired);
+        const t = setOrInsertField(ed.getValue(), key, index, f.key, lit);
         if (t != null) applyText(t);
       }
       highlightItem({ kind: kind, index: index });
@@ -2744,10 +3273,12 @@
       } else if (f.type === 'style') {
         showStylePicker(clientX, clientY, (s) => commitFieldValue(f, s));
       } else {
-        showTextInput(clientX, clientY, f.def, (v) => {
+        showTextInput(clientX, clientY, f.def, (v, checked) => {
           const val = (v == null ? '' : String(v));
-          commitFieldValue(f, (val.trim() === '') ? f.def : val);
-        }, f.label, f.multiline);
+          let desired = (val.trim() === '') ? f.def : val;
+          if (f.checkbox && checked && desired !== '') desired = '^' + desired; // vertical-text tick (#activation)
+          commitFieldValue(f, desired);
+        }, f.label, f.multiline, f.checkbox ? { checkbox: f.checkbox, checked: false } : undefined);
       }
     }
     step();
@@ -2775,8 +3306,17 @@
       const t0 = snapTime(yToTime(d.start.y)), t1 = snapTime(yToTime(d.cur.y));
       if (from == null || to == null) return;
       if (from === to && t0 === t1) return; // ignore a zero gesture
-      createWithPrompts('message', { path: from + '->' + to, fromTime: t0, toTime: t1 }, [
-        { key: 'label', label: 'Message label', def: '', omitIfEmpty: true, multiline: true },
+      // Same lane → self message; the pointer's side of the lane picks the loop
+      // direction ('A->A' right, 'A<-A' left) via the back-arrow notation. Its
+      // label prompt offers the horizontal-flip check mark. (#self-message)
+      const isSelf = (from === to);
+      const path = isSelf
+        ? (from + (d.cur.x >= laneX(from) ? '->' : '<-') + to)
+        : (from + '->' + to);
+      const labelField = { key: 'label', label: 'Message label', def: '', omitIfEmpty: true, multiline: true };
+      if (isSelf) labelField.checkbox = 'Horizontal label (upright)';
+      createWithPrompts('message', { path: path, fromTime: t0, toTime: t1 }, [
+        labelField,
         { key: 'color', label: 'Color', def: 'black', type: 'color' },
         { key: 'style', label: 'Style', def: 'solid', type: 'style' },
       ], x, y);
@@ -2786,9 +3326,26 @@
       if (lane == null) return;
       if (t1 < t0) { const tmp = t0; t0 = t1; t1 = tmp; }
       if (t0 === t1) t1 = t0 + 1; // give a fresh state a visible duration
+      // Width is deliberately NOT prompted on create (a distraction for fast
+      // authoring — set it later from the state menu's Width… row). (#activation)
       createWithPrompts('state', { lane: lane, fromTime: t0, toTime: t1 }, [
-        { key: 'label', label: 'State label', def: 'state', multiline: true },
+        { key: 'label', label: 'State label', def: 'state', multiline: true, checkbox: 'Vertical text (reads downward)' },
         { key: 'color', label: 'Color', def: 'yellow', type: 'color' },
+      ], x, y);
+    } else if (wasCreating === 'frame') {
+      // Span the contiguous main lanes between the start and end columns, over the
+      // dragged time range. Margins are NOT prompted — they default and can be
+      // tuned later from the frame menu. (#frames)
+      const order = mainLanesLR();
+      const a = nearestLaneClean(d.start.x), b = nearestLaneClean(d.cur.x);
+      const iA = order.indexOf(a), iB = order.indexOf(b);
+      if (iA < 0 || iB < 0) return;
+      const lanesSpan = order.slice(Math.min(iA, iB), Math.max(iA, iB) + 1);
+      let t0 = snapTime(yToTime(d.start.y)), t1 = snapTime(yToTime(d.cur.y));
+      if (t1 < t0) { const tmp = t0; t0 = t1; t1 = tmp; }
+      if (t0 === t1) t1 = t0 + 1; // give a fresh frame a visible height
+      createWithPrompts('frame', { label: 'loop', lanes: lanesSpan, fromTime: t0, toTime: t1 }, [
+        { key: 'label', label: 'Frame label (e.g. loop, alt, opt)', def: 'loop' },
       ], x, y);
     }
   }
@@ -2926,7 +3483,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption, arrangeTimeAnchors, evenTimeMap, remapModelTimes, autoArrangeTimes, boxesOverlap, insertGapAtTime, overlappingStatePairs, sequentializeStates };
+    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption, arrangeTimeAnchors, evenTimeMap, remapModelTimes, autoArrangeTimes, boxesOverlap, insertGapAtTime, overlappingStatePairs, sequentializeStates, orderEventTimes, isGluedTime, shiftLanes, usedColors, interpTime };
   }
 
   if (typeof document !== 'undefined') {

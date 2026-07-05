@@ -283,6 +283,7 @@ corpus.forEach(({ name, text }) => {
     (c.messages || []).forEach((x) => { delete x.fromTime; delete x.toTime; });
     (c.states || []).forEach((x) => { delete x.fromTime; delete x.toTime; });
     (c.infoBoxes || []).forEach((x) => { delete x.time; });
+    (c.frames || []).forEach((x) => { delete x.fromTime; delete x.toTime; });
     return c;
   };
   eq(canon(stripTimes(arranged)), canon(stripTimes(model)), `${name}: arrange changes only time fields`);
@@ -331,29 +332,135 @@ section('Auto-arrange — overlapping same-lane states become adjacent (sequenti
 // ---------------------------------------------------------------------------
 section('Auto-arrange — Phase 2 helpers (insertGapAtTime, state sequentialize, boxesOverlap)');
 {
-  // insertGapAtTime: times after the point shift; messages straddling stretch;
-  // states are RIGID (never stretched — duration preserved); earlier ones untouched.
+  // insertGapAtTime: ONE uniform monotonic rule — every time value after the
+  // point shifts, including both state boundaries. A straddling state stretches
+  // (duration is traded for order/glue preservation); earlier values untouched.
   const m = { messages: [{ path: 'A->B', fromTime: 0, toTime: 2 }, { path: 'B->A', fromTime: 3, toTime: 4 }],
               states: [{ lane: 'A', fromTime: 1, toTime: 5 }, { lane: 'B', fromTime: 3, toTime: 6 }],
               infoBoxes: [{ lane: 'A', time: 4 }] };
   const g = E.insertGapAtTime(m, 2, 1); // add 1 unit after t=2
   eq([g.messages[0].fromTime, g.messages[0].toTime], [0, 2], 'insertGap: element entirely <= point is untouched');
   eq([g.messages[1].fromTime, g.messages[1].toTime], [4, 5], 'insertGap: element entirely after the point shifts down');
-  eq([g.states[0].fromTime, g.states[0].toTime], [1, 5], 'insertGap: state straddling the point stays put (rigid, not stretched)');
+  eq([g.states[0].fromTime, g.states[0].toTime], [1, 6], 'insertGap: state straddling the point stretches (end shifts with everything else)');
   eq([g.states[1].fromTime, g.states[1].toTime], [4, 7], 'insertGap: state entirely after the point shifts whole, duration preserved');
   eq([g.infoBoxes[0].time], [5], 'insertGap: info time after the point shifts');
 
-  // overlappingStatePairs + sequentializeStates
+  // THE Arrange safety invariant: relative order AND ties (glue points) of every
+  // order event (message from/to, state from/to) survive any gap insertion.
+  const evts = (mm) => {
+    const out = [];
+    (mm.messages || []).forEach((x) => { out.push(x.fromTime, x.toTime); });
+    (mm.states || []).forEach((x) => { out.push(x.fromTime, x.toTime); });
+    return out;
+  };
+  // msg0.to == msg1.from == state.from (triple glue), msg1.to == state.to (glue)
+  const glue = { messages: [{ path: 'A->B', fromTime: 0, toTime: 2 }, { path: 'B->A', fromTime: 2, toTime: 3 }],
+                 states: [{ lane: 'B', fromTime: 2, toTime: 3 }] };
+  [0, 1, 2, 2.5, 3].forEach((at) => {
+    const before = evts(glue), after = evts(E.insertGapAtTime(glue, at, 2));
+    let holds = true;
+    for (let i = 0; i < before.length; i++) for (let j = 0; j < before.length; j++) {
+      if (Math.sign(before[i] - before[j]) !== Math.sign(after[i] - after[j])) holds = false;
+    }
+    ok(holds, 'insertGap at t=' + at + ' preserves order and glue of every event pair');
+  });
+
+  // orderEventTimes / isGluedTime (Pass D's glue guard)
+  const ts = E.orderEventTimes(glue);
+  eq(ts, [0, 2, 2, 2, 3, 3], 'orderEventTimes: sorted multiset of message/state event times');
+  ok(E.isGluedTime(ts, 2), 'isGluedTime: a time shared by several events is glued');
+  ok(!E.isGluedTime(ts, 0), 'isGluedTime: a unique time is not glued');
+  ok(E.isGluedTime(E.orderEventTimes({ messages: [{ path: 'A->B', fromTime: 1, toTime: 1 }] }), 1),
+     'isGluedTime: a horizontal message glues its own two ends (stays horizontal)');
+
+  // shiftLanes (Pass L's model rewrite): prefix chosen lanes, net existing markers
+  eq(E.shiftLanes(['CA0', 'CA1', 'HN'], ['CA1', 'HN'], 2), ['CA0', '>>CA1', '>>HN'],
+     'shiftLanes adds > prefixes to the named lanes only');
+  eq(E.shiftLanes(['<CA0', '>CA1'], ['CA0', 'CA1'], 1), ['CA0', '>>CA1'],
+     'shiftLanes nets out existing </> prefixes instead of mixing them');
+  eq(E.shiftLanes(['A.sub', 'A'], ['A'], 1), ['A.sub', '>A'],
+     'shiftLanes leaves sub-lanes untouched (they follow their parent lane)');
+
+  // usedColors feeds the color picker's "most used colors" section (single AND
+  // multi-selection "Change color" — the multi path regressed once).
+  const cm2 = { messages: [{ color: 'red' }, { color: 'red' }, { color: 'green' }],
+                states: [{ color: 'yellow' }],
+                legend: [{ color: 'green' }, { color: 'green' }] };
+  eq(E.usedColors(cm2, 'message'), ['red', 'green'], 'usedColors: kind-scoped, most-frequent first');
+  eq(E.usedColors(cm2, 'state'), ['yellow'], 'usedColors: state colors come from states only');
+  eq(E.usedColors(cm2, null), ['green', 'red', 'yellow'], 'usedColors: no kind aggregates all colorable kinds');
+  eq(E.usedColors(null, 'message'), [], 'usedColors: tolerates a missing model');
+
+  // overlappingStatePairs + sequentializeStates: PARTIAL same-lane overlap is a
+  // data error (reported + repaired); FULL containment is intentional nesting
+  // (sub-state / activation bar) and is left alone. (#activation)
   const sm = { states: [
     { lane: 'X', label: 'a', fromTime: 0, toTime: 4 },
-    { lane: 'X', label: 'b', fromTime: 2, toTime: 3 },   // overlaps 'a' on lane X
+    { lane: 'X', label: 'b', fromTime: 2, toTime: 5 },   // partial overlap with 'a'
     { lane: 'Y', label: 'c', fromTime: 0, toTime: 1 },
   ] };
-  eq(E.overlappingStatePairs(sm).length, 1, 'overlappingStatePairs finds the one same-lane time overlap');
+  eq(E.overlappingStatePairs(sm).length, 1, 'overlappingStatePairs finds the one same-lane partial overlap');
   const seq = E.sequentializeStates(sm);
-  eq(E.overlappingStatePairs(seq).length, 0, 'sequentializeStates removes the overlap');
+  eq(E.overlappingStatePairs(seq).length, 0, 'sequentializeStates removes the partial overlap');
   ok(seq.states[1].fromTime >= seq.states[0].toTime - 1e-9, 'sequentialized state starts at/after the previous ends');
-  ok((seq.states[1].toTime - seq.states[1].fromTime) === 1, 'sequentialize preserves the moved state duration');
+  ok((seq.states[1].toTime - seq.states[1].fromTime) === 3, 'sequentialize preserves the moved state duration');
+
+  const nested = { states: [
+    { lane: 'X', label: 'busy',   fromTime: 0, toTime: 6 },
+    { lane: 'X', label: '^block', fromTime: 2, toTime: 3, width: 14 },
+    { lane: 'X', label: '^wait',  fromTime: 4, toTime: 5, width: 14 },  // second nested bar
+  ] };
+  eq(E.overlappingStatePairs(nested).length, 0, 'containment is not reported as an overlap (nesting)');
+  eq(canon(E.sequentializeStates(nested)), canon(nested), 'sequentializeStates leaves nested states in place');
+
+  // parseStateLabel — the '^' vertical-label modifier (activation bars)
+  eq(M.parseStateLabel('^block'), { vertical: true, lines: ['block'] }, 'parseStateLabel: ^ marks vertical and is stripped');
+  eq(M.parseStateLabel('I->UD'), { vertical: false, lines: ['I->UD'] }, 'parseStateLabel: plain label untouched');
+  eq(M.parseStateLabel('^a|b'), { vertical: true, lines: ['a', 'b'] }, 'parseStateLabel: | still splits lines after ^');
+  eq(M.parseStateLabel(null), { vertical: false, lines: [''] }, 'parseStateLabel: tolerates a missing label');
+
+  // parsePath — forward/back arrows and self-message sides (#self-message)
+  eq(M.parsePath('CA->HN'), { from: 'CA', to: 'HN', self: false, side: 'right' }, 'parsePath: forward arrow');
+  eq(M.parsePath('HN<-CA'), { from: 'CA', to: 'HN', self: false, side: 'left' }, 'parsePath: back arrow swaps to semantic from/to');
+  eq(M.parsePath('CA->CA'), { from: 'CA', to: 'CA', self: true, side: 'right' }, 'parsePath: same lane forward = right-hand self loop');
+  eq(M.parsePath('CA<-CA'), { from: 'CA', to: 'CA', self: true, side: 'left' }, 'parsePath: same lane backward = left-hand self loop');
+  eq(M.parsePath('  A  ->  B '), { from: 'A', to: 'B', self: false, side: 'right' }, 'parsePath: whitespace is trimmed');
+  eq(M.parsePath('nonsense'), null, 'parsePath: no arrow gives null');
+  eq(M.parsePath(null), null, 'parsePath: null-safe');
+
+  // renameLane must cascade through '<-' paths and KEEP the notation
+  const rn = E.renameLane("{\n  lanes: ['A', 'B'],\n  messages: [\n    { path: 'B<-A', fromTime: 0, toTime: 1 }\n  ]\n}", 'A', 'X');
+  ok(rn != null && rn.indexOf("'B<-X'") >= 0, 'renameLane renames through a back arrow and keeps <- notation');
+
+  // formatConfig places the new width field in canonical position (after color)
+  const wtxt = M.formatConfig({ states: [{ fromTime: 2, width: 14, toTime: 5, label: '^block', color: 'red', lane: 'HN' }] });
+  ok(wtxt.indexOf("{ lane: 'HN', label: '^block', color: 'red', width: 14, fromTime: 2, toTime: 5 }") >= 0,
+     'formatConfig orders state keys as lane, label, color, width, fromTime, toTime');
+
+  // Frames — canonical ordering, top-level position, and time plumbing. (#frames)
+  const ftxt = M.formatConfig({ frames: [{ toTime: 5, lMargin: 60, lanes: ['CA0', 'HN'], fromTime: 2, background: 'blue', rMargin: 20, label: 'loop: retry' }],
+                                lanes: ['CA0', 'HN'] });
+  ok(ftxt.indexOf("{ label: 'loop: retry', lanes: ['CA0', 'HN'], background: 'blue', fromTime: 2, toTime: 5, lMargin: 60, rMargin: 20 }") >= 0,
+     'formatConfig orders frame keys as label, lanes, background, fromTime, toTime, lMargin, rMargin');
+  ok(ftxt.indexOf('lanes:') >= 0 && ftxt.indexOf('frames:') > ftxt.indexOf('lanes:'),
+     'formatConfig emits frames as a top-level section after lanes');
+
+  // insertGapAtTime shifts a frame like everything else (a straddling frame stretches)
+  const fg = E.insertGapAtTime({ frames: [{ label: 'f', lanes: ['A'], fromTime: 1, toTime: 4 }] }, 2, 2);
+  eq([fg.frames[0].fromTime, fg.frames[0].toTime], [1, 6], 'insertGap: frame end past the gap shifts (frame stretches)');
+
+  // remapModelTimes interpolates frame boundaries between event anchors without
+  // perturbing them; a frame aligned to event times lands on the new grid.
+  const rmModel = { messages: [{ path: 'A->B', fromTime: 0, toTime: 2 }, { path: 'A->B', fromTime: 4, toTime: 6 }],
+                    frames: [{ label: 'f', lanes: ['A', 'B'], fromTime: 2, toTime: 4 }] };
+  const rm = E.remapModelTimes(rmModel, E.evenTimeMap(E.arrangeTimeAnchors(rmModel)));
+  eq([rm.frames[0].fromTime, rm.frames[0].toTime], [1, 2], 'remapModelTimes: frame boundaries follow the even-grid remap');
+
+  // interpTime — pure boundary interpolation
+  const amap = new Map([[0, 0], [2, 1], [4, 2]]); const anch = [0, 2, 4];
+  eq(E.interpTime(2, anch, amap), 1, 'interpTime: exact anchor maps to its rank');
+  eq(E.interpTime(3, anch, amap), 1.5, 'interpTime: midpoint interpolates linearly');
+  eq(E.interpTime(6, anch, amap), 4, 'interpTime: above the last anchor extends by the same offset');
 
   // boxesOverlap
   const A = { x: 0, y: 0, w: 10, h: 10 };

@@ -509,6 +509,17 @@ body { margin: 0; padding: 0; overflow: hidden; }
   font-size: var(--text-xs);
   color: var(--text-tertiary);
 }
+.flowdrom-editpop-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.flowdrom-editpop-check input { accent-color: var(--accent); cursor: pointer; }
 .flowdrom-editpop-foot {
   display: flex;
   align-items: center;
@@ -635,11 +646,16 @@ body { margin: 0; padding: 0; overflow: hidden; }
 }
 .CodeMirror-scroll { min-height: 360px; }
 
-.copy-json-btn {
+/* Editor overlay buttons (Paste / Copy), top-right of the source editor. */
+.editor-btns {
   position: absolute;
   top: var(--space-2);
   right: var(--space-2);
   z-index: 10;
+  display: flex;
+  gap: var(--space-2);
+}
+.copy-json-btn {
   padding: 4px 10px;
   font-family: var(--font-ui);
   font-size: var(--text-sm);

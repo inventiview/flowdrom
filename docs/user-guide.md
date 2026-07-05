@@ -17,8 +17,10 @@
     - [Simple Two-Lane Communication](#simple-two-lane-communication)
     - [Unordered Two-Lane Communication](#unordered-two-lane-communication)
   - [2. Adding States](#2-adding-states)
+    - [Thin & nested states (activation bars)](#thin--nested-states-activation-bars)
   - [3. Multi-Lane Systems](#3-multi-lane-systems)
   - [4. Lane Groups](#4-lane-groups)
+  - [4b. Frames (interaction scopes)](#4b-frames-interaction-scopes)
   - [5. Information Boxes](#5-information-boxes)
   - [6. Complex Transactions](#6-complex-transactions)
   - [7. Legends](#7-legends)
@@ -200,6 +202,43 @@ use '|' to create a multi line message label. In case of collisions (message lab
 >If color is omitted the message would be black
 >If style is omitted the style would be solid
 
+#### Self messages & back arrows
+
+A path can be written in either direction: `A->B` and `B<-A` mean the **same
+message** (from A to B) — the back arrow just lets you write the receiver
+first.
+
+When both sides name the **same lane**, the message is a **self message**,
+drawn as a rounded loop that leaves the lane at `fromTime` and returns at
+`toTime`. The notation picks the side:
+
+- `HN->HN` — loop on the **right** of the lane
+- `HN<-HN` — loop on the **left**
+
+The loop bulges 45px from the lane by default; set
+`options: { graph: { selfMessageWidth: <px> } }` (or right-click → **Styling…**)
+to change it for the whole diagram. Equal `fromTime`/`toTime` gives a compact
+loop.
+
+The label sits **on the loop's line** like any other message label — rotated to
+read downward along the far segment. Start the label with `^` to flip it 90°
+into a horizontal, always-upright label (same modifier as vertical state text:
+`^` means "rotate 90° from the default").
+
+```js
+{
+  title: 'Self messages',
+  options: { graph: { selfMessageWidth: 60 } },
+  lanes: ['CA', 'HN'],
+  messages: [
+    { path: 'CA->HN', label: 'Req',    color: 'blue',   style: 'solid',  fromTime: 0, toTime: 1 },
+    { path: 'HN->HN', label: 'lookup', color: 'purple', style: 'solid',  fromTime: 1, toTime: 2 },
+    { path: 'HN<-HN', label: '^retry', color: 'orange', style: 'dashed', fromTime: 2, toTime: 3 },
+    { path: 'CA<-HN', label: 'Resp',   color: 'green',  style: 'solid',  fromTime: 3, toTime: 4 },
+  ],
+}
+```
+
 ### 2. Adding States
 
 Now let's add state changes to show what happens inside each entity:
@@ -222,6 +261,37 @@ Now let's add state changes to show what happens inside each entity:
 ![Request response states](images/02-request-response-states.svg)
 
 The states show that the client waits while the server processes the request.
+
+#### Thin & nested states (activation bars)
+
+A state normally sizes its box to the label text. Three additions let you draw
+activation-style bars and sub-states:
+
+- **`width: <px>`** — overrides the automatic sizing (omit it for the regular
+  behavior). A small width gives a thin bar that reads as "this lane is
+  busy/blocked" without covering its surroundings.
+- **`^` label prefix** — renders the label vertically (reading bottom-up), the
+  natural fit for a thin bar: `label: '^block'` instead of `'b|l|o|c|k'`.
+- **Nesting** — a state fully inside another state's time range on the same
+  lane draws on top of it, so you can show a sub-state (e.g. a blocked window
+  inside a longer busy period). **Arrange** keeps nested states in place; only
+  partially-overlapping same-lane states are treated as a data error and pushed
+  apart.
+
+```js
+{
+  title: 'Snoop blocked during busy window',
+  lanes: ['CA0', 'HN'],
+  messages: [
+    { path: 'CA0->HN', label: 'Snp', color: 'purple', style: 'solid', fromTime: 1, toTime: 2 },
+    { path: 'HN->CA0', label: 'SnpResp', color: 'green', style: 'solid', fromTime: 5, toTime: 6 },
+  ],
+  states: [
+    { lane: 'HN', label: 'busy', color: 'yellow', fromTime: 0, toTime: 6 },
+    { lane: 'HN', label: '^block', color: 'red', width: 14, fromTime: 2, toTime: 5 },
+  ],
+}
+```
 
 ### 3. Multi-Lane Systems
 
@@ -273,6 +343,42 @@ For complex systems, you can group related lanes visually:
 ![grouping lanes together](images/04-microservices-groups.svg)
 
 Lane groups help organize complex diagrams by showing architectural boundaries.
+
+### 4b. Frames (interaction scopes)
+
+**Frames** draw a PlantUML-style bordered region — with a cut-corner label tab —
+around a rectangle of lanes and time. Use them to scope a `loop`, `alt`, `opt`,
+a conflict window, or any "these events belong together" annotation. The
+interior is transparent, so a frame scopes without hiding what's inside.
+
+```js
+{
+  title: 'Retry loop',
+  lanes: ['CA0', 'HN'],
+  frames: [
+    { label: 'loop: until ack', lanes: ['CA0', 'HN'], fromTime: 1, toTime: 4 }
+  ],
+  messages: [
+    { path: 'CA0->HN', label: 'Req',  color: 'blue',  style: 'solid',  fromTime: 1, toTime: 2 },
+    { path: 'HN->CA0', label: 'Nack', color: 'red',   style: 'dashed', fromTime: 2, toTime: 3 },
+    { path: 'CA0->HN', label: 'Req',  color: 'blue',  style: 'solid',  fromTime: 3, toTime: 4 },
+  ],
+}
+```
+
+- **`label`** — shown in the tab at the top-left (e.g. `loop`, `alt [x > 0]`, `opt`).
+- **`lanes`** — the frame spans from its leftmost to its rightmost listed lane.
+- **`fromTime` / `toTime`** — the vertical (time) extent; the edges sit exactly on these times.
+- **`background`** *(optional)* — a fill color, drawn as a light wash so it tints without hiding content.
+- **`lMargin` / `rMargin`** *(optional)* — px beyond the leftmost / rightmost lane (default 40 each).
+
+In the editor: right-click → **Frame (drag across lanes)**, then drag a box over
+the lanes and time you want (you're prompted only for the label — margins keep
+their defaults). Select a frame by its **border or tab** to drag it (move in
+time), stretch its edges (top/bottom change the time span; left/right change the
+side margin and cross lanes to grow/shrink the span), edit the label, set a
+background color, or adjust the left/right margins. **Arrange** moves frames
+along with the diagram so they keep scoping the same events.
 
 ### 5. Information Boxes
 
@@ -451,7 +557,8 @@ options: {
     laneLabelInterval: 6,     // ...every N TIME units (default 5)
     opacity: 0.5,             // 0–1: how faint the repeated labels are (default 0.5)
     labelStyle: 'outline',    // 'outline' | 'white' | 'solid' (default 'outline')
-    uniformStateWidth: true   // make every state box in a lane as wide as that lane's widest
+    uniformStateWidth: true,  // make every state box in a lane as wide as that lane's widest
+    selfMessageWidth: 70      // self-message loop distance from the lane, px (default 45)
   }
 }
 ```
@@ -461,6 +568,7 @@ options: {
 - **`opacity`** — fades the repeated labels (0 = invisible, 1 = solid).
 - **`labelStyle`** — how the repeated labels are drawn so they read as a distinct guide: `'outline'` (hollow colored letters), `'white'` (white letters with a colored outline), or `'solid'` (colored letters with a white halo). Default `'outline'`.
 - **`uniformStateWidth`** — widens every state box in a lane to match that lane's widest state, so a lane's states line up as a neat column. The width is computed per lane.
+- **`selfMessageWidth`** — how far a [self message's](#self-messages--back-arrows) loop bulges from its lane, in px (default 45). One knob for the whole diagram, so loops stay visually consistent.
 
 Set these visually under right-click → **Styling…** → **Graph styling**, or edit the `options.graph` block directly.
 
@@ -661,8 +769,12 @@ All optional — omit `options` entirely for the standard look. See [Display Opt
 ### Message Object
 ```js
 {
-  path: 'Source->Target',    // Lane1->Lane2 format
-  label: 'Message text',     // Use | for line breaks; lead with >/< to slide the label
+  path: 'Source->Target',    // Lane1->Lane2; 'Lane2<-Lane1' means the same message.
+                             // Same lane on both sides = self message: 'A->A' loops
+                             // right, 'A<-A' loops left (loop size:
+                             // options.graph.selfMessageWidth).
+  label: 'Message text',     // Use | for line breaks; lead with >/< to slide the label.
+                             // Self messages: lead with ^ to flip the label horizontal.
   color: 'red',              // Any CSS color name or hex
   style: 'solid|dashed',     // Line style
   fromTime: 0,               // Start time (number)
@@ -674,14 +786,16 @@ All optional — omit `options` entirely for the standard look. See [Display Opt
 ```js
 {
   lane: 'LaneName',          // Which lane
-  label: 'State Name',       // State description
+  label: 'State Name',       // State description ('^' prefix renders it vertically)
   color: 'yellow',           // Background — any CSS color name or hex (rendered as a soft tint)
+  width: 14,                 // Optional: fixed box width in px (omit = auto-size to the label)
   fromTime: 0,               // Start time
   toTime: 1                  // End time
 }
 ```
 > Note: state may have a single time (i.e. Start time = End time)
 > The background is drawn as a light tint of the color you give, so the black label stays readable. `yellow, red, green, blue, orange, cyan, purple, pink` have hand-tuned pastels; any other color is auto-tinted.
+> A state fully inside another state's time range on the same lane draws on top of it (a sub-state / activation bar — see [Thin & nested states](#thin--nested-states-activation-bars)).
 
 ### Lane Group Object
 ```js
@@ -690,6 +804,20 @@ All optional — omit `options` entirely for the standard look. See [Display Opt
   lanes: ['Lane1', 'Lane2']  // Lanes to group
 }
 ```
+
+### Frame Object
+```js
+{
+  label: 'loop: retry',      // Shown in the top-left tab (loop / alt / opt / …)
+  lanes: ['CA0', 'HN'],      // Frame spans leftmost→rightmost of these lanes
+  background: 'blue',        // Optional: fill color (drawn as a light wash)
+  fromTime: 1,               // Top edge (exact time — no vertical margin)
+  toTime: 4,                 // Bottom edge (exact time)
+  lMargin: 40,               // Optional: px left of the leftmost lane (default 40)
+  rMargin: 40                // Optional: px right of the rightmost lane (default 40)
+}
+```
+> The top/bottom edges sit exactly on `fromTime`/`toTime` (snapped to the 0.1 time grid) — use the times themselves for vertical padding. Dragging the left/right edges adjusts that side's margin, and once you cross an adjacent lane it joins/leaves the span.
 
 ### Info Box Object
 ```js
