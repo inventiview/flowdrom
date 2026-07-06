@@ -241,6 +241,18 @@ function parsePath(path) {
   return null;
 }
 
+// Assign each message a sequence number for autonumbering: ordered by fromTime
+// ascending, ties broken by array index. Returns a map { messageIndex: number }
+// (1-based). Pure — the single source of truth shared by the renderer and tests,
+// so numbers stay deterministic regardless of array order. (#autonumber)
+function messageNumbers(messages) {
+  const out = {};
+  (messages || []).map((m, i) => ({ i: i, t: (typeof m.fromTime === 'number' ? m.fromTime : 0) }))
+    .sort((a, b) => (a.t - b.t) || (a.i - b.i))
+    .forEach((o, k) => { out[o.i] = k + 1; });
+  return out;
+}
+
 // Parse a state label: a leading '^' renders the text vertically (rotated 90°,
 // reading bottom-up) — the natural fit for thin activation-style bars (pairs
 // with the state's optional `width` field). '|' still splits lines. Pure.
@@ -338,6 +350,13 @@ function renderGraph(modelOverride, measureOnly) {
     // Self-message loop bulge, px out from the lane — one graph-wide knob
     // (options.graph.selfMessageWidth) so all loops stay consistent. (#self-message)
     const selfMsgWidth = (graphOpts.selfMessageWidth > 0) ? graphOpts.selfMessageWidth : 45;
+    // Autonumber (options.graph.autonumber): prefix each message label with a
+    // sequence number, computed at render time by (fromTime, then array index) —
+    // so numbers stay correct as messages are edited, reordered or re-timed by
+    // Arrange, and are never stored in the label text. Off by default. The
+    // PlantUML importer flips this on for `autonumber`. (#autonumber)
+    const autonumber = !!graphOpts.autonumber;
+    const msgNumbers = autonumber ? messageNumbers(messages) : {};
 
     // Inject the diagram stylesheet into the live tempSvg up front so getBBox()
     // measures label/legend/state text in the real fonts (it reflects the
@@ -923,7 +942,9 @@ function renderGraph(modelOverride, measureOnly) {
         let selfLabel = String(msg.label || '').replace(/^[<>]+/, '');
         const flipHorizontal = selfLabel.charAt(0) === '^';
         if (flipHorizontal) selfLabel = selfLabel.slice(1);
-        if (selfLabel) {
+        // Prefix the autonumber (draws even for an arrow-only self message). (#autonumber)
+        if (autonumber && msgNumbers[msgIndex]) selfLabel = msgNumbers[msgIndex] + ' ' + selfLabel;
+        if (selfLabel.trim()) {
           const fontSize = textCfg.message.size;
           const lines = selfLabel.split('|');
           const lineHeight = fontSize * 1.2;
@@ -982,9 +1003,12 @@ function renderGraph(modelOverride, measureOnly) {
 
       // Calculate label position based on spaces
       const labelPosition = calculateLabelPosition(msg.label, fromX, fromY, toX, toY);
-      
-      // Only create label if there's actual text content
-      if (labelPosition.cleanLabel) {
+      // Prefix the autonumber; draws even for an arrow-only message. (#autonumber)
+      let displayLabel = labelPosition.cleanLabel;
+      if (autonumber && msgNumbers[msgIndex]) displayLabel = msgNumbers[msgIndex] + ' ' + displayLabel;
+
+      // Only create label if there's actual text content (or a number to show)
+      if (displayLabel.trim()) {
         // Calculate arrow angle for text rotation
         const dx = toX - fromX;
         const dy = toY - fromY;
@@ -994,7 +1018,7 @@ function renderGraph(modelOverride, measureOnly) {
         }
 
         const fontSize = textCfg.message.size;
-        const lines = labelPosition.cleanLabel.split('|');
+        const lines = displayLabel.split('|');
         const lineHeight = fontSize * 1.2;
         const paddingX = 6;
         const paddingY = 4;
@@ -1346,9 +1370,14 @@ function renderGraph(modelOverride, measureOnly) {
         frameGroup.appendChild(box);
 
         if (fb.label) {
-          const cut = 8;
-          const tabH = frameFont + 8;
-          const tabW = Math.max(fb.label.length * frameFont * 0.62, 24) + 14;
+          // The tab label may use '|' for line breaks; the tab grows to fit the
+          // widest line and the total height. (#frames)
+          const cut = 8, padX = 7, padY = 4;
+          const labelLines = String(fb.label).split('|');
+          const lineHeight = frameFont * 1.2;
+          const maxLen = Math.max(...labelLines.map(l => l.length));
+          const tabW = Math.max(maxLen * frameFont * 0.62, 24) + 2 * padX;
+          const tabH = labelLines.length * lineHeight + 2 * padY;
           const tab = document.createElementNS("http://www.w3.org/2000/svg", "path");
           tab.setAttribute("d",
             'M ' + fb.x + ' ' + fb.y +
@@ -1363,13 +1392,19 @@ function renderGraph(modelOverride, measureOnly) {
           frameGroup.appendChild(tab);
 
           const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          label.setAttribute("x", fb.x + 7);
-          label.setAttribute("y", fb.y + tabH / 2 + frameFont * 0.35);
+          label.setAttribute("x", fb.x + padX);
+          label.setAttribute("y", fb.y + padY + frameFont);
           label.setAttribute("class", "frame-label");
           label.setAttribute("data-kind", "frame");
           label.setAttribute("data-index", fb.index);
           label.setAttribute("data-role", "label");
-          label.textContent = fb.label;
+          labelLines.forEach((ln, i) => {
+            const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+            tspan.setAttribute("x", fb.x + padX);
+            tspan.setAttribute("dy", i === 0 ? 0 : lineHeight);
+            tspan.textContent = ln;
+            label.appendChild(tspan);
+          });
           frameGroup.appendChild(label);
         }
       });
@@ -1793,7 +1828,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     formatConfig, jsonLiteral, formatKey, orderedKeys,
     cleanLaneName, computeGroupExtents, resolveTextConfig, migrateLanes,
-    parseStateLabel, parsePath,
+    parseStateLabel, parsePath, messageNumbers,
     TOP_LEVEL_ORDER, SECTION_KEY_ORDER,
   };
 }

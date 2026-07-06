@@ -558,7 +558,8 @@ options: {
     opacity: 0.5,             // 0–1: how faint the repeated labels are (default 0.5)
     labelStyle: 'outline',    // 'outline' | 'white' | 'solid' (default 'outline')
     uniformStateWidth: true,  // make every state box in a lane as wide as that lane's widest
-    selfMessageWidth: 70      // self-message loop distance from the lane, px (default 45)
+    selfMessageWidth: 70,     // self-message loop distance from the lane, px (default 45)
+    autonumber: true          // prefix each message label with a sequence number
   }
 }
 ```
@@ -569,6 +570,7 @@ options: {
 - **`labelStyle`** — how the repeated labels are drawn so they read as a distinct guide: `'outline'` (hollow colored letters), `'white'` (white letters with a colored outline), or `'solid'` (colored letters with a white halo). Default `'outline'`.
 - **`uniformStateWidth`** — widens every state box in a lane to match that lane's widest state, so a lane's states line up as a neat column. The width is computed per lane.
 - **`selfMessageWidth`** — how far a [self message's](#self-messages--back-arrows) loop bulges from its lane, in px (default 45). One knob for the whole diagram, so loops stay visually consistent.
+- **`autonumber`** — prefixes each message label with a sequence number, ordered by start time (ties broken by definition order). Computed at render time, so numbers stay correct as you add, reorder, or re-time messages — they're never written into the label text.
 
 Set these visually under right-click → **Styling…** → **Graph styling**, or edit the `options.graph` block directly.
 

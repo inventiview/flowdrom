@@ -413,6 +413,13 @@ section('Auto-arrange — Phase 2 helpers (insertGapAtTime, state sequentialize,
   eq(E.overlappingStatePairs(nested).length, 0, 'containment is not reported as an overlap (nesting)');
   eq(canon(E.sequentializeStates(nested)), canon(nested), 'sequentializeStates leaves nested states in place');
 
+  // messageNumbers — autonumber ordering: fromTime asc, ties by array index (#autonumber)
+  eq(M.messageNumbers([{ fromTime: 2 }, { fromTime: 0 }, { fromTime: 1 }]), { 0: 3, 1: 1, 2: 2 },
+     'messageNumbers orders by fromTime ascending');
+  eq(M.messageNumbers([{ fromTime: 1 }, { fromTime: 1 }, { fromTime: 0 }]), { 0: 2, 1: 3, 2: 1 },
+     'messageNumbers breaks fromTime ties by array index');
+  eq(M.messageNumbers([]), {}, 'messageNumbers tolerates an empty list');
+
   // parseStateLabel — the '^' vertical-label modifier (activation bars)
   eq(M.parseStateLabel('^block'), { vertical: true, lines: ['block'] }, 'parseStateLabel: ^ marks vertical and is stripped');
   eq(M.parseStateLabel('I->UD'), { vertical: false, lines: ['I->UD'] }, 'parseStateLabel: plain label untouched');
@@ -455,6 +462,14 @@ section('Auto-arrange — Phase 2 helpers (insertGapAtTime, state sequentialize,
                     frames: [{ label: 'f', lanes: ['A', 'B'], fromTime: 2, toTime: 4 }] };
   const rm = E.remapModelTimes(rmModel, E.evenTimeMap(E.arrangeTimeAnchors(rmModel)));
   eq([rm.frames[0].fromTime, rm.frames[0].toTime], [1, 2], 'remapModelTimes: frame boundaries follow the even-grid remap');
+
+  // Interpolated frame boundaries snap to the 0.1 grid (no 10.0333… leakage). (#frames)
+  const rmModel2 = { messages: [{ path: 'A->B', fromTime: 0, toTime: 3 }, { path: 'A->B', fromTime: 3, toTime: 12 }],
+                     frames: [{ label: 'f', lanes: ['A', 'B'], fromTime: 1.6, toTime: 11 }] };
+  const rm2 = E.remapModelTimes(rmModel2, E.evenTimeMap(E.arrangeTimeAnchors(rmModel2)));
+  const onGrid = (v) => Math.abs(v * 10 - Math.round(v * 10)) < 1e-9;
+  ok(onGrid(rm2.frames[0].fromTime) && onGrid(rm2.frames[0].toTime),
+     'remapModelTimes snaps interpolated frame boundaries to the 0.1 grid');
 
   // interpTime — pure boundary interpolation
   const amap = new Map([[0, 0], [2, 1], [4, 2]]); const anch = [0, 2, 4];

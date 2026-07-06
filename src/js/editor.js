@@ -1650,7 +1650,7 @@
     } else if (item.kind === 'laneGroup') {
       showTextInput(clientX, clientY, (model.laneGroups[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Group name', true);
     } else if (item.kind === 'frame') {
-      showTextInput(clientX, clientY, (model.frames[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Frame label (e.g. loop, alt, opt)', false);
+      showTextInput(clientX, clientY, (model.frames[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Frame label (e.g. loop, alt, opt)', true);
     } else if (item.kind === 'infoBox') {
       const off = parseInfoOffset((model.infoBoxes[item.index] || {}).text || '');
       showTextInput(clientX, clientY, off.rest, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'text', quote(buildInfoText(off.x, off.y, v)))), 'Info box text', true);
@@ -1839,15 +1839,14 @@
       if (line) { if (drag.end === 'from') { line.setAttribute('x1', x); line.setAttribute('y1', y); } else { line.setAttribute('x2', x); line.setAttribute('y2', y); } }
     } else if (drag.kind === 'state') {
       const st = parseModel().states[drag.index];
-      const lane = nearestLaneClean(p.x), x = laneX(lane), pt = yToTime(p.y);
+      const lane = nearestLaneClean(p.x), pt = yToTime(p.y);
       let fromT = st.fromTime, toT = (st.toTime != null ? st.toTime : st.fromTime);
       if (drag.end === 'from') fromT = snapTime(pt);
       else if (drag.end === 'to') toT = snapTime(pt);
       else { const mid = (st.fromTime + toT) / 2, dur = toT - st.fromTime; fromT = Math.max(0, snapTime(st.fromTime + (pt - mid))); toT = fromT + dur; }
       fromT = Math.max(0, fromT); toT = Math.max(0, toT);
-      const hy = drag.end === 'to' ? toT : (drag.end === 'from' ? fromT : (fromT + toT) / 2);
-      drag.handle.setAttribute('cx', x); drag.handle.setAttribute('cy', timeToY(hy));
       drag.preview = { lane: lane, fromTime: fromT, toTime: toT };
+      rebuildStatePreview(drag.index, drag.preview); // live box + all handles
     } else if (drag.kind === 'info') {
       drag.handle.setAttribute('cx', p.x); drag.handle.setAttribute('cy', p.y);
       drag.preview = { px: p.x, py: p.y };
@@ -1936,6 +1935,47 @@
     set('top', midX, fb.y); set('bottom', midX, fb.y + fb.h); set('left', fb.x, midY); set('right', fb.x + fb.w, midY); set('move', midX, midY);
   }
 
+  // Live-update the drawn state box (rect + label) and its handles as it's
+  // dragged — the same "boundaries follow the pointer" feel as the frame drag.
+  // Mirrors main.js's box geometry (min height from the label, even growth, the
+  // from==to case, and vertical-label rotation); the exact result snaps in on the
+  // release re-render. (#state-live-drag)
+  function rebuildStatePreview(index, prev) {
+    const model = parseModel(); if (!model) return;
+    const st = model.states[index]; if (!st) return;
+    const svg = diagramSvg(); if (!svg) return;
+    const g = svg.querySelector('g[data-kind="state"][data-index="' + index + '"]'); if (!g) return;
+    const rect = g.querySelector('rect'), txt = g.querySelector('text');
+    const x = laneX(prev.lane);
+    const from = Math.min(prev.fromTime, prev.toTime), to = Math.max(prev.fromTime, prev.toTime);
+    const vertical = String(st.label || '').charAt(0) === '^';
+    const b0 = txt ? txt.getBBox() : null;
+    const textH = b0 ? (vertical ? b0.width : b0.height) : 0;
+    const padY = 4;
+    let rectY, rectH;
+    if (prev.fromTime === prev.toTime) { rectY = timeToY(prev.fromTime); rectH = textH + 2 * padY; }
+    else {
+      const boxTop = timeToY(from), boxH = timeToY(to) - timeToY(from);
+      rectH = Math.max(boxH, textH + 2 * padY);
+      rectY = boxTop - (rectH > boxH ? (rectH - boxH) / 2 : 0);
+    }
+    const centerY = rectY + rectH / 2;
+    if (rect) {
+      const w = parseFloat(rect.getAttribute('width')) || 50;
+      rect.setAttribute('x', x - w / 2); rect.setAttribute('y', rectY); rect.setAttribute('height', rectH);
+    }
+    if (txt) {
+      txt.setAttribute('x', x);
+      txt.querySelectorAll('tspan').forEach((ts) => ts.setAttribute('x', x));
+      const curY = parseFloat(txt.getAttribute('y')) || 0;
+      txt.setAttribute('y', curY + (centerY - (b0.y + b0.height / 2)));
+      if (vertical) txt.setAttribute('transform', 'rotate(90 ' + x + ' ' + centerY + ')');
+    }
+    const ov = overlayEl();
+    const setH = (end, cy) => { const h = ov.querySelector('circle[data-h="state"][data-end="' + end + '"]'); if (h) { h.setAttribute('cx', x); h.setAttribute('cy', cy); } };
+    setH('from', timeToY(prev.fromTime)); setH('to', timeToY(prev.toTime)); setH('move', timeToY((prev.fromTime + prev.toTime) / 2));
+  }
+
   function onUp() {
     window.removeEventListener('pointermove', onMove, true);
     window.removeEventListener('pointerup', onUp, true);
@@ -2002,6 +2042,10 @@
       if (pv.fromTime != null) merged.fromTime = pv.fromTime;
       if (pv.toTime != null) merged.toTime = pv.toTime;
       if (pv.lanes) merged.lanes = pv.lanes;
+      // Snap both boundaries to the 0.1 grid (cleans up any legacy off-grid value
+      // and the move handler's from+duration FP noise). (#frames)
+      const snap01 = (v) => (typeof v === 'number' ? Math.round(v * 10) / 10 : v);
+      merged.fromTime = snap01(merged.fromTime); merged.toTime = snap01(merged.toTime);
       if (pv.lMargin != null) merged.lMargin = pv.lMargin;
       if (pv.rMargin != null) merged.rMargin = pv.rMargin;
       const span = locateArrayElement(text, 'frames', d.index);
@@ -2131,7 +2175,11 @@
     (out.infoBoxes || []).forEach((b) => { if (typeof b.time === 'number') b.time = rt(b.time); });
     if (out.frames && out.frames.length) {
       const anchors = Array.from(valueMap.keys()).sort((a, b) => a - b);
-      out.frames.forEach((f) => { f.fromTime = interpTime(f.fromTime, anchors, valueMap); f.toTime = interpTime(f.toTime, anchors, valueMap); });
+      // Snap the interpolated boundaries to the 0.1 grid — interpolation yields
+      // arbitrary fractions (e.g. 10.0333…) that would otherwise leak into the
+      // model. (#frames)
+      const snap = (v) => (typeof v === 'number' ? Math.round(interpTime(v, anchors, valueMap) * 10) / 10 : v);
+      out.frames.forEach((f) => { f.fromTime = snap(f.fromTime); f.toTime = snap(f.toTime); });
     }
     return out;
   }
@@ -3066,6 +3114,14 @@
     smwIn.addEventListener('change', () => { const v = smwIn.value.trim() === '' ? null : parseFloat(smwIn.value); commitStyle(setOption(ed.getValue(), 'graph', 'selfMessageWidth', v)); });
     smw.appendChild(smwLbl); smw.appendChild(smwIn); panel.appendChild(smw);
 
+    // Feature 4 — autonumber messages (by fromTime, then order). (#autonumber)
+    const an = document.createElement('label');
+    an.style.cssText = 'display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:13px;cursor:pointer;';
+    const acb = document.createElement('input'); acb.type = 'checkbox'; acb.checked = !!graph.autonumber;
+    const albl = document.createElement('span'); albl.textContent = 'Number messages (by time, then order)';
+    an.appendChild(acb); an.appendChild(albl); panel.appendChild(an);
+    acb.addEventListener('change', () => { commitStyle(setOption(ed.getValue(), 'graph', 'autonumber', acb.checked ? true : null)); });
+
     const close = document.createElement('button'); close.textContent = 'Close'; close.className = 'btn'; close.style.marginTop = '10px'; close.addEventListener('click', () => panel.remove());
     panel.appendChild(close);
     document.body.appendChild(panel);
@@ -3345,7 +3401,7 @@
       if (t1 < t0) { const tmp = t0; t0 = t1; t1 = tmp; }
       if (t0 === t1) t1 = t0 + 1; // give a fresh frame a visible height
       createWithPrompts('frame', { label: 'loop', lanes: lanesSpan, fromTime: t0, toTime: t1 }, [
-        { key: 'label', label: 'Frame label (e.g. loop, alt, opt)', def: 'loop' },
+        { key: 'label', label: 'Frame label (e.g. loop, alt, opt)', def: 'loop', multiline: true },
       ], x, y);
     }
   }
