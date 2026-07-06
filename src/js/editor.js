@@ -1015,7 +1015,7 @@
           // the same geometry the renderer uses. (#self-message)
           const dir = pp.side === 'left' ? -1 : 1;
           const gph = (model.options && model.options.graph) || {};
-          const w = (gph.selfMessageWidth > 0) ? gph.selfMessageWidth : 45;
+          const w = (gph.selfMessageWidth > 0) ? gph.selfMessageWidth : 60;
           const yb = (Math.abs(y2 - y1) < L.timeStep * 0.25) ? y1 + L.timeStep * 0.25 : y2;
           const xf = x1 + dir * w;
           if (distToSeg(p.x, p.y, x1, y1, xf, y1) <= tolMsg ||
@@ -3109,7 +3109,7 @@
     const smw = document.createElement('div');
     smw.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px;';
     const smwLbl = document.createElement('span'); smwLbl.textContent = 'Self-message distance from lane (px)';
-    const smwIn = document.createElement('input'); smwIn.type = 'number'; smwIn.min = '10'; smwIn.step = '5'; smwIn.placeholder = '45'; smwIn.style.width = '80px';
+    const smwIn = document.createElement('input'); smwIn.type = 'number'; smwIn.min = '10'; smwIn.step = '5'; smwIn.placeholder = '60'; smwIn.style.width = '80px';
     if (typeof graph.selfMessageWidth === 'number') smwIn.value = graph.selfMessageWidth;
     smwIn.addEventListener('change', () => { const v = smwIn.value.trim() === '' ? null : parseFloat(smwIn.value); commitStyle(setOption(ed.getValue(), 'graph', 'selfMessageWidth', v)); });
     smw.appendChild(smwLbl); smw.appendChild(smwIn); panel.appendChild(smw);
@@ -3219,7 +3219,7 @@
     ev.preventDefault(); ev.stopPropagation();
     // Snapshot the self-message loop width once (options don't change mid-drag).
     const gph = ((parseModel() || {}).options || {}).graph || {};
-    const selfW = (gph.selfMessageWidth > 0) ? gph.selfMessageWidth : 45;
+    const selfW = (gph.selfMessageWidth > 0) ? gph.selfMessageWidth : 60;
     createDrag = { ov: ov, kind: creating, start: p, cur: p, ghost: null, selfW: selfW };
     window.addEventListener('pointermove', onCreateMove, true);
     window.addEventListener('pointerup', onCreateUp, true);

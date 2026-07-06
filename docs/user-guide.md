@@ -26,6 +26,7 @@
   - [7. Legends](#7-legends)
   - [8. Display Options](#8-display-options)
 - [HTML / CSS named colors](#html--css-named-colors)
+- [Importing from PlantUML](#importing-from-plantuml)
 - [JSON Schema Reference](#json-schema-reference)
 
 ## Getting Started
@@ -37,6 +38,36 @@
 5. Use **"Load SVG"** to edit existing diagrams
 
 > **The interface** has a **toolbar** across the top, the **source panel** (JSON) on the left, and the **canvas** on the right. Drag the divider between them to resize, or use the toolbar's pane toggle (top-left) to hide the source and give the canvas full width. Toolbar actions include **Render**, **Canonize** (reformat the JSON to the canonical guide style), **Fit** (fit the diagram to the canvas — see [Zoom and fit](#zoom-and-fit-the-canvas)), **Undo / Redo**, **Export SVG / PNG**, and **Load SVG**.
+
+## Importing from PlantUML
+
+Already have a PlantUML **sequence diagram**? Copy its text (the whole
+`@startuml … @enduml` block) and click **Paste** in the source panel — Flowdrom
+detects PlantUML and converts it to flowdrom JSON automatically, then renders it.
+From there it's a normal flowdrom diagram: drag arrows off horizontal to show
+real latency, tidy it with **Arrange**, and add timing that PlantUML can't express.
+
+What's converted:
+
+| PlantUML | becomes |
+|---|---|
+| `participant/actor/database…"Name" as X` | a **lane** (referenced by its display name) |
+| `A -> B : label`, `A --> B` (dashed), `A -[#red]> B` | a **message** (color + solid/dashed) |
+| `A -> A` | a **self message** |
+| `A <- B` | the same as `B -> A` |
+| `activate A` / `deactivate A` | a thin **state** (activation bar) |
+| `note over/left/right A : text` | an **info box** |
+| `alt … else … end`, `loop`, `opt`, `par`, `group` | **frames** (alt/else become two stacked frames) |
+| `box "Layer" … end box` | a **lane group** |
+| `autonumber` | message numbering (`options.graph.autonumber`) |
+| `title` | the diagram title |
+
+Because PlantUML is order-based and Flowdrom is time-based, each message is
+placed at the next whole time step (a horizontal arrow) — order is preserved,
+and you add real timing afterward. Anything the importer can't map is **skipped,
+not dropped silently**: the Paste button reports how many lines were skipped and
+lists them in the browser console. (`skinparam`, themes, `create/destroy`,
+delays and dividers are not converted in this version.)
 
 ## Basic Concepts
 
@@ -558,7 +589,7 @@ options: {
     opacity: 0.5,             // 0–1: how faint the repeated labels are (default 0.5)
     labelStyle: 'outline',    // 'outline' | 'white' | 'solid' (default 'outline')
     uniformStateWidth: true,  // make every state box in a lane as wide as that lane's widest
-    selfMessageWidth: 70,     // self-message loop distance from the lane, px (default 45)
+    selfMessageWidth: 70,     // self-message loop distance from the lane, px (default 60)
     autonumber: true          // prefix each message label with a sequence number
   }
 }
@@ -569,7 +600,7 @@ options: {
 - **`opacity`** — fades the repeated labels (0 = invisible, 1 = solid).
 - **`labelStyle`** — how the repeated labels are drawn so they read as a distinct guide: `'outline'` (hollow colored letters), `'white'` (white letters with a colored outline), or `'solid'` (colored letters with a white halo). Default `'outline'`.
 - **`uniformStateWidth`** — widens every state box in a lane to match that lane's widest state, so a lane's states line up as a neat column. The width is computed per lane.
-- **`selfMessageWidth`** — how far a [self message's](#self-messages--back-arrows) loop bulges from its lane, in px (default 45). One knob for the whole diagram, so loops stay visually consistent.
+- **`selfMessageWidth`** — how far a [self message's](#self-messages--back-arrows) loop bulges from its lane, in px (default 60). One knob for the whole diagram, so loops stay visually consistent.
 - **`autonumber`** — prefixes each message label with a sequence number, ordered by start time (ties broken by definition order). Computed at render time, so numbers stay correct as you add, reorder, or re-time messages — they're never written into the label text.
 
 Set these visually under right-click → **Styling…** → **Graph styling**, or edit the `options.graph` block directly.

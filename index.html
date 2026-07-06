@@ -398,8 +398,9 @@
     // overwrite is a single CodeMirror history step, so Ctrl+Z restores the
     // previous text). Clipboard READ is permission-gated and unavailable in some
     // browsers/contexts — on failure, hint at plain Ctrl+V instead of erroring.
-    // Invalid JSON is pasted anyway: the canvas shows the usual parse-error box,
-    // exactly as if it had been typed.
+    // PlantUML text (contains @startuml) is auto-converted to flowdrom JSON;
+    // otherwise the raw text is pasted (invalid JSON just shows the parse-error
+    // box, exactly as if it had been typed).
     function pasteEditorJson(btn) {
       const flash = (label) => {
         if (!btn) return;
@@ -410,19 +411,45 @@
       if (!(navigator.clipboard && navigator.clipboard.readText)) { flash('Use Ctrl+V'); return; }
       navigator.clipboard.readText().then((text) => {
         if (!text || !text.trim()) { flash('Empty'); return; }
-        document.getElementById('input').value = text;
-        if (codeMirrorEditor) codeMirrorEditor.setValue(text);
-        renderGraph();
-        flash('Pasted!');
+        const res = maybeConvertPlantuml(text, flash);
+        setEditorContent(res.text);
+        if (!res.converted) flash('Pasted!'); // the import path flashes its own status
       }).catch(() => flash('Use Ctrl+V'));
+    }
+
+    // If the text looks like PlantUML, convert it to canonical flowdrom JSON and
+    // surface a short report. Returns { text, converted }. (#plantuml)
+    function maybeConvertPlantuml(text, flash) {
+      if (!/@startuml/i.test(text) || typeof window.plantumlToModel !== 'function') return { text: text, converted: false };
+      try {
+        const res = window.plantumlToModel(text);
+        const json = (typeof formatConfig === 'function') ? formatConfig(res.model) : JSON.stringify(res.model, null, 2);
+        const r = res.report || {};
+        const skipped = (r.unsupported || []).length, notes = (r.notes || []).length;
+        if (flash) flash(skipped ? ('Imported (' + skipped + ' skipped)') : 'Imported!');
+        if (skipped) console.warn('PlantUML import — skipped lines:', r.unsupported);
+        if (notes) console.warn('PlantUML import — notes:', r.notes);
+        return { text: json, converted: true };
+      } catch (e) {
+        console.error('PlantUML import failed:', e);
+        return { text: text, converted: false }; // fall back to pasting the raw text
+      }
+    }
+    function setEditorContent(text) {
+      document.getElementById('input').value = text;
+      if (codeMirrorEditor) codeMirrorEditor.setValue(text);
+      renderGraph();
     }
   </script>
 
   <!-- load your renderer -->
-  <script src="src/js/main.js?v=13"></script>
+  <script src="src/js/main.js?v=14"></script>
+
+  <!-- PlantUML → flowdrom importer (used by Paste auto-detection) -->
+  <script src="src/js/plantuml.js?v=4"></script>
 
   <!-- graphical editor layer (browser-only; never loaded by the headless engine/extension) -->
-  <script src="src/js/editor.js?v=21"></script>
+  <script src="src/js/editor.js?v=22"></script>
 </body>
 </html>
 

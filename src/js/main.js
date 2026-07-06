@@ -349,7 +349,7 @@ function renderGraph(modelOverride, measureOnly) {
     const labelStyle = (['outline', 'white', 'solid'].indexOf(graphOpts.labelStyle) >= 0) ? graphOpts.labelStyle : 'outline';
     // Self-message loop bulge, px out from the lane — one graph-wide knob
     // (options.graph.selfMessageWidth) so all loops stay consistent. (#self-message)
-    const selfMsgWidth = (graphOpts.selfMessageWidth > 0) ? graphOpts.selfMessageWidth : 45;
+    const selfMsgWidth = (graphOpts.selfMessageWidth > 0) ? graphOpts.selfMessageWidth : 60;
     // Autonumber (options.graph.autonumber): prefix each message label with a
     // sequence number, computed at render time by (fromTime, then array index) —
     // so numbers stay correct as messages are edited, reordered or re-timed by

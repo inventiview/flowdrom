@@ -22,6 +22,7 @@ const JSON5 = require('../src/js/json5.min.js');
 global.JSON5 = JSON5; // editor.js getJSON5() falls back to the global
 const E = require('../src/js/editor.js');
 const M = require('../src/js/main.js');
+const P = require('../src/js/plantuml.js');
 
 // ---------------------------------------------------------------------------
 // tiny assert helpers
@@ -483,6 +484,83 @@ section('Auto-arrange — Phase 2 helpers (insertGapAtTime, state sequentialize,
   ok(!E.boxesOverlap(A, { x: 20, y: 0, w: 5, h: 5 }), 'separated boxes do not overlap');
   ok(!E.boxesOverlap(A, { x: 11, y: 0, w: 5, h: 5 }), 'touching-with-1px-gap boxes do not overlap (gap 0)');
   ok(E.boxesOverlap(A, { x: 12, y: 0, w: 5, h: 5 }, 3), 'margin makes near boxes count as overlapping');
+}
+
+// ---------------------------------------------------------------------------
+section('PlantUML import — plantumlToModel maps the common subset (#plantuml)');
+{
+  const conv = (lines) => P.plantumlToModel(lines.join('\n'));
+
+  // participants (display-name + alias), forward/dashed/colored/self, direction
+  let r = conv([
+    '@startuml', 'title T', 'participant "Caching Agent" as CA', 'participant HN',
+    'CA -> HN : Req', 'HN --> CA : Ack', 'HN -[#red]> HN : self', 'CA <- HN : Rev', '@enduml',
+  ]);
+  eq(r.model.title, 'T', 'plantuml: title');
+  eq(r.model.lanes, ['Caching Agent', 'HN'], 'plantuml: alias resolves to display name, in declared order');
+  eq(r.model.messages[0], { path: 'Caching Agent->HN', fromTime: 1, toTime: 1, label: 'Req', style: 'solid' }, 'plantuml: forward message, horizontal, cursor starts at 1');
+  eq(r.model.messages[1].style, 'dashed', 'plantuml: --> is dashed');
+  eq(r.model.messages[2], { path: 'HN->HN', fromTime: 3, toTime: 4, label: '^self', color: 'red', style: 'solid' }, 'plantuml: self message spans 1 unit + [#color], label made horizontal (^)');
+  eq(r.model.messages[3].path, 'HN->Caching Agent', 'plantuml: A <- B resolves to B->A');
+  eq(r.report.unsupported.length, 0, 'plantuml: clean subset has no unsupported lines');
+
+  // activation → thin state; note → infoBox; autonumber → option
+  r = conv([
+    '@startuml', 'autonumber', 'A -> B : go', 'activate B', 'B -> A : done', 'deactivate B',
+    'note over A : hello\\nworld', '@enduml',
+  ]);
+  eq(r.model.options, { graph: { autonumber: true } }, 'plantuml: autonumber → options.graph.autonumber');
+  eq(r.model.states.length, 1, 'plantuml: activate/deactivate → one state');
+  eq([r.model.states[0].lane, r.model.states[0].width], ['B', 10], 'plantuml: activation is a thin bar on the target lane');
+  ok(r.model.states[0].toTime > r.model.states[0].fromTime, 'plantuml: activation has positive duration');
+  eq(r.model.infoBoxes[0].lane, 'A', 'plantuml: note over → infoBox on the lane');
+  ok(/hello\|world$/.test(r.model.infoBoxes[0].text), 'plantuml: note \\n becomes | line break');
+
+  // alt/else → two stacked frames sharing a boundary (no gap)
+  r = conv([
+    '@startuml', 'A -> B : x', 'alt ok', 'A -> B : y', 'else no', 'A -> B : z', 'end', '@enduml',
+  ]);
+  eq(r.model.frames.length, 2, 'plantuml: alt/else → two frames');
+  eq(r.model.frames[0].label, 'alt [ok]', 'plantuml: alt frame label carries the guard');
+  eq(r.model.frames[1].label, 'else [no]', 'plantuml: else frame label');
+  ok(Math.abs(r.model.frames[0].toTime - r.model.frames[1].fromTime) < 1e-9, 'plantuml: if/else frames stack seamlessly (shared boundary)');
+
+  // nested fragments → a child frame sits entirely inside its parent (inset
+  // side margins + inset outer time boundaries), alt/else still seamless. (#plantuml)
+  r = conv([
+    '@startuml', 'actor U', 'boundary W', 'control S', 'database D',
+    'U -> W : go', 'W -> S : submit',
+    'alt ok', '  loop items', '    S -> D : reserve', '  end', '  S -> W : done',
+    'else bad', '  S -> W : fail', 'end', '@enduml',
+  ]);
+  eq(r.model.lanes, ['U', 'W', 'S', 'D'], 'plantuml: actor/boundary/control/database all become lanes');
+  const parent = r.model.frames.filter((f) => /^alt/.test(f.label))[0];
+  const child = r.model.frames.filter((f) => /^loop/.test(f.label))[0];
+  ok(parent && child, 'plantuml: nested alt + loop both emitted');
+  ok(child.fromTime > parent.fromTime && child.toTime < parent.toTime, 'plantuml: child frame is inside the parent in time');
+  ok(child.lMargin < 40 && child.rMargin < 40, 'plantuml: child frame side margins are inset from the default');
+  const elseF = r.model.frames.filter((f) => /^else/.test(f.label))[0];
+  ok(Math.abs(parent.toTime - elseF.fromTime) < 1e-9, 'plantuml: alt/else still stack seamlessly under nesting');
+
+  // box → laneGroup
+  r = conv([
+    '@startuml', 'box "Agents"', 'participant CA0', 'participant CA1', 'end box', 'participant HN',
+    'CA0 -> HN : m', '@enduml',
+  ]);
+  eq(r.model.laneGroups, [{ label: 'Agents', lanes: ['CA0', 'CA1'] }], 'plantuml: box → laneGroup');
+
+  // never-fail: garbage lines are reported, not thrown
+  r = conv(['@startuml', 'this is not valid puml', 'A -> B', '@enduml']);
+  ok(r.report.unsupported.length >= 1, 'plantuml: unrecognised lines go to the report');
+  eq(r.model.messages.length, 1, 'plantuml: valid lines still convert around the garbage');
+
+  // output round-trips through the canonical formatter and re-parses
+  const big = conv([
+    '@startuml', 'title Round trip', 'participant A', 'participant B',
+    'A -> B : hi', 'alt c', 'B -> A : yes', 'else', 'B -> A : no', 'end', '@enduml',
+  ]);
+  const formatted = M.formatConfig(big.model);
+  ok(parses(formatted, 'plantuml: formatted import is valid JSON5'), 'plantuml: import → formatConfig round-trips');
 }
 
 // ---------------------------------------------------------------------------
