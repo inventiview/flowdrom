@@ -1,0 +1,4 @@
+# Exported SVGs embed their JSON config in a comment block that Load SVG
+# matches with exact \n line endings — never CRLF-convert them, regardless
+# of the machine's core.autocrlf setting.
+*.svg text eol=lf
