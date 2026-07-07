@@ -857,9 +857,12 @@ All optional — omit `options` entirely for the standard look. See [Display Opt
 {
   lane: 'LaneName',          // Which lane to attach to
   time: 2,                   // Time position
-  text: 'Info text|Line 2'   // Text with | for line breaks
+  background: 'yellow',      // Optional: box fill color (default white)
+  tether: false,             // Optional: set false to hide the leader line to the lane
+  text: 'Info text|Line 2'   // Text with | for line breaks; a leading <x,y> sets the pixel offset
 }
 ```
+> Set the background from the graphical editor via right-click → **Background…** (Custom → "none" clears it). Imported PlantUML notes get a pale-yellow fill and no leader line (`tether: false`).
 
 ### Legend Entry
 ```js

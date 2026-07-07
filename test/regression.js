@@ -498,9 +498,9 @@ section('PlantUML import — plantumlToModel maps the common subset (#plantuml)'
   ]);
   eq(r.model.title, 'T', 'plantuml: title');
   eq(r.model.lanes, ['Caching Agent', 'HN'], 'plantuml: alias resolves to display name, in declared order');
-  eq(r.model.messages[0], { path: 'Caching Agent->HN', fromTime: 1, toTime: 1, label: 'Req', style: 'solid' }, 'plantuml: forward message, horizontal, cursor starts at 1');
+  eq(r.model.messages[0], { path: 'Caching Agent->HN', fromTime: 2, toTime: 2, label: 'Req', style: 'solid' }, 'plantuml: forward message, horizontal, messages spaced 2 apart');
   eq(r.model.messages[1].style, 'dashed', 'plantuml: --> is dashed');
-  eq(r.model.messages[2], { path: 'HN->HN', fromTime: 3, toTime: 4, label: '^self', color: 'red', style: 'solid' }, 'plantuml: self message spans 1 unit + [#color], label made horizontal (^)');
+  eq(r.model.messages[2], { path: 'HN->HN', fromTime: 6, toTime: 7, label: '^self', color: 'red', style: 'solid' }, 'plantuml: self message spans 1 unit + [#color], label made horizontal (^)');
   eq(r.model.messages[3].path, 'HN->Caching Agent', 'plantuml: A <- B resolves to B->A');
   eq(r.report.unsupported.length, 0, 'plantuml: clean subset has no unsupported lines');
 
@@ -515,6 +515,13 @@ section('PlantUML import — plantumlToModel maps the common subset (#plantuml)'
   ok(r.model.states[0].toTime > r.model.states[0].fromTime, 'plantuml: activation has positive duration');
   eq(r.model.infoBoxes[0].lane, 'A', 'plantuml: note over → infoBox on the lane');
   ok(/hello\|world$/.test(r.model.infoBoxes[0].text), 'plantuml: note \\n becomes | line break');
+  ok(!!r.model.infoBoxes[0].background, 'plantuml: note gets a background fill (PlantUML yellow)');
+  eq(r.model.infoBoxes[0].tether, false, 'plantuml: note has no leader line (tether: false)');
+
+  // formatConfig places the infoBox background in canonical order (before text)
+  const ibtxt = M.formatConfig({ infoBoxes: [{ text: 'hi', background: 'yellow', time: 2, lane: 'A' }] });
+  ok(ibtxt.indexOf("{ lane: 'A', time: 2, background: 'yellow', text: 'hi' }") >= 0,
+     'formatConfig orders infoBox keys as lane, time, background, text');
 
   // alt/else → two stacked frames sharing a boundary (no gap)
   r = conv([
@@ -542,12 +549,39 @@ section('PlantUML import — plantumlToModel maps the common subset (#plantuml)'
   const elseF = r.model.frames.filter((f) => /^else/.test(f.label))[0];
   ok(Math.abs(parent.toTime - elseF.fromTime) < 1e-9, 'plantuml: alt/else still stack seamlessly under nesting');
 
-  // box → laneGroup
+  // a frame always keeps positive headroom around its messages, even deeply nested
+  const msgTimes = (r.model.messages || []).map((m) => m.fromTime);
+  r.model.frames.forEach((f) => {
+    const inside = msgTimes.filter((t) => t > f.fromTime - 1e-9 && t < f.toTime + 1e-9);
+    inside.forEach((t) => ok(t > f.fromTime + 1e-6 && t < f.toTime - 1e-6, 'plantuml: message t=' + t + ' sits strictly inside frame ' + f.label));
+  });
+
+  // 'group' shows its label directly; alt/loop prefix the operator
+  r = conv(['@startuml', 'A -> B : x', 'group My own label', 'A -> B : y', 'end', '@enduml']);
+  eq(r.model.frames[0].label, 'My own label', 'plantuml: group label shown directly (no operator/brackets)');
+
+  // 'partition' → a group-like frame; targetless 'note left/right' attaches to
+  // the last participant (must not be dropped). (#plantuml)
+  r = conv(['@startuml', 'partition p1', 'b -> c: m', 'c --> b: OK', 'note right: R', 'end',
+            'partition p2', 'a -> b: m', 'note left: L', 'end', '@enduml']);
+  eq(r.model.frames.map((f) => f.label), ['partition [p1]', 'partition [p2]'], 'plantuml: partition → frame labeled operator-style, like PlantUML');
+  eq(r.model.infoBoxes.length, 2, 'plantuml: targetless note left/right is kept (not dropped)');
+  eq(r.model.infoBoxes[0].lane, 'b', 'plantuml: note right defaults to the last participant');
+  ok(/^<95,0>/.test(r.model.infoBoxes[0].text), 'plantuml: note right sits on the right side');
+  ok(/^<-95,0>/.test(r.model.infoBoxes[1].text), 'plantuml: note left sits on the left side');
+
+  // box → laneGroup (multiple boxes), \n in participant names, spanning notes
   r = conv([
-    '@startuml', 'box "Agents"', 'participant CA0', 'participant CA1', 'end box', 'participant HN',
-    'CA0 -> HN : m', '@enduml',
+    '@startuml', 'box "Front"', 'participant "Web\\nUI" as W', 'end box',
+    'box "Back"', 'participant "Order\\nSvc" as O', 'participant DB', 'end box',
+    'W -> O : go', 'note over W, O : hop\\nover', 'note over W, O, DB : span three', '@enduml',
   ]);
-  eq(r.model.laneGroups, [{ label: 'Agents', lanes: ['CA0', 'CA1'] }], 'plantuml: box → laneGroup');
+  eq(r.model.lanes, ['Web|UI', 'Order|Svc', 'DB'], 'plantuml: \\n in a participant name → | line break');
+  eq(r.model.laneGroups, [{ label: 'Front', lanes: ['Web|UI'] }, { label: 'Back', lanes: ['Order|Svc', 'DB'] }],
+     'plantuml: multiple box blocks → multiple lane groups');
+  ok(/^<125,0>hop\|over$/.test(r.model.infoBoxes[0].text), 'plantuml: note over two lanes is centered between them (125px)');
+  ok(/^<250,0>span three$/.test(r.model.infoBoxes[1].text), 'plantuml: note over three lanes centers further out (250px)');
+  eq(r.model.infoBoxes[0].lane, 'Web|UI', 'plantuml: spanning note anchors on the leftmost lane');
 
   // never-fail: garbage lines are reported, not thrown
   r = conv(['@startuml', 'this is not valid puml', 'A -> B', '@enduml']);

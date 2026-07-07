@@ -1188,9 +1188,13 @@
       const lg = (typeof fr.xMargin === 'number') ? fr.xMargin : null;
       const lm = (typeof fr.lMargin === 'number') ? fr.lMargin : (lg != null ? lg : FRAME_L_MARGIN);
       const rm = (typeof fr.rMargin === 'number') ? fr.rMargin : (lg != null ? lg : FRAME_R_MARGIN);
-      addRow(menu, '●  Background… ' + (fr.background ? '(' + fr.background + ')' : '(none)'), () => { setFrameBackground(item, clientX, clientY); });
+      addRow(menu, '●  Background… ' + (fr.background ? '(' + fr.background + ')' : '(none)'), () => { setBackground(item, clientX, clientY); });
       addRow(menu, '↤  Left margin… (' + lm + 'px)', () => { setFrameMargin(item, 'lMargin', clientX, clientY); });
       addRow(menu, '↦  Right margin… (' + rm + 'px)', () => { setFrameMargin(item, 'rMargin', clientX, clientY); });
+    }
+    if (item.kind === 'infoBox') {
+      const ib = (model.infoBoxes || [])[item.index] || {};
+      addRow(menu, '●  Background… ' + (ib.background ? '(' + ib.background + ')' : '(none)'), () => { setBackground(item, clientX, clientY); });
     }
     if (HAS_STYLE[item.kind]) {
       const style = (currentField(model, item, 'style') === 'dashed') ? 'solid' : 'dashed';
@@ -1402,23 +1406,25 @@
       }
     }, field + ' in px (empty = default ' + def + ')', false);
   }
-  // Frame background color picker. Picking a color sets `background`; the picker's
-  // Custom → empty clears it (no fill). (#frames)
-  function setFrameBackground(item, clientX, clientY) {
+  // Background-color picker for any item with a `background` field (frame,
+  // infoBox). Picking a color sets it; Custom → "none" (or empty) clears it. (#frames)
+  function setBackground(item, clientX, clientY) {
     const model = parseModel(); const ed = getEditor(); const J = getJSON5();
     if (!model || !ed || !J) return;
-    const fr = (model.frames || [])[item.index]; if (!fr) return;
-    showColorPicker(null, clientX, clientY, fr.background || '', (c) => {
+    const key = SECTION_BY_KIND[item.kind]; if (!key) return;
+    const obj0 = (model[key] || [])[item.index]; if (!obj0) return;
+    const title = (item.kind === 'infoBox' ? 'Info box' : 'Frame') + ' background (Custom → "none" to clear):';
+    showColorPicker(null, clientX, clientY, obj0.background || '', (c) => {
       const text = ed.getValue();
       if (c && String(c).trim() && String(c).trim().toLowerCase() !== 'none') {
-        const t = setOrInsertField(text, 'frames', item.index, 'background', quote(String(c).trim()));
+        const t = setOrInsertField(text, key, item.index, 'background', quote(String(c).trim()));
         if (t != null) applyText(t);
-      } else if (fr.background != null) {
-        const obj = Object.assign({}, fr); delete obj.background;
-        const span = locateArrayElement(text, 'frames', item.index); if (!span) return;
+      } else if (obj0.background != null) {
+        const obj = Object.assign({}, obj0); delete obj.background;
+        const span = locateArrayElement(text, key, item.index); if (!span) return;
         applyText(text.slice(0, span.start) + J.stringify(obj) + text.slice(span.end));
       }
-    }, 'Frame background (Custom → "none" to clear):');
+    }, title);
   }
 
   function renameLanePrompt(item, clientX, clientY) {

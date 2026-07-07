@@ -35,7 +35,7 @@
   function nlToPipe(s) { return String(s == null ? '' : s).replace(/\\n/g, '|').trim(); }
 
   const PARTICIPANT_KW = /^(participant|actor|boundary|control|entity|database|collections|queue)\b\s*(.*)$/i;
-  const GROUP_KW = /^(alt|opt|loop|par|critical|break|group)\b\s*(.*)$/i;
+  const GROUP_KW = /^(alt|opt|loop|partition|par|critical|break|group)\b\s*(.*)$/i;
 
   // Nested-frame inset: each nesting level pulls the frame's side margins in and
   // its outer time boundaries inward, so a child frame sits ENTIRELY inside its
@@ -43,7 +43,13 @@
   // stays seamless because only the group's very top/bottom get the vertical
   // inset, never the internal 'else' divider. (#plantuml nesting)
   const FRAME_MARGIN_BASE = 40, FRAME_MARGIN_STEP = 14, FRAME_MARGIN_FLOOR = 6;
-  const FRAME_VINSET = 0.3; // time units pulled off each outer edge per depth level
+  // Messages are spaced STEP time units apart (not 1), leaving an empty half-slot
+  // above/below each so a frame's header row and its arrows aren't cramped —
+  // closer to PlantUML's airier layout. Frames get a full 1-unit (STEP/2) of
+  // headroom on each edge (see frameTime); deeper frames inset by FRAME_VINSET
+  // so a child stays inside its parent. Internal alt/else dividers keep the plain
+  // offset, so branches still stack seamlessly. (#plantuml layout)
+  const STEP = 2, FRAME_VINSET = 0.3;
   const round1 = (v) => Math.round(v * 10) / 10;
 
   // Parse the arrow segment (everything before the ':' label) into
@@ -102,7 +108,9 @@
     }
     function declareParticipant(alias, display) {
       alias = stripQuotes(alias);
-      let name = display ? stripQuotes(display) : alias;
+      // A '\n' in the display name → '|' line break (flowdrom's lane-label
+      // convention). The alias stays the message-reference key. (#plantuml)
+      let name = display ? nlToPipe(stripQuotes(display)) : alias;
       if (nameUsed[name] && name !== alias && !aliasToName[alias]) name = alias; // display-name collision
       if (!aliasToName[alias]) aliasToName[alias] = name;
       if (!nameUsed[name]) { nameUsed[name] = true; laneOrder.push(name); }
@@ -110,10 +118,13 @@
       return name;
     }
 
-    // ---- time. Start at 1 so the first message/note clears the lane headers.
-    let cursor = 1, lastMsgTime = -1;
-    // Frames get a uniform 0.5 headroom that preserves alt/else stacking.
-    const frameTime = (c) => Math.max(0, c - 0.5);
+    // ---- time. Start at STEP so the first message/note clears the lane headers.
+    let cursor = STEP, lastMsgTime = -1;
+    let lastParticipant = null; // for a targetless 'note left/right' (#plantuml)
+    // A frame edge sits one full unit (a half message-slot) off the message it
+    // wraps: header room at the top, breathing room at the bottom. Uniform, so
+    // alt/else branches stack seamlessly.
+    const frameTime = (c) => Math.max(0, c - STEP / 2);
 
     // ---- activation stacks (per lane) → thin states
     const actStacks = {};
@@ -199,7 +210,9 @@
       m = GROUP_KW.exec(line);
       if (m) {
         const kw = m[1].toLowerCase(), cond = m[2].trim();
-        const label = kw + (cond ? ' [' + cond + ']' : '');
+        // 'group' shows its label directly (like PlantUML); the others prefix the
+        // operator and bracket the guard: 'alt [cond]', 'partition [p1]'. (#plantuml)
+        const label = (kw === 'group') ? (cond || 'group') : (kw + (cond ? ' [' + cond + ']' : ''));
         groupStack.push({ subframes: [{ label: label, from: cursor, to: null }], lanes: {}, depth: groupStack.length });
         continue;
       }
@@ -266,7 +279,8 @@
       msg.style = dashed ? 'dashed' : 'solid';
       model.messages.push(msg);
       addLaneToOpenGroups(from); addLaneToOpenGroups(to);
-      lastMsgTime = toT; cursor = toT + 1;
+      lastParticipant = to;
+      lastMsgTime = toT; cursor = fromT + STEP;
     }
     function handleNote(pos, rest) {
       // rest is like ' over A : text', ' over A, B : text', ' of A : text'
@@ -278,13 +292,24 @@
         while (++i < lines.length && !/^end\s*[rh]?note/i.test(lines[i].trim())) buf.push(lines[i].trim());
         body = buf.join('|');
       }
-      const first = target.split(',')[0];
-      const lane = ensureLane(first); if (lane == null) return;
-      // 'over' sits just below the anchor (not above — that collides with the
-      // lane headers when the note is near t=0); left/right sit to the side. (#plantuml)
-      const off = pos === 'left' ? '<-95,0>' : pos === 'right' ? '<95,0>' : '<0,40>';
-      model.infoBoxes.push({ lane: lane, time: Math.max(0, lastMsgTime >= 0 ? lastMsgTime : cursor), text: off + body });
-      addLaneToOpenGroups(lane);
+      // Resolve every named lane (a note may span several: 'note over A, B, C').
+      // A targetless 'note left/right' (no 'of X') attaches to the last
+      // participant involved — else the note would be silently dropped. (#plantuml)
+      let names = target.split(',').map((s) => ensureLane(s)).filter(Boolean);
+      if (!names.length) { const def = lastParticipant || laneOrder[0]; if (def) names = [def]; }
+      if (!names.length) return;
+      const idxs = names.map((n) => laneOrder.indexOf(n));
+      const lo = Math.min.apply(null, idxs), hi = Math.max.apply(null, idxs);
+      const anchor = laneOrder[lo]; // leftmost spanned lane
+      // The note takes its OWN row (at the current cursor, below the last
+      // message) so it never sits on top of a message. A multi-lane 'over' is
+      // centered between its lanes; left/right sit to the side.
+      const off = (pos === 'over') ? ('<' + Math.round(((lo + hi) / 2 - lo) * 250) + ',0>')
+        : (pos === 'left' ? '<-95,0>' : '<95,0>');
+      // PlantUML notes are a pale-yellow box with NO leader line. (#plantuml)
+      model.infoBoxes.push({ lane: anchor, time: cursor, background: '#FEFECE', tether: false, text: off + body });
+      names.forEach(addLaneToOpenGroups);
+      cursor += STEP; // reserve the note's row so the next event sits below it
     }
     function closeGroup() {
       const g = groupStack.pop(); if (!g) return;
@@ -295,11 +320,16 @@
       const margin = Math.max(FRAME_MARGIN_FLOOR, FRAME_MARGIN_BASE - depth * FRAME_MARGIN_STEP);
       const n = g.subframes.length;
       g.subframes.forEach((sf, idx) => {
-        let from = frameTime(sf.from), to = frameTime(sf.to == null ? cursor : sf.to);
-        if (idx === 0) from = from + depth * FRAME_VINSET;         // group top edge only
-        if (idx === n - 1) to = to - depth * FRAME_VINSET;         // group bottom edge only
-        if (to <= from) to = from + 0.5;                            // keep a positive height
-        const frame = { label: sf.label, lanes: span.slice(), fromTime: round1(from), toTime: round1(to) };
+        // frameTime gives a full unit of headroom around the wrapped messages;
+        // deeper frames inset their OUTER edges (top of the first sub, bottom of
+        // the last) so a child stays inside its parent, while internal alt/else
+        // dividers keep the plain offset for seamless stacking.
+        let from = frameTime(sf.from);
+        let to = frameTime(sf.to == null ? cursor : sf.to);
+        if (idx === 0) from += depth * FRAME_VINSET;
+        if (idx === n - 1) to -= depth * FRAME_VINSET;
+        if (to <= from) to = from + 0.5;             // keep a positive height
+        const frame = { label: sf.label, lanes: span.slice(), fromTime: round1(Math.max(0, from)), toTime: round1(to) };
         if (depth > 0) { frame.lMargin = margin; frame.rMargin = margin; } // inset from the parent
         model.frames.push(frame);
       });

@@ -127,7 +127,7 @@ const TOP_LEVEL_ORDER = ['title', 'options', 'lanes', 'laneGroups', 'frames', 'i
 const SECTION_KEY_ORDER = {
   laneGroups: ['label', 'lanes'],
   frames: ['label', 'lanes', 'background', 'fromTime', 'toTime', 'lMargin', 'rMargin'],
-  infoBoxes: ['lane', 'time', 'text'],
+  infoBoxes: ['lane', 'time', 'background', 'tether', 'text'],
   messages: ['path', 'label', 'color', 'style', 'fromTime', 'toTime'],
   states: ['lane', 'label', 'color', 'width', 'fromTime', 'toTime'],
   legend: ['label', 'color', 'style'],
@@ -1299,20 +1299,28 @@ function renderGraph(modelOverride, measureOnly) {
         contentBottom = Math.max(contentBottom, boxY + boxHeight);
         contentTop = Math.min(contentTop, boxY);
 
-        const connectLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        connectLine.setAttribute("x1", laneX);
-        connectLine.setAttribute("y1", anchorY);
-        connectLine.setAttribute("x2", boxX + (boxX > laneX ? 0 : boxWidth));
-        connectLine.setAttribute("y2", boxY + boxHeight/2);
-        connectLine.setAttribute("class", "info-box-line");
-        infoBoxGroup.appendChild(connectLine);
-        
+        // The tether (leader line) is drawn BEFORE the box, so with `tether:
+        // false` it's skipped and, being under the box anyway, a routed line
+        // would sit behind it. PlantUML notes have no leader. (#infobox-tether)
+        if (info.tether !== false) {
+          const connectLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          connectLine.setAttribute("x1", laneX);
+          connectLine.setAttribute("y1", anchorY);
+          connectLine.setAttribute("x2", boxX + (boxX > laneX ? 0 : boxWidth));
+          connectLine.setAttribute("y2", boxY + boxHeight/2);
+          connectLine.setAttribute("class", "info-box-line");
+          infoBoxGroup.appendChild(connectLine);
+        }
+
         const infoBox = document.createElementNS("http://www.w3.org/2000/svg", "rect");
         infoBox.setAttribute("x", boxX);
         infoBox.setAttribute("y", boxY);
         infoBox.setAttribute("width", boxWidth);
         infoBox.setAttribute("height", boxHeight);
         infoBox.setAttribute("class", "info-box");
+        // Optional solid background fill (e.g. yellow, to match PlantUML notes).
+        // Inline style beats the .info-box { fill: white } CSS rule. (#infobox-bg)
+        if (info.background) infoBox.style.fill = info.background;
         infoBox.setAttribute("data-kind", "infoBox");
         infoBox.setAttribute("data-index", index);
         infoBox.setAttribute("data-role", "box");
@@ -1342,6 +1350,9 @@ function renderGraph(modelOverride, measureOnly) {
     // Draw interaction frames behind states/messages (background scoping). Each
     // is a bordered box with a cut-corner label tab at the top-left. Tagged so
     // the editor can select/drag/stretch them; inert for the headless engine. (#frames)
+    // The label tabs are collected separately and drawn AFTER the messages, so a
+    // message that runs near a frame's top edge never obscures its label. (#frames)
+    const frameTabGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     if (frameBoxes.length > 0) {
       const frameGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
       const frameFont = textCfg.frame.size;
@@ -1389,7 +1400,7 @@ function renderGraph(modelOverride, measureOnly) {
           tab.setAttribute("data-kind", "frame");
           tab.setAttribute("data-index", fb.index);
           tab.setAttribute("data-role", "tab");
-          frameGroup.appendChild(tab);
+          frameTabGroup.appendChild(tab);
 
           const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
           label.setAttribute("x", fb.x + padX);
@@ -1405,7 +1416,7 @@ function renderGraph(modelOverride, measureOnly) {
             tspan.textContent = ln;
             label.appendChild(tspan);
           });
-          frameGroup.appendChild(label);
+          frameTabGroup.appendChild(label);
         }
       });
       tempSvg.appendChild(frameGroup);
@@ -1414,6 +1425,7 @@ function renderGraph(modelOverride, measureOnly) {
     tempSvg.appendChild(stateGroup);
     tempSvg.appendChild(messageGroup);
     tempSvg.appendChild(infoBoxGroup);
+    tempSvg.appendChild(frameTabGroup); // frame labels on top, so messages never hide them
 
     // Draw legend (unchanged from original)
     if (legend.length > 0) {
