@@ -367,7 +367,10 @@ function renderGraph(modelOverride, measureOnly) {
     diagramStyle.textContent = buildDiagramCss(textCfg);
     tempSvg.appendChild(diagramStyle);
 
-    const laneSpacing = 250;
+    // Lane pitch (px). Overridable via options.graph.laneSpacing — the PlantUML
+    // importer widens it when long message labels need the room; hand-authored
+    // diagrams keep the classic 250 default. (#lane-spacing)
+    const laneSpacing = (graphOpts.laneSpacing > 0) ? graphOpts.laneSpacing : 250;
     const timeStep = textCfg.timeStep;
     const showGrid = true;
     const showTimeLabels = true;
@@ -969,17 +972,21 @@ function renderGraph(modelOverride, measureOnly) {
             tspan.textContent = ln;
             text.appendChild(tspan);
           });
-          const maxLineLength = Math.max(...lines.map(l => l.length));
-          const estimatedTextWidth = Math.max(maxLineLength * fontSize * 0.55, 30);
+          // Measured box, like the straight-message label above. (#autonumber)
+          group.appendChild(text);
+          tempSvg.appendChild(group);
+          const tBox = text.getBBox();
+          tempSvg.removeChild(group);
           const labelBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-          labelBg.setAttribute("x", xf - estimatedTextWidth / 2 - paddingX);
-          labelBg.setAttribute("y", midY - textHeight / 2 - paddingY);
-          labelBg.setAttribute("width", estimatedTextWidth + 2 * paddingX);
-          labelBg.setAttribute("height", textHeight + 2 * paddingY);
+          labelBg.setAttribute("x", tBox.x - paddingX);
+          labelBg.setAttribute("y", tBox.y - paddingY);
+          labelBg.setAttribute("width", tBox.width + 2 * paddingX);
+          labelBg.setAttribute("height", tBox.height + 2 * paddingY);
           labelBg.setAttribute("class", "label-box");
           // Blend with the frame background (inline style beats the CSS rule). (#frames)
           const selfFrameBg = frameBgAt(xf, midY);
           if (selfFrameBg) labelBg.style.fill = selfFrameBg;
+          group.innerHTML = '';
           group.appendChild(labelBg);
           group.appendChild(text);
           messageGroup.appendChild(group);
@@ -1046,17 +1053,21 @@ function renderGraph(modelOverride, measureOnly) {
           text.appendChild(tspan);
         });
 
-        // Create background rectangle
-        const maxLineLength = Math.max(...lines.map(line => line.length));
-        const estimatedTextWidth = Math.max(maxLineLength * fontSize * 0.55, 30);
-        
+        // Size the white box from the MEASURED text (same pattern as legend
+        // labels): the old char-count estimate under-measured long — and
+        // autonumbered — labels, letting the arrow strike through the text.
+        // getBBox is pre-transform and the box lives in the same rotated group,
+        // so the rotation stays consistent. (#autonumber)
+        group.appendChild(text);
+        tempSvg.appendChild(group);
+        const tBox = text.getBBox();
+        tempSvg.removeChild(group);
+
         const labelBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        const bgX = labelPosition.x - estimatedTextWidth / 2 - paddingX;
-        const bgY = labelPosition.y - textHeight / 2 - paddingY;
-        labelBg.setAttribute("x", bgX);
-        labelBg.setAttribute("y", bgY);
-        labelBg.setAttribute("width", estimatedTextWidth + 2 * paddingX);
-        labelBg.setAttribute("height", textHeight + 2 * paddingY);
+        labelBg.setAttribute("x", tBox.x - paddingX);
+        labelBg.setAttribute("y", tBox.y - paddingY);
+        labelBg.setAttribute("width", tBox.width + 2 * paddingX);
+        labelBg.setAttribute("height", tBox.height + 2 * paddingY);
         labelBg.setAttribute("class", "label-box");
         // Blend the label box with the frame background it sits on. Inline style
         // (not a fill attribute) so it beats the .label-box { fill: white } rule
@@ -1064,6 +1075,7 @@ function renderGraph(modelOverride, measureOnly) {
         const labelFrameBg = frameBgAt(labelPosition.x, labelPosition.y);
         if (labelFrameBg) labelBg.style.fill = labelFrameBg;
 
+        group.innerHTML = '';
         group.appendChild(labelBg);
         group.appendChild(text);
         messageGroup.appendChild(group);

@@ -498,9 +498,9 @@ section('PlantUML import — plantumlToModel maps the common subset (#plantuml)'
   ]);
   eq(r.model.title, 'T', 'plantuml: title');
   eq(r.model.lanes, ['Caching Agent', 'HN'], 'plantuml: alias resolves to display name, in declared order');
-  eq(r.model.messages[0], { path: 'Caching Agent->HN', fromTime: 2, toTime: 2, label: 'Req', style: 'solid' }, 'plantuml: forward message, horizontal, messages spaced 2 apart');
+  eq(r.model.messages[0], { path: 'Caching Agent->HN', fromTime: 1, toTime: 1, label: 'Req', style: 'solid' }, 'plantuml: forward message, horizontal, one row per message from row 1');
   eq(r.model.messages[1].style, 'dashed', 'plantuml: --> is dashed');
-  eq(r.model.messages[2], { path: 'HN->HN', fromTime: 6, toTime: 7, label: '^self', color: 'red', style: 'solid' }, 'plantuml: self message spans 1 unit + [#color], label made horizontal (^)');
+  eq(r.model.messages[2], { path: 'HN->HN', fromTime: 3, toTime: 4, label: '^self', color: 'red', style: 'solid' }, 'plantuml: self message spans 2 rows + [#color], label made horizontal (^)');
   eq(r.model.messages[3].path, 'HN->Caching Agent', 'plantuml: A <- B resolves to B->A');
   eq(r.report.unsupported.length, 0, 'plantuml: clean subset has no unsupported lines');
 
@@ -560,13 +560,40 @@ section('PlantUML import — plantumlToModel maps the common subset (#plantuml)'
   r = conv(['@startuml', 'A -> B : x', 'group My own label', 'A -> B : y', 'end', '@enduml']);
   eq(r.model.frames[0].label, 'My own label', 'plantuml: group label shown directly (no operator/brackets)');
 
+  // Long labels widen the imported lane spacing so arrows can host them; short
+  // labels keep the default (no options emitted at all). (#lane-spacing)
+  r = conv(['@startuml', 'A -> B : This is an extremely long message label that will not fit at all', '@enduml']);
+  ok(r.model.options && r.model.options.graph.laneSpacing > 250, 'plantuml: long labels set options.graph.laneSpacing');
+  ok(r.report.notes.some((n) => /lane spacing widened/.test(n)), 'plantuml: widened spacing is reported');
+  r = conv(['@startuml', 'A -> B : short', '@enduml']);
+  ok(!r.model.options, 'plantuml: short labels keep the default spacing (no options emitted)');
+  // a long label spanning several lanes has that many gaps to live in
+  r = conv(['@startuml', 'A -> B : x', 'B -> C : x', 'C -> D : x',
+            'A -> D : long-ish label across three whole gaps here', '@enduml']);
+  ok(!r.model.options, 'plantuml: a spanning label divides its width across the spanned gaps');
+
+  // Activation shorthand semantics: '++' activates the TARGET, '--' deactivates
+  // the SOURCE — including on a reverse arrow, where the shorthand is written
+  // after the sender's name ('A <- B --'). (#plantuml)
+  r = conv(['@startuml', 'S -> P ++ : req', 'S <- P -- : fail', 'S -> O : next', '@enduml']);
+  eq(r.model.states.length, 1, 'plantuml: ++/-- opens and closes exactly one activation');
+  eq([r.model.states[0].lane, r.model.states[0].fromTime, r.model.states[0].toTime], ['P', 1, 2],
+     'plantuml: -- on a reverse arrow closes the SOURCE (P) at the reply row, not at the end');
+  r = conv(['@startuml', 'A -> B ++ : go', 'B -> A -- : done', '@enduml']);
+  eq([r.model.states[0].lane, r.model.states[0].toTime], ['B', 2],
+     'plantuml: forward -- deactivates the sender (B), closing at the reply');
+  // combined '--++' (PlantUML chain shorthand) must not corrupt the name
+  r = conv(['@startuml', 'A -> B ++ : a', 'B -> C --++ : b', '@enduml']);
+  eq(r.model.lanes, ['A', 'B', 'C'], 'plantuml: --++ combo leaves the participant name clean');
+  eq(r.model.states.map((s) => s.lane), ['B', 'C'], 'plantuml: --++ closes sender B in-line; C closes at EOF cleanup');
+
   // 'partition' → a group-like frame; targetless 'note left/right' attaches to
   // the last participant (must not be dropped). (#plantuml)
   r = conv(['@startuml', 'partition p1', 'b -> c: m', 'c --> b: OK', 'note right: R', 'end',
             'partition p2', 'a -> b: m', 'note left: L', 'end', '@enduml']);
   eq(r.model.frames.map((f) => f.label), ['partition [p1]', 'partition [p2]'], 'plantuml: partition → frame labeled operator-style, like PlantUML');
   eq(r.model.infoBoxes.length, 2, 'plantuml: targetless note left/right is kept (not dropped)');
-  eq(r.model.infoBoxes[0].lane, 'b', 'plantuml: note right defaults to the last participant');
+  eq(r.model.infoBoxes[0].lane, 'c', 'plantuml: note right anchors to the RIGHTMOST participant of the last message');
   ok(/^<95,0>/.test(r.model.infoBoxes[0].text), 'plantuml: note right sits on the right side');
   ok(/^<-95,0>/.test(r.model.infoBoxes[1].text), 'plantuml: note left sits on the left side');
 

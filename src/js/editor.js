@@ -3120,6 +3120,16 @@
     smwIn.addEventListener('change', () => { const v = smwIn.value.trim() === '' ? null : parseFloat(smwIn.value); commitStyle(setOption(ed.getValue(), 'graph', 'selfMessageWidth', v)); });
     smw.appendChild(smwLbl); smw.appendChild(smwIn); panel.appendChild(smw);
 
+    // Feature 3b — lane-to-lane distance, px (blank = 250). The PlantUML importer
+    // sets this when long message labels need the room. (#lane-spacing)
+    const lsp = document.createElement('div');
+    lsp.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px;';
+    const lspLbl = document.createElement('span'); lspLbl.textContent = 'Lane spacing (px)';
+    const lspIn = document.createElement('input'); lspIn.type = 'number'; lspIn.min = '80'; lspIn.step = '10'; lspIn.placeholder = '250'; lspIn.style.width = '80px';
+    if (typeof graph.laneSpacing === 'number') lspIn.value = graph.laneSpacing;
+    lspIn.addEventListener('change', () => { const v = lspIn.value.trim() === '' ? null : parseFloat(lspIn.value); commitStyle(setOption(ed.getValue(), 'graph', 'laneSpacing', v)); });
+    lsp.appendChild(lspLbl); lsp.appendChild(lspIn); panel.appendChild(lsp);
+
     // Feature 4 — autonumber messages (by fromTime, then order). (#autonumber)
     const an = document.createElement('label');
     an.style.cssText = 'display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:13px;cursor:pointer;';

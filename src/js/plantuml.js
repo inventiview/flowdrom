@@ -3,16 +3,38 @@
  *
  * plantumlToModel(text) -> { model, report }
  *
- * A pure, line-oriented converter for the common PlantUML *sequence* subset.
- * flowdrom is time-based and PlantUML is order-based, so time is SYNTHESISED
- * with a cursor: each message sits at an integer time (horizontal arrow) and
- * the cursor advances by one. Activations, notes and frames anchor to it.
+ * Three phases (#plantuml refactor):
  *
- * Never throws: anything it can't map is collected in report.unsupported so the
- * caller can surface an honest "these lines were approximated / skipped" note.
+ *   A. PARSE  — the line-oriented grammar builds an event TREE: fragments
+ *      (alt / opt / loop / par / group / partition / …) are nodes holding
+ *      ordered branches of children; messages, notes and activations are
+ *      leaves. No time values exist in this phase.
  *
- * Loaded in the browser (window.plantumlToModel) and required by the Node tests.
- * No DOM. (#plantuml)
+ *   B. LAYOUT — a walk over the tree hands out integer ROWS (1 row = 1
+ *      flowdrom time unit). Everything that needs vertical room gets a row:
+ *        message              → 1 row (self-message: 2 — the loop needs height)
+ *        targeted note        → 1 row
+ *        targetless side note → 0 rows — it shares the LAST MESSAGE's row,
+ *                               anchored beyond the outermost involved lane
+ *        fragment open        → 1 row (top edge + header, so the label tab
+ *                               always has clearance)
+ *        alt/else divider     → 1 row shared by both branches (seamless stack)
+ *        fragment close       → 1 row (bottom padding + gap before a sibling)
+ *      Containment of nested frames, tab clearance, and gaps between
+ *      independent sibling fragments are structural consequences of the row
+ *      accounting — there are no tuning constants on the vertical axis.
+ *
+ *   C. EMIT   — the laid-out events map 1:1 onto the flowdrom model.
+ *
+ * flowdrom is time-based and PlantUML is order-based: the rows ARE the
+ * synthesised timeline. Arrows come out horizontal; the user drags them off
+ * horizontal afterwards to express real latency.
+ *
+ * Never throws: anything unmapped lands in report.unsupported so the caller
+ * can surface an honest "these lines were skipped" note.
+ *
+ * Loaded in the browser (window.plantumlToModel) and required by the Node
+ * tests. No DOM. (#plantuml)
  */
 (function () {
   'use strict';
@@ -36,26 +58,18 @@
 
   const PARTICIPANT_KW = /^(participant|actor|boundary|control|entity|database|collections|queue)\b\s*(.*)$/i;
   const GROUP_KW = /^(alt|opt|loop|partition|par|critical|break|group)\b\s*(.*)$/i;
+  const NOTE_BG = '#FEFECE'; // PlantUML's pale note yellow
 
-  // Nested-frame inset: each nesting level pulls the frame's side margins in and
-  // its outer time boundaries inward, so a child frame sits ENTIRELY inside its
-  // parent (matching flowdrom's default 40px margin at depth 0). alt/else stacking
-  // stays seamless because only the group's very top/bottom get the vertical
-  // inset, never the internal 'else' divider. (#plantuml nesting)
+  // Horizontal inset per nesting depth, so a child frame spanning the same
+  // lanes sits visibly INSIDE its parent. (Vertical containment needs no
+  // constants — it falls out of the row layout.)
   const FRAME_MARGIN_BASE = 40, FRAME_MARGIN_STEP = 14, FRAME_MARGIN_FLOOR = 6;
-  // Messages are spaced STEP time units apart (not 1), leaving an empty half-slot
-  // above/below each so a frame's header row and its arrows aren't cramped —
-  // closer to PlantUML's airier layout. Frames get a full 1-unit (STEP/2) of
-  // headroom on each edge (see frameTime); deeper frames inset by FRAME_VINSET
-  // so a child stays inside its parent. Internal alt/else dividers keep the plain
-  // offset, so branches still stack seamlessly. (#plantuml layout)
-  const STEP = 2, FRAME_VINSET = 0.3;
-  const round1 = (v) => Math.round(v * 10) / 10;
+  const DEFAULT_LANE_SPACING = 250; // the renderer's default main-lane pitch
 
   // Parse the arrow segment (everything before the ':' label) into
-  // { from, to, self, dashed, color, reverse, actTarget, deactTarget } or null.
-  // Two passes: forward/other arrows must END in a direction char; a bare '<-'
-  // reverse arrow is matched separately. This keeps '-' inside participant names
+  // { from, to, dashed, color, actTarget, deactSource } or null. Two passes:
+  // forward/other arrows must END in a direction char; a bare '<-' reverse
+  // arrow is matched separately. This keeps '-' inside participant names
   // (e.g. User-Service) from being mistaken for the arrow. (#plantuml)
   function parseArrow(head) {
     let color = null, styleDashed = false;
@@ -79,26 +93,36 @@
     const dashRun = arrow.replace(/[<>\\/xo]/g, '');
     const dashed = styleDashed || dashRun.length >= 2 || dashRun.indexOf('.') >= 0;
 
-    // Trailing activation shorthand on the destination: 'B++' / 'B--'.
+    // Trailing activation shorthand after the right-hand token: '++' activates
+    // the message TARGET, '--' deactivates the SOURCE — PlantUML's semantics,
+    // so a reply 'A <- B --' (or 'B -> A --') closes B's activation. Tokens may
+    // combine ('--++'), and may carry a trailing '#color' (ignored). '**'/'!!'
+    // (create/destroy) are stripped but unsupported.
     let leftRef = m[1].trim(), rightRef = m[3].trim();
-    let actTarget = false, deactTarget = false;
-    const am = rightRef.match(/^(.*?)\s*(\+\+|--|\*\*|!!)\s*$/);
-    if (am) { rightRef = am[1].trim(); if (am[2] === '++') actTarget = true; else if (am[2] === '--') deactTarget = true; }
+    let actTarget = false, deactSource = false;
+    for (;;) {
+      const am = rightRef.match(/^(.*?)\s*(\+\+|--|\*\*|!!)\s*(?:#\w+)?\s*$/);
+      if (!am) break;
+      rightRef = am[1].trim();
+      if (am[2] === '++') actTarget = true;
+      else if (am[2] === '--') deactSource = true;
+    }
 
     // Resolve semantic direction: 'A <- B' means B → A.
     const from = reverse ? rightRef : leftRef;
     const to = reverse ? leftRef : rightRef;
     if (!from || !to) return null;
-    return { from: from, to: to, dashed: dashed, color: color, actTarget: actTarget, deactTarget: deactTarget };
+    return { from: from, to: to, dashed: dashed, color: color, actTarget: actTarget, deactSource: deactSource };
   }
 
   function plantumlToModel(text) {
     const report = { unsupported: [], notes: [] };
-    const model = { title: '', lanes: [], laneGroups: [], frames: [], infoBoxes: [], messages: [], states: [] };
-    let autonumber = false;
+    let title = '', autonumber = false;
 
     // ---- lane bookkeeping: alias -> display name, kept in declared/first-use order
     const aliasToName = {}; const nameUsed = {}; const laneOrder = [];
+    const laneGroups = [];
+    let boxOpen = null;
     function ensureLane(rawRef) {
       const ref = stripQuotes(rawRef); if (!ref) return null;
       if (aliasToName[ref]) return aliasToName[ref];
@@ -109,7 +133,7 @@
     function declareParticipant(alias, display) {
       alias = stripQuotes(alias);
       // A '\n' in the display name → '|' line break (flowdrom's lane-label
-      // convention). The alias stays the message-reference key. (#plantuml)
+      // convention). The alias stays the message-reference key.
       let name = display ? nlToPipe(stripQuotes(display)) : alias;
       if (nameUsed[name] && name !== alias && !aliasToName[alias]) name = alias; // display-name collision
       if (!aliasToName[alias]) aliasToName[alias] = name;
@@ -118,43 +142,22 @@
       return name;
     }
 
-    // ---- time. Start at STEP so the first message/note clears the lane headers.
-    let cursor = STEP, lastMsgTime = -1;
-    let lastParticipant = null; // for a targetless 'note left/right' (#plantuml)
-    // A frame edge sits one full unit (a half message-slot) off the message it
-    // wraps: header room at the top, breathing room at the bottom. Uniform, so
-    // alt/else branches stack seamlessly.
-    const frameTime = (c) => Math.max(0, c - STEP / 2);
+    // =====================================================================
+    // Phase A — parse into an event tree.
+    // =====================================================================
+    const root = [];
+    const stack = [root];   // stack of children arrays (top = current container)
+    const fragStack = [];   // open fragment nodes, parallel to stack[1..]
+    const top = () => stack[stack.length - 1];
 
-    // ---- activation stacks (per lane) → thin states
-    const actStacks = {};
-    function activate(lane, fromLane) {
-      (actStacks[lane] = actStacks[lane] || []).push({ open: (lastMsgTime >= 0 ? lastMsgTime : cursor), from: fromLane || null });
-    }
-    function deactivate(lane) {
-      const st = actStacks[lane]; if (!st || !st.length) return null;
-      const a = st.pop();
-      const to = (cursor > a.open) ? cursor : a.open + 1;
-      model.states.push({ lane: lane, color: 'white', width: 10, fromTime: a.open, toTime: to });
-      return a;
-    }
-
-    // ---- group (frame) stack; a group carries one or more stacked sub-frames
-    const groupStack = [];
-    function addLaneToOpenGroups(lane) { groupStack.forEach((g) => g.lanes[lane] = true); }
-
-    // ---- box → laneGroup
-    let boxOpen = null;
-
-    // ---- multi-line state (note / title blocks)
     const lines = text.replace(/\/'[\s\S]*?'\//g, '').split(/\r?\n/); // strip /' block comments '/
 
-    // `i` is function-scoped (not for-block-scoped) so the note/title helpers can
-    // advance it to consume a multi-line block. (#plantuml)
+    // `i` is function-scoped (not for-block-scoped) so the note/title helpers
+    // can advance it to consume a multi-line block.
     let i = 0;
     for (; i < lines.length; i++) {
-      let raw = lines[i];
-      let line = raw.replace(/\t/g, ' ').trim();
+      const raw = lines[i];
+      const line = raw.replace(/\t/g, ' ').trim();
       if (!line) continue;
       if (line[0] === "'") continue;                                   // ' line comment
       if (/^@(start|end)uml\b/i.test(line)) continue;
@@ -167,11 +170,11 @@
       // title (single-line, or a block terminated by 'end title')
       let m = /^title\b\s*(.*)$/i.exec(line);
       if (m) {
-        if (m[1].trim()) { model.title = nlToPipe(m[1]); }
+        if (m[1].trim()) { title = nlToPipe(m[1]); }
         else {
           const buf = [];
           while (++i < lines.length && !/^end\s*title/i.test(lines[i].trim())) buf.push(lines[i].trim());
-          model.title = buf.join('|');
+          title = buf.join('|');
         }
         continue;
       }
@@ -188,7 +191,7 @@
       m = /^box\b\s*(.*)$/i.exec(line);
       if (m) { boxOpen = { label: stripQuotes(m[1]) || 'Group', lanes: [] }; continue; }
       if (/^end\s*box/i.test(line)) {
-        if (boxOpen) { if (boxOpen.lanes.length) model.laneGroups.push({ label: boxOpen.label, lanes: boxOpen.lanes.slice() }); boxOpen = null; }
+        if (boxOpen) { if (boxOpen.lanes.length) laneGroups.push({ label: boxOpen.label, lanes: boxOpen.lanes.slice() }); boxOpen = null; }
         continue;
       }
 
@@ -202,46 +205,60 @@
         continue;
       }
 
-      // note ... : text   (or a block terminated by 'end note')
+      // note left/right/over [of] X[, Y] : text   (or a block until 'end note')
       m = /^([rh]?note)\s+(left|right|over)\b(.*)$/i.exec(line);
-      if (m) { handleNote(m[2].toLowerCase(), m[3]); continue; }
+      if (m) {
+        const pos = m[2].toLowerCase();
+        const rest = m[3];
+        const ci = rest.indexOf(':');
+        const targetStr = (ci >= 0 ? rest.slice(0, ci) : rest).replace(/^\s*of\s+/i, '').trim();
+        let body = ci >= 0 ? nlToPipe(rest.slice(ci + 1)) : '';
+        if (ci < 0) { // multi-line block until 'end note'
+          const buf = [];
+          while (++i < lines.length && !/^end\s*[rh]?note/i.test(lines[i].trim())) buf.push(lines[i].trim());
+          body = buf.join('|');
+        }
+        // Resolve explicit targets NOW so lanes register in source order;
+        // an empty list marks a targetless side note (resolved at layout).
+        const targets = targetStr ? targetStr.split(',').map((s) => ensureLane(s)).filter(Boolean) : [];
+        top().push({ type: 'note', pos: pos, targets: targets, body: body });
+        continue;
+      }
 
       // fragment open / else / end
       m = GROUP_KW.exec(line);
       if (m) {
         const kw = m[1].toLowerCase(), cond = m[2].trim();
-        // 'group' shows its label directly (like PlantUML); the others prefix the
-        // operator and bracket the guard: 'alt [cond]', 'partition [p1]'. (#plantuml)
+        // 'group' shows its label directly (like PlantUML); the others prefix
+        // the operator and bracket the guard: 'alt [cond]', 'partition [p1]'.
         const label = (kw === 'group') ? (cond || 'group') : (kw + (cond ? ' [' + cond + ']' : ''));
-        groupStack.push({ subframes: [{ label: label, from: cursor, to: null }], lanes: {}, depth: groupStack.length });
+        const node = { type: 'fragment', branches: [{ label: label, children: [] }] };
+        top().push(node);
+        stack.push(node.branches[0].children);
+        fragStack.push(node);
         continue;
       }
       m = /^else\b\s*(.*)$/i.exec(line);
       if (m) {
-        const g = groupStack[groupStack.length - 1];
-        if (g) {
-          g.subframes[g.subframes.length - 1].to = cursor;                 // close current branch
+        const f = fragStack[fragStack.length - 1];
+        if (f) {
           const cond = m[1].trim();
-          g.subframes.push({ label: 'else' + (cond ? ' [' + cond + ']' : ''), from: cursor, to: null });
+          const branch = { label: 'else' + (cond ? ' [' + cond + ']' : ''), children: [] };
+          f.branches.push(branch);
+          stack.pop(); stack.push(branch.children);
         } else report.unsupported.push({ line: raw.trim(), reason: 'else outside a fragment' });
         continue;
       }
-      if (/^end\b/i.test(line)) { closeGroup(); continue; }
-
-      // activate / deactivate / return
-      m = /^activate\s+(\S+)/i.exec(line); if (m) { activate(ensureLane(m[1])); continue; }
-      m = /^deactivate\s+(\S+)/i.exec(line); if (m) { deactivate(ensureLane(m[1])); continue; }
-      if (/^return\b/i.test(line)) {
-        // Close the most recent activation and, if we know who called it, send a
-        // dashed reply back. Best-effort. (#plantuml)
-        const label = nlToPipe(line.replace(/^return\b/i, ''));
-        let closed = null, lane = null;
-        for (const ln in actStacks) if (actStacks[ln] && actStacks[ln].length) { lane = ln; }
-        if (lane) closed = deactivate(lane);
-        if (closed && closed.from) emitMessage(lane, closed.from, label, true, null);
-        else if (!lane) report.unsupported.push({ line: raw.trim(), reason: 'return with no open activation' });
+      if (/^end\b/i.test(line)) {
+        if (fragStack.length) { stack.pop(); fragStack.pop(); }
+        else report.unsupported.push({ line: raw.trim(), reason: 'end with no open fragment' });
         continue;
       }
+
+      // activate / deactivate / return
+      m = /^activate\s+(\S+)/i.exec(line); if (m) { top().push({ type: 'activate', lane: ensureLane(m[1]) }); continue; }
+      m = /^deactivate\s+(\S+)/i.exec(line); if (m) { top().push({ type: 'deactivate', lane: ensureLane(m[1]) }); continue; }
+      if (/^return\b/i.test(line)) { top().push({ type: 'return', label: nlToPipe(line.replace(/^return\b/i, '')) }); continue; }
 
       // message  (the workhorse)
       const ci = line.indexOf(':');
@@ -249,99 +266,177 @@
       const label = ci >= 0 ? line.slice(ci + 1).trim() : '';
       const a = parseArrow(head);
       if (a) {
-        const from = ensureLane(a.from), to = ensureLane(a.to);
-        emitMessage(from, to, nlToPipe(label), a.dashed, a.color);
-        if (a.actTarget) activate(to, from);
-        if (a.deactTarget) deactivate(to);
+        top().push({
+          type: 'message', from: ensureLane(a.from), to: ensureLane(a.to),
+          label: nlToPipe(label), dashed: a.dashed, color: a.color,
+          actTarget: a.actTarget, deactSource: a.deactSource,
+        });
         continue;
       }
 
       report.unsupported.push({ line: raw.trim(), reason: 'unrecognised line' });
     }
+    // Fragments left open at EOF close implicitly (the tree already holds them).
 
-    // Close anything left dangling.
-    while (groupStack.length) closeGroup();
-    Object.keys(actStacks).forEach((ln) => { while (actStacks[ln] && actStacks[ln].length) deactivate(ln); });
+    // ---- lane spacing: widen the pitch when message labels need the room ----
+    // Imported labels are often long enough to overflow a 250px arrow. Estimate
+    // each label's width (Courier ≈9px/char at the default 15px size, plus the
+    // autonumber prefix) against the number of lanes its arrow spans, and widen
+    // the lane pitch so every label fits. Diagrams with short labels keep the
+    // classic default, so hand-authored flowdrom is untouched. (#lane-spacing)
+    const CHAR_PX = 9, SPACING_SLACK = 60;
+    const msgLeaves = [];
+    (function collect(children) {
+      children.forEach((n) => {
+        if (n.type === 'message' || n.type === 'return') msgLeaves.push(n);
+        else if (n.type === 'fragment') n.branches.forEach((b) => collect(b.children));
+      });
+    })(root);
+    const numExtra = autonumber ? String(msgLeaves.length).length + 1 : 0; // "12 " prefix
+    let needPx = 0;
+    msgLeaves.forEach((n) => {
+      if (n.type !== 'message' || n.from == null || n.to == null || n.from === n.to) return;
+      const span = Math.max(1, Math.abs(laneOrder.indexOf(n.from) - laneOrder.indexOf(n.to)));
+      const w = Math.max.apply(null, String(n.label || '').split('|').map((l, li) => l.length + (li === 0 ? numExtra : 0)));
+      needPx = Math.max(needPx, (w * CHAR_PX + SPACING_SLACK) / span);
+    });
+    const laneSpacingPx = Math.max(DEFAULT_LANE_SPACING, Math.ceil(needPx / 10) * 10);
+    if (laneSpacingPx > DEFAULT_LANE_SPACING) report.notes.push('lane spacing widened to ' + laneSpacingPx + 'px to fit message labels');
 
-    // ---- helpers that close over the model/state above ----
-    function emitMessage(from, to, label, dashed, color) {
-      if (from == null || to == null) return;
-      // Normal messages are horizontal (from==to). A self message needs a 1-unit
-      // span so its loop is tall enough to hold a label. (#plantuml)
-      const isSelf = (from === to);
-      const fromT = cursor, toT = cursor + (isSelf ? 1 : 0);
-      const msg = { path: from + '->' + to, fromTime: fromT, toTime: toT };
+    // =====================================================================
+    // Phase B + C — row layout over the tree, emitting the flowdrom model.
+    // =====================================================================
+    const model = { messages: [], states: [], infoBoxes: [], frames: [] };
+    let r = 1;            // next free row; row 0 is headroom under the lane labels
+    let lastMsg = null;   // { row, from, to } — side-note + activation anchor
+    const actStacks = {}; // lane -> stack of open activations
+    const actOrder = [];  // global LIFO of open activations (for 'return')
+    const collectors = []; // lane sets of the enclosing fragments
+
+    const laneIdx = (n) => laneOrder.indexOf(n);
+    function touchLanes(names) { names.forEach((n) => collectors.forEach((set) => { set[n] = true; })); }
+
+    function emitMessage(node) {
+      if (node.from == null || node.to == null) return;
+      const isSelf = node.from === node.to;
+      const msg = { path: node.from + '->' + node.to, fromTime: r, toTime: isSelf ? r + 1 : r };
       // Self-message labels read horizontally, like PlantUML (the '^' modifier);
       // without it a long label renders vertically and runs off the canvas.
+      let label = node.label;
       if (isSelf && label) label = '^' + label;
       if (label) msg.label = label;
-      if (color) msg.color = color;
-      msg.style = dashed ? 'dashed' : 'solid';
+      if (node.color) msg.color = node.color;
+      msg.style = node.dashed ? 'dashed' : 'solid';
       model.messages.push(msg);
-      addLaneToOpenGroups(from); addLaneToOpenGroups(to);
-      lastParticipant = to;
-      lastMsgTime = toT; cursor = fromT + STEP;
+      touchLanes([node.from, node.to]);
+      lastMsg = { row: msg.fromTime, from: node.from, to: node.to };
+      r = msg.toTime + 1;
+      if (node.actTarget) doActivate(node.to, node.from);   // '++' → activate the target
+      if (node.deactSource) doDeactivate(node.from);        // '--' → deactivate the sender
     }
-    function handleNote(pos, rest) {
-      // rest is like ' over A : text', ' over A, B : text', ' of A : text'
-      const ci = rest.indexOf(':');
-      let target = (ci >= 0 ? rest.slice(0, ci) : rest).replace(/^\s*of\s+/i, '').trim();
-      let body = ci >= 0 ? nlToPipe(rest.slice(ci + 1)) : '';
-      if (ci < 0) { // multi-line block until 'end note'
-        const buf = [];
-        while (++i < lines.length && !/^end\s*[rh]?note/i.test(lines[i].trim())) buf.push(lines[i].trim());
-        body = buf.join('|');
+
+    function doActivate(lane, fromLane) {
+      if (lane == null) return;
+      const rec = { lane: lane, open: lastMsg ? lastMsg.row : r, from: fromLane || null };
+      (actStacks[lane] = actStacks[lane] || []).push(rec);
+      actOrder.push(rec);
+    }
+    // Close the lane's most recent activation as a thin white state hugging the
+    // exchange: opened at the triggering message's row, closed at the last
+    // message's row (min 1 unit tall).
+    function doDeactivate(lane) {
+      const st = actStacks[lane];
+      if (!st || !st.length) return null;
+      const rec = st.pop();
+      const oi = actOrder.lastIndexOf(rec); if (oi >= 0) actOrder.splice(oi, 1);
+      let to = lastMsg ? lastMsg.row : rec.open + 1;
+      if (to <= rec.open) to = rec.open + 1;
+      model.states.push({ lane: lane, color: 'white', width: 10, fromTime: rec.open, toTime: to });
+      return rec;
+    }
+    // 'return': reply from the most recently activated lane back to its caller
+    // (when known), then close that activation AT the reply's row.
+    function doReturn(label) {
+      const rec = actOrder.length ? actOrder[actOrder.length - 1] : null;
+      if (!rec) { report.unsupported.push({ line: 'return' + (label ? ' ' + label : ''), reason: 'return with no open activation' }); return; }
+      if (rec.from) emitMessage({ type: 'message', from: rec.lane, to: rec.from, label: label, dashed: true, color: null });
+      doDeactivate(rec.lane);
+    }
+
+    function emitNote(node) {
+      let names = node.targets;
+      if (!names.length) {
+        if (lastMsg) {
+          // Targetless side note = "beside the last message" (PlantUML): shares
+          // that message's ROW, anchored beyond the outermost involved lane so
+          // it can never cover the arrow or its label. Consumes no row.
+          const ia = laneIdx(lastMsg.from), ib = laneIdx(lastMsg.to);
+          const lane = node.pos === 'left' ? laneOrder[Math.min(ia, ib)] : laneOrder[Math.max(ia, ib)];
+          const off = node.pos === 'left' ? '<-95,0>' : '<95,0>';
+          model.infoBoxes.push({ lane: lane, time: lastMsg.row, background: NOTE_BG, tether: false, text: off + node.body });
+          touchLanes([lane]);
+          return;
+        }
+        names = laneOrder.length ? [laneOrder[0]] : []; // note before any message
+        if (!names.length) return;
       }
-      // Resolve every named lane (a note may span several: 'note over A, B, C').
-      // A targetless 'note left/right' (no 'of X') attaches to the last
-      // participant involved — else the note would be silently dropped. (#plantuml)
-      let names = target.split(',').map((s) => ensureLane(s)).filter(Boolean);
-      if (!names.length) { const def = lastParticipant || laneOrder[0]; if (def) names = [def]; }
-      if (!names.length) return;
-      const idxs = names.map((n) => laneOrder.indexOf(n));
+      // Targeted note: its own row. A multi-lane 'over' is centered between its
+      // lanes (main lanes sit LANE_SPACING apart in the renderer).
+      const idxs = names.map(laneIdx);
       const lo = Math.min.apply(null, idxs), hi = Math.max.apply(null, idxs);
-      const anchor = laneOrder[lo]; // leftmost spanned lane
-      // The note takes its OWN row (at the current cursor, below the last
-      // message) so it never sits on top of a message. A multi-lane 'over' is
-      // centered between its lanes; left/right sit to the side.
-      const off = (pos === 'over') ? ('<' + Math.round(((lo + hi) / 2 - lo) * 250) + ',0>')
-        : (pos === 'left' ? '<-95,0>' : '<95,0>');
-      // PlantUML notes are a pale-yellow box with NO leader line. (#plantuml)
-      model.infoBoxes.push({ lane: anchor, time: cursor, background: '#FEFECE', tether: false, text: off + body });
-      names.forEach(addLaneToOpenGroups);
-      cursor += STEP; // reserve the note's row so the next event sits below it
+      const anchor = laneOrder[lo];
+      const off = node.pos === 'over'
+        ? ('<' + Math.round(((lo + hi) / 2 - lo) * laneSpacingPx) + ',0>')
+        : (node.pos === 'left' ? '<-95,0>' : '<95,0>');
+      model.infoBoxes.push({ lane: anchor, time: r, background: NOTE_BG, tether: false, text: off + node.body });
+      touchLanes(names);
+      r += 1;
     }
-    function closeGroup() {
-      const g = groupStack.pop(); if (!g) return;
-      g.subframes[g.subframes.length - 1].to = cursor;
-      const laneNames = laneOrder.filter((n) => g.lanes[n]);
-      const span = laneNames.length ? laneNames : laneOrder.slice(); // fall back to all lanes
-      const depth = g.depth || 0;
+
+    function layoutFragment(node, depth) {
+      const set = {};
+      collectors.push(set);
+      const marks = [r]; r += 1;              // top edge; header row gives the tab clearance
+      node.branches.forEach((br, bi) => {
+        if (bi > 0) { marks.push(r); r += 1; } // shared divider row between alt/else branches
+        walk(br.children, depth + 1);
+      });
+      marks.push(r); r += 1;                  // bottom edge; the extra row is padding + sibling gap
+      collectors.pop();
+      const laneNames = laneOrder.filter((n) => set[n]);
+      const span = laneNames.length ? laneNames : laneOrder.slice(); // empty fragment: all lanes
+      touchLanes(laneNames);                  // parent fragments scope these lanes too
       const margin = Math.max(FRAME_MARGIN_FLOOR, FRAME_MARGIN_BASE - depth * FRAME_MARGIN_STEP);
-      const n = g.subframes.length;
-      g.subframes.forEach((sf, idx) => {
-        // frameTime gives a full unit of headroom around the wrapped messages;
-        // deeper frames inset their OUTER edges (top of the first sub, bottom of
-        // the last) so a child stays inside its parent, while internal alt/else
-        // dividers keep the plain offset for seamless stacking.
-        let from = frameTime(sf.from);
-        let to = frameTime(sf.to == null ? cursor : sf.to);
-        if (idx === 0) from += depth * FRAME_VINSET;
-        if (idx === n - 1) to -= depth * FRAME_VINSET;
-        if (to <= from) to = from + 0.5;             // keep a positive height
-        const frame = { label: sf.label, lanes: span.slice(), fromTime: round1(Math.max(0, from)), toTime: round1(to) };
-        if (depth > 0) { frame.lMargin = margin; frame.rMargin = margin; } // inset from the parent
+      node.branches.forEach((br, bi) => {
+        const frame = { label: br.label, lanes: span.slice(), fromTime: marks[bi], toTime: marks[bi + 1] };
+        if (depth > 0) { frame.lMargin = margin; frame.rMargin = margin; } // horizontal inset from the parent
         model.frames.push(frame);
       });
     }
 
+    function walk(children, depth) {
+      children.forEach((node) => {
+        if (node.type === 'message') emitMessage(node);
+        else if (node.type === 'note') emitNote(node);
+        else if (node.type === 'activate') doActivate(node.lane, lastMsg ? lastMsg.from : null);
+        else if (node.type === 'deactivate') doDeactivate(node.lane);
+        else if (node.type === 'return') doReturn(node.label);
+        else if (node.type === 'fragment') layoutFragment(node, depth);
+      });
+    }
+
+    walk(root, 0);
+    while (actOrder.length) doDeactivate(actOrder[actOrder.length - 1].lane); // close dangling activations
+
     // ---- assemble the final model, dropping empty sections ----
-    model.lanes = laneOrder.slice();
     const out = {};
-    if (model.title) out.title = model.title;
-    if (autonumber) out.options = { graph: { autonumber: true } };
-    out.lanes = model.lanes;
-    if (model.laneGroups.length) out.laneGroups = model.laneGroups;
+    if (title) out.title = title;
+    const graphOut = {};
+    if (autonumber) graphOut.autonumber = true;
+    if (laneSpacingPx > DEFAULT_LANE_SPACING) graphOut.laneSpacing = laneSpacingPx;
+    if (Object.keys(graphOut).length) out.options = { graph: graphOut };
+    out.lanes = laneOrder.slice();
+    if (laneGroups.length) out.laneGroups = laneGroups;
     if (model.frames.length) out.frames = model.frames;
     if (model.infoBoxes.length) out.infoBoxes = model.infoBoxes;
     if (model.messages.length) out.messages = model.messages;

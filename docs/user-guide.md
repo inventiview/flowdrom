@@ -590,6 +590,7 @@ options: {
     labelStyle: 'outline',    // 'outline' | 'white' | 'solid' (default 'outline')
     uniformStateWidth: true,  // make every state box in a lane as wide as that lane's widest
     selfMessageWidth: 70,     // self-message loop distance from the lane, px (default 60)
+    laneSpacing: 320,         // lane-to-lane distance in px (default 250)
     autonumber: true          // prefix each message label with a sequence number
   }
 }
@@ -602,6 +603,7 @@ options: {
 - **`uniformStateWidth`** — widens every state box in a lane to match that lane's widest state, so a lane's states line up as a neat column. The width is computed per lane.
 - **`selfMessageWidth`** — how far a [self message's](#self-messages--back-arrows) loop bulges from its lane, in px (default 60). One knob for the whole diagram, so loops stay visually consistent.
 - **`autonumber`** — prefixes each message label with a sequence number, ordered by start time (ties broken by definition order). Computed at render time, so numbers stay correct as you add, reorder, or re-time messages — they're never written into the label text.
+- **`laneSpacing`** — the horizontal distance between main lanes in px (default 250). The [PlantUML importer](#importing-from-plantuml) raises it automatically when long message labels wouldn't fit their arrows; hand-authored diagrams keep the default unless you set it.
 
 Set these visually under right-click → **Styling…** → **Graph styling**, or edit the `options.graph` block directly.
 
