@@ -391,6 +391,23 @@ section('Auto-arrange — Phase 2 helpers (insertGapAtTime, state sequentialize,
   eq(E.usedColors(cm2, 'state'), ['yellow'], 'usedColors: state colors come from states only');
   eq(E.usedColors(cm2, null), ['green', 'red', 'yellow'], 'usedColors: no kind aggregates all colorable kinds');
   eq(E.usedColors(null, 'message'), [], 'usedColors: tolerates a missing model');
+  // info boxes / frames colour via `background`, not `color` (#infobox-color)
+  const cm3 = { infoBoxes: [{ background: 'yellow' }, { background: 'yellow' }, { background: 'pink' }],
+                frames: [{ background: 'blue' }], messages: [{ color: 'red' }] };
+  eq(E.usedColors(cm3, 'infoBox'), ['yellow', 'pink'], 'usedColors: infoBox reads the background field');
+  eq(E.usedColors(cm3, 'frame'), ['blue'], 'usedColors: frame reads the background field');
+  eq(E.usedColors(cm3, null), ['red'], 'usedColors: aggregate still only counts color-bearing kinds');
+
+  // filterNamedColors — contextual search feeds the named-color browser (#named-colors)
+  eq(E.filterNamedColors('').length > 100, true, 'filterNamedColors: empty query returns all colors');
+  const purp = E.filterNamedColors('purple').map((c) => c.name);
+  ok(purp.indexOf('purple') === 0, 'filterNamedColors: exact name ranks first');
+  ok(purp.indexOf('magenta') >= 0 && purp.indexOf('violet') >= 0 && purp.indexOf('hotpink') >= 0,
+     'filterNamedColors: purple surfaces its hue neighbours (magenta/violet/pink)');
+  ok(purp.indexOf('green') < 0 && purp.indexOf('blue') < 0, 'filterNamedColors: purple excludes far-off hues');
+  ok(E.filterNamedColors('purp').indexOf('purple') !== -1 || E.filterNamedColors('purp').some((c) => c.name === 'purple'),
+     'filterNamedColors: a prefix still finds the family');
+  eq(E.filterNamedColors('zzznope').length, 0, 'filterNamedColors: nonsense query matches nothing');
 
   // overlappingStatePairs + sequentializeStates: PARTIAL same-lane overlap is a
   // data error (reported + repaired); FULL containment is intentional nesting

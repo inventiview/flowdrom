@@ -533,6 +533,65 @@ body { margin: 0; padding: 0; overflow: hidden; }
   padding: 4px 12px;
   font-size: var(--text-xs);
 }
+/* Secondary button below a text-edit input (e.g. "Named colors…"). */
+.flowdrom-editpop-btnrow {
+  margin-top: 8px;
+}
+.flowdrom-editpop-btnrow .btn {
+  width: 100%;
+  padding: 6px 12px;
+  font-size: var(--text-sm);
+}
+
+/* Searchable named-color browser popover. */
+.flowdrom-colormenu {
+  position: fixed;
+  z-index: 10001;
+  width: 268px;
+  padding: var(--space-2);
+  font-family: var(--font-ui);
+  background: var(--surface);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+}
+.flowdrom-colormenu-search {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  margin-bottom: 8px;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  background: var(--surface-2);
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-sm);
+}
+.flowdrom-colormenu-search:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+.flowdrom-colormenu-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.flowdrom-colormenu-sw {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 0.5px solid var(--separator);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.flowdrom-colormenu-sw:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+.flowdrom-colormenu-none {
+  grid-column: 1 / -1;
+  padding: 12px;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
 .flowdrom-textedit {
   display: block;
   width: 100%;

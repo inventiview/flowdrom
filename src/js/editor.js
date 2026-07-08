@@ -1195,6 +1195,12 @@
     if (item.kind === 'infoBox') {
       const ib = (model.infoBoxes || [])[item.index] || {};
       addRow(menu, '●  Background… ' + (ib.background ? '(' + ib.background + ')' : '(none)'), () => { setBackground(item, clientX, clientY); });
+      const hasTether = ib.tether !== false;
+      addRow(menu, (hasTether ? '⇤  Hide leader line' : '⇥  Show leader line'), () => {
+        closeMenu();
+        if (hasTether) setItemField(item, 'tether', 'false'); // literal false, not quoted
+        else clearItemField(item, 'tether');                  // remove → default (shown)
+      });
     }
     if (HAS_STYLE[item.kind]) {
       const style = (currentField(model, item, 'style') === 'dashed') ? 'solid' : 'dashed';
@@ -1302,22 +1308,39 @@
     const text = setOrInsertField(ed.getValue(), key, item.index, field, literal);
     if (text != null) applyText(text);
   }
+  // Remove one field from an element, re-emitting the object (applyText
+  // re-canonizes). Used to clear back-to-default flags like a note's tether.
+  function clearItemField(item, field) {
+    const ed = getEditor(); const J = getJSON5(); const model = parseModel();
+    if (!ed || !J || !model) return;
+    const key = SECTION_BY_KIND[item.kind]; if (!key) return;
+    const obj0 = (model[key] || [])[item.index]; if (!obj0 || obj0[field] == null) return;
+    const text = ed.getValue();
+    const obj = Object.assign({}, obj0); delete obj[field];
+    const span = locateArrayElement(text, key, item.index); if (!span) return;
+    applyText(text.slice(0, span.start) + J.stringify(obj) + text.slice(span.end));
+  }
 
   // Colors already used by a given element kind, most-frequent first — so the
   // picker can offer "reuse a color you already have" scoped to what you're
   // colouring (state colours when colouring a state, etc.). With no kind it
   // aggregates across all colourable kinds.
+  // The color field differs by kind: messages/legend/states colour with `color`,
+  // info boxes and frames fill with `background`. (#infobox-color)
+  const COLOR_FIELD = { message: 'color', legend: 'color', state: 'color', infoBox: 'background', frame: 'background' };
   function usedColors(model, kind) {
     const counts = new Map();
     const bump = (c) => { if (c && typeof c === 'string') counts.set(c, (counts.get(c) || 0) + 1); };
     if (model) {
-      const sources = { message: model.messages, legend: model.legend, state: model.states };
-      const lists = kind ? [sources[kind]] : [model.messages, model.legend, model.states];
-      lists.forEach((arr) => (arr || []).forEach((e) => bump(e.color)));
+      const src = { message: model.messages, legend: model.legend, state: model.states, infoBox: model.infoBoxes, frame: model.frames };
+      // A specific kind reads its own colour field; no kind aggregates only the
+      // colour-bearing kinds (a mixed multi-selection picks message/legend/state).
+      const kinds = kind ? [kind] : ['message', 'legend', 'state'];
+      kinds.forEach((k) => (src[k] || []).forEach((e) => bump(e[COLOR_FIELD[k]])));
     }
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map((e) => e[0]);
   }
-  const USED_LABEL = { message: 'Used by messages:', state: 'Used by states:', legend: 'Used by legend:' };
+  const USED_LABEL = { message: 'Used by messages:', state: 'Used by states:', legend: 'Used by legend:', infoBox: 'Used by info boxes:', frame: 'Used by frames:' };
 
   // Reusable color picker menu. `kind` selects the right palette (states use the
   // pastel-keyed STATE_PALETTE; null aggregates used colors across all kinds);
@@ -1344,13 +1367,123 @@
     base.filter((c) => used.indexOf(c) === -1).forEach(swatch);
 
     addRow(menu, 'Custom…', () => {
-      showTextInput(clientX, clientY, current || '', (v) => { if (v && v.trim()) onPick(v.trim()); }, 'Custom color');
+      showTextInput(clientX, clientY, current || '', (v) => { if (v && v.trim()) onPick(v.trim()); }, 'Custom color', false, {
+        noBlurCommit: true,
+        button: { label: '🎨  Named colors…', run: (pick) => showNamedColorMenu(clientX, clientY, pick) },
+      });
     });
   }
   function showColorMenu(item, clientX, clientY) {
     const model = parseModel();
     showColorPicker(item.kind, clientX, clientY, currentField(model, item, 'color') || '',
       (c) => setItemField(item, 'color', quote(c)));
+  }
+
+  // ---- named-color browser (searchable, scrollable) --------------------------
+  // The CSS3 named colors with their hex + precomputed hue/sat, so search can be
+  // CONTEXTUAL: typing a hue word (or prefix) also surfaces its neighbours on the
+  // colour wheel — 'purple' brings up the magentas, violets and pinks, not just
+  // names literally containing "purple". (#named-colors)
+  const NAMED_COLORS = (function () {
+    const raw = {
+      black: '#000000', dimgray: '#696969', gray: '#808080', darkgray: '#a9a9a9', silver: '#c0c0c0', lightgray: '#d3d3d3', gainsboro: '#dcdcdc', whitesmoke: '#f5f5f5', white: '#ffffff',
+      snow: '#fffafa', ghostwhite: '#f8f8ff', floralwhite: '#fffaf0', ivory: '#fffff0', beige: '#f5f5dc', linen: '#faf0e6', oldlace: '#fdf5e6', antiquewhite: '#faebd7', seashell: '#fff5ee', mistyrose: '#ffe4e1',
+      lightpink: '#ffb6c1', pink: '#ffc0cb', hotpink: '#ff69b4', deeppink: '#ff1493', palevioletred: '#db7093', mediumvioletred: '#c71585',
+      lightsalmon: '#ffa07a', salmon: '#fa8072', darksalmon: '#e9967a', lightcoral: '#f08080', indianred: '#cd5c5c', crimson: '#dc143c', firebrick: '#b22222', red: '#ff0000', darkred: '#8b0000', maroon: '#800000',
+      tomato: '#ff6347', orangered: '#ff4500', coral: '#ff7f50', darkorange: '#ff8c00', orange: '#ffa500',
+      gold: '#ffd700', yellow: '#ffff00', lightyellow: '#ffffe0', lemonchiffon: '#fffacd', khaki: '#f0e68c', darkkhaki: '#bdb76b', palegoldenrod: '#eee8aa', goldenrod: '#daa520', darkgoldenrod: '#b8860b',
+      cornsilk: '#fff8dc', wheat: '#f5deb3', tan: '#d2b48c', burlywood: '#deb887', navajowhite: '#ffdead', peachpuff: '#ffdab9', moccasin: '#ffe4b5', bisque: '#ffe4c4', sandybrown: '#f4a460', peru: '#cd853f', chocolate: '#d2691e', saddlebrown: '#8b4513', sienna: '#a0522d', brown: '#a52a2a', rosybrown: '#bc8f8f',
+      darkolivegreen: '#556b2f', olive: '#808000', olivedrab: '#6b8e23', yellowgreen: '#9acd32', greenyellow: '#adff2f', chartreuse: '#7fff00', lawngreen: '#7cfc00',
+      lightgreen: '#90ee90', palegreen: '#98fb98', limegreen: '#32cd32', lime: '#00ff00', forestgreen: '#228b22', green: '#008000', darkgreen: '#006400', seagreen: '#2e8b57', mediumseagreen: '#3cb371', springgreen: '#00ff7f', mediumspringgreen: '#00fa9a', darkseagreen: '#8fbc8f',
+      lightseagreen: '#20b2aa', mediumaquamarine: '#66cdaa', aquamarine: '#7fffd4', turquoise: '#40e0d0', mediumturquoise: '#48d1cc', darkturquoise: '#00ced1', teal: '#008080', darkcyan: '#008b8b', cyan: '#00ffff', aqua: '#00ffff', lightcyan: '#e0ffff', paleturquoise: '#afeeee', cadetblue: '#5f9ea0',
+      powderblue: '#b0e0e6', lightblue: '#add8e6', skyblue: '#87ceeb', lightskyblue: '#87cefa', deepskyblue: '#00bfff', dodgerblue: '#1e90ff', cornflowerblue: '#6495ed', steelblue: '#4682b4', royalblue: '#4169e1', blue: '#0000ff', mediumblue: '#0000cd', darkblue: '#00008b', navy: '#000080', midnightblue: '#191970',
+      lavender: '#e6e6fa', slateblue: '#6a5acd', darkslateblue: '#483d8b', mediumslateblue: '#7b68ee', mediumpurple: '#9370db', blueviolet: '#8a2be2', indigo: '#4b0082', darkviolet: '#9400d3', darkorchid: '#9932cc', mediumorchid: '#ba55d3', purple: '#800080', darkmagenta: '#8b008b', magenta: '#ff00ff', fuchsia: '#ff00ff', violet: '#ee82ee', plum: '#dda0dd', thistle: '#d8bfd8', orchid: '#da70d6',
+    };
+    function hsl(hex) {
+      const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b); let h = 0, s = 0; const l = (max + min) / 2;
+      if (max !== min) {
+        const d = max - min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0); else if (max === g) h = (b - r) / d + 2; else h = (r - g) / d + 4;
+        h *= 60;
+      }
+      return { h: h, s: s, l: l };
+    }
+    return Object.keys(raw).map((name) => { const c = hsl(raw[name]); return { name: name, hex: raw[name], h: c.h, s: c.s, l: c.l }; });
+  })();
+
+  // Rank the named colors for a query: literal name substring wins; then, if the
+  // query resolves to a hue (a full name, a saturated prefix, or a hex), colors
+  // within ~50° of that hue on the wheel. Empty query → all. Pure; UI-agnostic.
+  function filterNamedColors(query) {
+    query = String(query || '').trim().toLowerCase();
+    if (!query) return NAMED_COLORS.slice();
+    let hue = null;
+    const exact = NAMED_COLORS.find((c) => c.name === query);
+    if (exact) hue = exact.h;
+    else if (query.length >= 3) { const p = NAMED_COLORS.find((c) => c.name.indexOf(query) === 0 && c.s > 0.15); if (p) hue = p.h; }
+    else if (/^#?[0-9a-f]{3,6}$/.test(query) && typeof parseCssColor === 'function') {
+      const rgb = parseCssColor(query[0] === '#' ? query : '#' + query);
+      if (rgb) { const m = Math.max(rgb.r, rgb.g, rgb.b), n = Math.min(rgb.r, rgb.g, rgb.b); if (m !== n) { const d = m - n; let hh; if (m === rgb.r) hh = ((rgb.g - rgb.b) / d + (rgb.g < rgb.b ? 6 : 0)); else if (m === rgb.g) hh = (rgb.b - rgb.r) / d + 2; else hh = (rgb.r - rgb.g) / d + 4; hue = hh * 60; } }
+    }
+    const scored = [];
+    NAMED_COLORS.forEach((c) => {
+      let score = -1;
+      const ni = c.name.indexOf(query);
+      if (ni >= 0) score = 2000 - ni * 10 - c.name.length;
+      else if (hue != null && c.s > 0.12) {
+        const d = Math.min(Math.abs(c.h - hue), 360 - Math.abs(c.h - hue));
+        if (d <= 50) score = 900 - d;
+      }
+      if (score >= 0) scored.push({ c: c, score: score });
+    });
+    scored.sort((a, b) => (b.score - a.score) || (a.c.name < b.c.name ? -1 : 1));
+    return scored.map((s) => s.c);
+  }
+
+  // A self-contained searchable/scrollable swatch popover; picks a color name.
+  function showNamedColorMenu(clientX, clientY, onPick) {
+    const prev = document.querySelector('.flowdrom-colormenu'); if (prev) prev.remove();
+    const el = document.createElement('div');
+    el.className = 'flowdrom-colormenu';
+    el.style.left = clientX + 'px'; el.style.top = clientY + 'px';
+    const search = document.createElement('input');
+    search.type = 'text'; search.placeholder = 'Search colors (e.g. purple)…'; search.className = 'flowdrom-colormenu-search';
+    const grid = document.createElement('div'); grid.className = 'flowdrom-colormenu-grid';
+    el.appendChild(search); el.appendChild(grid);
+
+    function close() {
+      if (el.parentNode) el.remove();
+      document.removeEventListener('pointerdown', onOut, true);
+      document.removeEventListener('keydown', onKey, true);
+    }
+    function onOut(e) { if (!el.contains(e.target)) close(); }
+    function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } }
+    function render(q) {
+      grid.textContent = '';
+      const list = filterNamedColors(q);
+      if (!list.length) { const none = document.createElement('div'); none.className = 'flowdrom-colormenu-none'; none.textContent = 'No matches'; grid.appendChild(none); return; }
+      list.forEach((c) => {
+        const sw = document.createElement('button');
+        sw.type = 'button'; sw.className = 'flowdrom-colormenu-sw';
+        sw.style.background = c.hex; sw.title = c.name;
+        sw.addEventListener('mousedown', (e) => e.preventDefault());
+        sw.addEventListener('click', (e) => { e.stopPropagation(); close(); onPick(c.name); });
+        grid.appendChild(sw);
+      });
+    }
+    search.addEventListener('input', () => render(search.value));
+    search.addEventListener('pointerdown', (e) => e.stopPropagation());
+    document.body.appendChild(el);
+    render('');
+    requestAnimationFrame(() => {
+      const r = el.getBoundingClientRect();
+      if (r.right > window.innerWidth) el.style.left = Math.max(8, window.innerWidth - r.width - 8) + 'px';
+      if (r.bottom > window.innerHeight) el.style.top = Math.max(8, window.innerHeight - r.height - 8) + 'px';
+    });
+    setTimeout(() => { try { search.focus(); } catch (_) {} }, 0);
+    document.addEventListener('pointerdown', onOut, true);
+    document.addEventListener('keydown', onKey, true);
   }
 
   // Reusable line-style picker (solid / dashed) — a selection, never free text,
@@ -1414,7 +1547,7 @@
     const key = SECTION_BY_KIND[item.kind]; if (!key) return;
     const obj0 = (model[key] || [])[item.index]; if (!obj0) return;
     const title = (item.kind === 'infoBox' ? 'Info box' : 'Frame') + ' background (Custom → "none" to clear):';
-    showColorPicker(null, clientX, clientY, obj0.background || '', (c) => {
+    showColorPicker(item.kind, clientX, clientY, obj0.background || '', (c) => {
       const text = ed.getValue();
       if (c && String(c).trim() && String(c).trim().toLowerCase() !== 'none') {
         const t = setOrInsertField(text, key, item.index, 'background', quote(String(c).trim()));
@@ -1530,6 +1663,19 @@
       pop.appendChild(cbRow);
     }
 
+    // Optional secondary button below the input (e.g. "Named colors…"). Its
+    // mousedown is prevented so opening a sub-popover doesn't blur the field.
+    // Its `run` gets a pick(value) callback that fills + commits the input.
+    if (opts && opts.button) {
+      const bRow = document.createElement('div');
+      bRow.className = 'flowdrom-editpop-btnrow';
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn'; b.textContent = opts.button.label;
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', (e) => { e.stopPropagation(); opts.button.run((val) => { inp.value = val; finish(true); }); });
+      bRow.appendChild(b); pop.appendChild(bRow);
+    }
+
     // Footer: short hint + explicit Cancel/Save buttons, so multi-line edits have
     // an obvious save target instead of relying on a key chord. (#12)
     const footer = document.createElement('div');
@@ -1604,6 +1750,9 @@
     // Some browsers toggle the menu bar on the Alt keyup; suppress that too.
     inp.addEventListener('keyup', (e) => { if (e.key === 'Alt') { e.preventDefault(); e.stopPropagation(); } });
     inp.addEventListener('blur', () => {
+      // With a secondary sub-popover (Named colors), blur is expected — the field
+      // commits only via Enter/Save/swatch, never on blur. (#infobox-color)
+      if (opts && opts.noBlurCommit) return;
       // Defer and verify: tapping Alt (or any browser chrome — menu bar, devtools,
       // alt-tab) blurs the field without the user meaning to commit. Only save
       // when focus truly moved elsewhere in the page; if the chrome stole it,
@@ -3555,7 +3704,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption, arrangeTimeAnchors, evenTimeMap, remapModelTimes, autoArrangeTimes, boxesOverlap, insertGapAtTime, overlappingStatePairs, sequentializeStates, orderEventTimes, isGluedTime, shiftLanes, usedColors, interpTime };
+    module.exports = { locateArrayElement, replaceFieldValue, setElementFields, parseInfoOffset, buildInfoText, quote, numLiteral, locateArray, insertArrayElement, deleteArrayElement, deleteTopLevelKey, setLanes, moveLane, parseLabelMarkers, markersFromRatio, ratioFromMarkers, insertField, setOrInsertField, setTopField, renameLane, renameLaneToken, deleteLane, countLaneRefs, locateObjectValue, setOption, arrangeTimeAnchors, evenTimeMap, remapModelTimes, autoArrangeTimes, boxesOverlap, insertGapAtTime, overlappingStatePairs, sequentializeStates, orderEventTimes, isGluedTime, shiftLanes, usedColors, interpTime, filterNamedColors };
   }
 
   if (typeof document !== 'undefined') {
