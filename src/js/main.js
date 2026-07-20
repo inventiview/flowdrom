@@ -31,6 +31,20 @@ function frameMargins(frame) {
   return { lm: lm, rm: rm };
 }
 
+// True when frame box `outer` fully encloses box `inner` and is strictly larger.
+// Used to decide when a nested frame's background wash should be kept solid
+// (parent knocked out beneath it) rather than blended: full containment → keep
+// the inner colour; partial crossing (neither encloses the other) → blend. The
+// strict-area test stops two equal-extent frames from mutually erasing. Boxes
+// are {x, y, w, h} in user units. Pure. (#frames)
+function frameEncloses(outer, inner) {
+  const eps = 0.5;
+  return outer.w * outer.h > inner.w * inner.h + eps &&
+    inner.x >= outer.x - eps && inner.y >= outer.y - eps &&
+    inner.x + inner.w <= outer.x + outer.w + eps &&
+    inner.y + inner.h <= outer.y + outer.h + eps;
+}
+
 // Resolve the per-entity text config (size + color) from the options section.
 // For each entity, textSize/textColor come straight from options.<entity>; a
 // missing value or the literal 'default' yields the built-in default. This is
@@ -744,6 +758,11 @@ function renderGraph(modelOverride, measureOnly) {
       for (const fb of frameBoxes) {
         if (!fb.background) continue;
         if (px < fb.x || px > fb.x + fb.w || py < fb.y || py > fb.y + fb.h) continue;
+        // This frame's wash is knocked out here (see the renderer's mask) if a
+        // smaller frame it fully encloses also covers this point — so the label
+        // blends with the frame that actually paints, not the composite. (#frames)
+        if (frameBoxes.some((inner) => inner !== fb && inner.background && frameEncloses(fb, inner) &&
+            px >= inner.x && px <= inner.x + inner.w && py >= inner.y && py <= inner.y + inner.h)) continue;
         const rgb = parseCssColor(fb.background);
         if (!rgb) continue;
         const a = 0.15;
@@ -1380,6 +1399,32 @@ function renderGraph(modelOverride, measureOnly) {
           bg.setAttribute("fill", fb.background);
           bg.setAttribute("fill-opacity", "0.15");
           bg.setAttribute("stroke", "none");
+          // Any smaller frame this one fully encloses keeps its OWN solid colour:
+          // knock our wash out beneath it with a mask (white = show, black = hide)
+          // so nested frames don't darken by stacking. Masks — unlike even-odd
+          // holes — handle 3+ deep and overlapping knockouts with no parity flips.
+          // Partially-crossing frames aren't enclosed, so they still blend. (#frames)
+          const enclosed = frameBoxes.filter((o) => o !== fb && o.background && frameEncloses(fb, o));
+          if (enclosed.length > 0) {
+            const maskId = "frame-bg-mask-" + fb.index;
+            const mask = document.createElementNS("http://www.w3.org/2000/svg", "mask");
+            mask.setAttribute("id", maskId);
+            const show = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            show.setAttribute("x", fb.x); show.setAttribute("y", fb.y);
+            show.setAttribute("width", fb.w); show.setAttribute("height", fb.h);
+            show.setAttribute("fill", "#fff");
+            mask.appendChild(show);
+            enclosed.forEach((o) => {
+              const hide = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+              hide.setAttribute("x", o.x); hide.setAttribute("y", o.y);
+              hide.setAttribute("width", o.w); hide.setAttribute("height", o.h);
+              hide.setAttribute("rx", "2"); hide.setAttribute("ry", "2"); // match the inner bg's rounded corners
+              hide.setAttribute("fill", "#000");
+              mask.appendChild(hide);
+            });
+            defs.appendChild(mask);
+            bg.setAttribute("mask", "url(#" + maskId + ")");
+          }
           frameGroup.appendChild(bg);
         }
         const box = document.createElementNS("http://www.w3.org/2000/svg", "rect");

@@ -1975,7 +1975,9 @@
     const h = ev.target;
     if (!h.getAttribute || !h.getAttribute('data-h')) return;
     ev.preventDefault(); ev.stopPropagation();
-    drag = { ov: overlayEl(), handle: h, kind: h.getAttribute('data-h'), index: parseInt(h.getAttribute('data-i'), 10), end: h.getAttribute('data-end'), mode: h.getAttribute('data-mode') };
+    const gph = ((parseModel() || {}).options || {}).graph || {};
+    drag = { ov: overlayEl(), handle: h, kind: h.getAttribute('data-h'), index: parseInt(h.getAttribute('data-i'), 10), end: h.getAttribute('data-end'), mode: h.getAttribute('data-mode'),
+      selfW: (gph.selfMessageWidth > 0) ? gph.selfMessageWidth : 60, ghost: null };
     window.addEventListener('pointermove', onMove, true);
     window.addEventListener('pointerup', onUp, true);
   }
@@ -1989,9 +1991,23 @@
       const lane = nearestLaneClean(p.x);
       const y = timeToY(t), x = laneX(lane);
       drag.handle.setAttribute('cy', y); drag.handle.setAttribute('cx', x);
-      drag.preview = { t: t, lane: lane };
-      const line = diagramSvg().querySelector('line[data-kind="message"][data-index="' + drag.index + '"][data-role="line"]');
-      if (line) { if (drag.end === 'from') { line.setAttribute('x1', x); line.setAttribute('y1', y); } else { line.setAttribute('x2', x); line.setAttribute('y2', y); } }
+      // Keep the raw pointer x (not just the snapped lane) so a drop that lands
+      // on the message's own lane can pick the self-loop side. (#self-message)
+      drag.preview = { t: t, lane: lane, px: p.x };
+      // Show the same dashed guide as drawing a new message: anchor the fixed
+      // endpoint, follow the pointer with the dragged one, and preview a
+      // self-loop when both share a lane (the '<-' render is a path, not a
+      // line, so mutating the real element can't show this). (#self-message)
+      const msg = (parseModel().messages || [])[drag.index];
+      if (msg) {
+        const pp = pathInfo(msg) || { from: '', to: '' };
+        let fromLane = pp.from, toLane = pp.to;
+        let fromY = timeToY(msg.fromTime), toY = timeToY(msg.toTime);
+        if (drag.end === 'from') { fromLane = lane; fromY = y; } else { toLane = lane; toY = y; }
+        if (drag.ghost && drag.ghost.parentNode) drag.ghost.parentNode.removeChild(drag.ghost);
+        drag.ghost = messageGuide(fromLane, fromY, toLane, toY, p.x, drag.selfW);
+        drag.ov.appendChild(drag.ghost);
+      }
     } else if (drag.kind === 'state') {
       const st = parseModel().states[drag.index];
       const lane = nearestLaneClean(p.x), pt = yToTime(p.y);
@@ -2135,6 +2151,7 @@
     window.removeEventListener('pointermove', onMove, true);
     window.removeEventListener('pointerup', onUp, true);
     const d = drag; drag = null;
+    if (d && d.ghost && d.ghost.parentNode) d.ghost.parentNode.removeChild(d.ghost);
     if (!d || !d.preview) { rebuildOverlay(); return; }
     commitDrag(d);
   }
@@ -2148,9 +2165,17 @@
       const pp = pathInfo(msg) || { from: '', to: '', side: 'right' };
       let from = pp.from, to = pp.to;
       if (d.end === 'from') from = d.preview.lane; else to = d.preview.lane;
-      // Rebuild in semantic order; keep the '<-' notation when the result is a
-      // self message written (or dropped) as left-handed. (#self-message)
-      const newPath = (from === to && pp.side === 'left') ? (to + '<-' + from) : (from + '->' + to);
+      // Rebuild in semantic order. When the result is a self message, the side
+      // the dragged endpoint was dropped on picks the loop direction ('A->A'
+      // right, 'A<-A' left) — the same rule used when drawing a new self loop,
+      // and the only way to set or flip the orientation. (#self-message)
+      let newPath;
+      if (from === to) {
+        const lx = laneX(from);
+        newPath = (lx != null && d.preview.px < lx) ? (to + '<-' + from) : (from + '->' + to);
+      } else {
+        newPath = from + '->' + to;
+      }
       text = setElementFields(text, 'messages', d.index, [
         { field: 'path', literal: quote(newPath) },
         { field: d.end === 'from' ? 'fromTime' : 'toTime', literal: numLiteral(d.preview.t) },
@@ -3377,6 +3402,28 @@
       ' L ' + lx + ' ' + yb;
   }
 
+  // The dashed blue message guide, shared by drawing a new message and
+  // re-dragging an existing one: a straight line between two lanes, or a
+  // self-loop when both endpoints land on the same lane (side chosen by the
+  // pointer x, matching the create-vs-drop rule). Returns an unattached SVG
+  // element the caller appends and later removes. (#self-message)
+  function messageGuide(fromLane, fromY, toLane, toY, px, selfW) {
+    let g;
+    if (fromLane != null && fromLane === toLane) {
+      const lx = laneX(fromLane);
+      const dir = px >= lx ? 1 : -1;
+      g = document.createElementNS(SVGNS, 'path');
+      g.setAttribute('d', selfLoopPath(lx, fromY, toY, dir, selfW));
+      g.setAttribute('fill', 'none');
+    } else {
+      g = document.createElementNS(SVGNS, 'line');
+      g.setAttribute('x1', laneX(fromLane)); g.setAttribute('y1', fromY);
+      g.setAttribute('x2', laneX(toLane)); g.setAttribute('y2', toY);
+    }
+    g.setAttribute('stroke', '#0071e3'); g.setAttribute('stroke-width', 2); g.setAttribute('stroke-dasharray', '5,4');
+    return g;
+  }
+
   function onCreateDown(ev) {
     const ov = overlayEl();
     const p = pointerToDiagram(ov, ev);
@@ -3400,20 +3447,8 @@
     if (createDrag.kind === 'message') {
       const startLane = nearestLaneClean(createDrag.start.x), curLane = nearestLaneClean(p.x);
       const y1 = timeToY(snapTime(yToTime(createDrag.start.y))), y2 = timeToY(snapTime(yToTime(p.y)));
-      let g;
-      if (startLane != null && startLane === curLane) {
-        // Same lane → self message: preview the loop on the side of the pointer.
-        const lx = laneX(startLane);
-        const dir = p.x >= lx ? 1 : -1;
-        g = document.createElementNS(SVGNS, 'path');
-        g.setAttribute('d', selfLoopPath(lx, y1, y2, dir, createDrag.selfW));
-        g.setAttribute('fill', 'none');
-      } else {
-        g = document.createElementNS(SVGNS, 'line');
-        g.setAttribute('x1', laneX(startLane)); g.setAttribute('y1', y1);
-        g.setAttribute('x2', laneX(curLane)); g.setAttribute('y2', y2);
-      }
-      g.setAttribute('stroke', '#0071e3'); g.setAttribute('stroke-width', 2); g.setAttribute('stroke-dasharray', '5,4');
+      // start = 'from', pointer = 'to'; side picked from the pointer x.
+      const g = messageGuide(startLane, y1, curLane, y2, p.x, createDrag.selfW);
       ov.appendChild(g); createDrag.ghost = g;
     } else if (createDrag.kind === 'state') {
       const x = laneX(nearestLaneClean(createDrag.start.x));
