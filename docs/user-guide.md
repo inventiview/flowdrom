@@ -21,6 +21,7 @@
   - [3. Multi-Lane Systems](#3-multi-lane-systems)
   - [4. Lane Groups](#4-lane-groups)
   - [4b. Frames (interaction scopes)](#4b-frames-interaction-scopes)
+  - [4c. Time gaps (elapsed time)](#4c-time-gaps-elapsed-time)
   - [5. Information Boxes](#5-information-boxes)
   - [6. Complex Transactions](#6-complex-transactions)
   - [7. Legends](#7-legends)
@@ -58,6 +59,8 @@ What's converted:
 | `activate A` / `deactivate A` | a thin **state** (activation bar) |
 | `note over/left/right A : text` | an **info box** |
 | `alt … else … end`, `loop`, `opt`, `par`, `group` | **frames** (alt/else become two stacked frames) |
+| `...` / `...text...` (delay) | a **time gap** (dashed window; text becomes the label) |
+| `\|\|\|` / `\|\|N\|\|` (spacer) | blank vertical space (no marker) |
 | `box "Layer" … end box` | a **lane group** |
 | `autonumber` | message numbering (`options.graph.autonumber`) |
 | `title` | the diagram title |
@@ -411,6 +414,47 @@ side margin and cross lanes to grow/shrink the span), edit the label, set a
 background color, or adjust the left/right margins. **Arrange** moves frames
 along with the diagram so they keep scoping the same events.
 
+### 4c. Time gaps (elapsed time)
+
+A **time gap** marks a stretch where a lot of time passes that isn't drawn to
+scale — something happens, then "three weeks later" something else does. Across
+the gap's time window **every lifeline goes dashed**, with an optional centered
+label. Place the before/after events close together in time and let the gap
+carry the "not to scale" meaning.
+
+```js
+{
+  lanes: ['Client', 'Server'],
+  timeGaps: [
+    { fromTime: 3, toTime: 4.5, label: '≈ 3 weeks later' }
+  ],
+  messages: [
+    { path: 'Client->Server', label: 'sign up',  fromTime: 1, toTime: 2 },
+    { path: 'Server->Client', label: 'welcome',   fromTime: 2, toTime: 3 },
+    { path: 'Client->Server', label: 'first login', fromTime: 5, toTime: 6 },
+  ],
+}
+```
+
+- **`fromTime` / `toTime`** — the time window; every lane dashes between them.
+- **`label`** *(optional)* — a centered caption naming the elapsed time. Supports
+  `|` line breaks; the label frame grows to fit the widest line and the height.
+- **`background`** *(optional)* — a light tint wash across the whole band.
+
+The label uses the same typeface as lane labels; set its size/color via
+`options.timeGap.{textSize,textColor}` (see [Display Options](#8-display-options)).
+Two **global** toggles in the Styling panel (under `options.graph`) apply to every
+gap: *Stretch time-gap labels across all lanes* (`timeGapLabelPan`) makes labels
+full-width bars, and *Hide the time grid inside time gaps* (`timeGapHideGrid`)
+drops the grid inside each window — reinforcing that the stretch isn't to scale.
+
+In the editor: right-click → **Time gap (drag a time span)**, then drag over the
+time range (the width always spans all lanes; you're prompted only for the
+optional label). Grab either **horizontal edge** (or the tint band / label) to
+select it — drag the top/bottom edges to resize the window, the center to move
+it, and use the menu to edit the label or set a tint. Like frames, **Arrange**
+re-times gaps along with the diagram.
+
 ### 5. Information Boxes
 
 Add contextual information with info boxes:
@@ -540,6 +584,8 @@ options: {
   state:       { textSize: 11, textColor: 'black'   },  // state box labels
   time:        { textSize: 12, textColor: '#666'    },  // T0, T1, ... time labels
   title:       { textSize: 24, textColor: '#2a5eb2' },  // the diagram title
+  frame:       { textSize: 13, textColor: '#666'    },  // frame label tabs
+  timeGap:     { textSize: 13, textColor: '#6b7280' },  // time-gap labels
 }
 ```
 
@@ -853,6 +899,17 @@ All optional — omit `options` entirely for the standard look. See [Display Opt
 }
 ```
 > The top/bottom edges sit exactly on `fromTime`/`toTime` (snapped to the 0.1 time grid) — use the times themselves for vertical padding. Dragging the left/right edges adjusts that side's margin, and once you cross an adjacent lane it joins/leaves the span.
+
+### Time Gap Object
+```js
+{
+  fromTime: 3,                     // Top edge of the dashed window (exact time)
+  toTime: 4.5,                     // Bottom edge (exact time)
+  label: 'sign-off pending|≈ 3 weeks',  // Optional: caption ('|' = line break)
+  background: 'gray'               // Optional: light tint wash across the band
+}
+```
+> Spans all lanes; every lifeline dashes between `fromTime` and `toTime`. The label uses the lane-label typeface, supports `|` line breaks (the frame grows to fit), and takes its size/color from `options.timeGap.{textSize,textColor}` (see [Display Options](#8-display-options)). Two **global** toggles under `options.graph` affect all gaps: **`timeGapLabelPan`** makes labels full-width bars, and **`timeGapHideGrid`** suppresses the time grid inside every gap window. Set the tint from the graphical editor via right-click; drag the top/bottom edges to resize, the center to move.
 
 ### Info Box Object
 ```js

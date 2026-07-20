@@ -24,20 +24,20 @@
   // FRAME_DEFAULT_{L,R}_MARGIN so the editor's geometry agrees with the render.
   // No vertical margin: top/bottom sit exactly on fromTime/toTime. (#frames)
   const FRAME_L_MARGIN = 40, FRAME_R_MARGIN = 40;
-  const DRAGGABLE = { message: true, state: true, infoBox: true, lane: true, frame: true };
-  const DELETABLE = { message: true, state: true, infoBox: true, legend: true, laneGroup: true, frame: true };
+  const DRAGGABLE = { message: true, state: true, infoBox: true, lane: true, frame: true, timeGap: true };
+  const DELETABLE = { message: true, state: true, infoBox: true, legend: true, laneGroup: true, frame: true, timeGap: true };
   const HAS_COLOR = { message: true, legend: true, state: true }; // have a color field
   const HAS_STYLE = { message: true, legend: true };               // have solid/dashed
-  const TEXTABLE = { message: true, state: true, infoBox: true, legend: true, title: true, laneGroup: true, frame: true };
+  const TEXTABLE = { message: true, state: true, infoBox: true, legend: true, title: true, laneGroup: true, frame: true, timeGap: true };
   const PALETTE = ['black', 'red', 'blue', 'green', 'purple', 'orange', 'teal', 'brown', 'gray', 'deeppink', 'goldenrod', 'seagreen'];
   // states render a pastel background keyed off these named colors (engine getPastelColor)
   const STATE_PALETTE = ['yellow', 'red', 'blue', 'green', 'orange', 'cyan', 'purple', 'pink'];
   // entities configurable via the options block (global text styling)
-  const OPTION_ENTITIES = ['title', 'lane', 'subLane', 'laneGroup', 'message', 'state', 'info', 'legend', 'legendTitle', 'time', 'frame'];
+  const OPTION_ENTITIES = ['title', 'lane', 'subLane', 'laneGroup', 'message', 'state', 'info', 'legend', 'legendTitle', 'time', 'frame', 'timeGap'];
 
   const SECTION_BY_KIND = {
     lane: 'lanes', message: 'messages', state: 'states',
-    infoBox: 'infoBoxes', laneGroup: 'laneGroups', legend: 'legend', frame: 'frames',
+    infoBox: 'infoBoxes', laneGroup: 'laneGroups', legend: 'legend', frame: 'frames', timeGap: 'timeGaps',
   };
 
   function getEditor() {
@@ -534,6 +534,17 @@
       leftX: leftLane.x, rightX: rightLane.x, leftClean: leftLane.clean, rightClean: rightLane.clean, lm: lm, rm: rm,
     };
   }
+  // Time-gap geometry in diagram units — a full-width horizontal band over the
+  // time window. x-extent spans all lanes + a 40px margin and MUST match main.js
+  // (gapBandLeft/gapBandRight) so hit-testing and handles agree with the render.
+  // Returns null when there are no lanes. (#time-gap)
+  function timeGapBox(g) {
+    const L = layout(); if (!L || !g) return null;
+    const xs = (L.lanes || []).map((l) => l.x); if (!xs.length) return null;
+    const left = Math.min(...xs) - 40, right = Math.max(...xs) + 40;
+    const t0 = Math.min(g.fromTime, g.toTime), t1 = Math.max(g.fromTime, g.toTime);
+    return { x: left, y: timeToY(t0), w: right - left, h: (t1 - t0) * L.timeStep };
+  }
   // Main-lane clean names ordered left→right (frame horizontal span uses these). (#frames)
   function mainLanesLR() {
     const L = layout(); if (!L) return [];
@@ -598,7 +609,7 @@
 
   // ---- multi-selection (ctrl+click) -------------------------------------
   // Only time-bearing kinds can take part in a shared time shift.
-  const SHIFTABLE = { message: true, state: true, infoBox: true, frame: true };
+  const SHIFTABLE = { message: true, state: true, infoBox: true, frame: true, timeGap: true };
 
   function toggleSelection(it) {
     const i = selection.findIndex((s) => s.kind === it.kind && s.index === it.index);
@@ -613,18 +624,15 @@
     const dy = pixelDY || 0;
     const c = container.getBoundingClientRect(); const pad = 4;
     selection.forEach((it) => {
-      const els = itemElements(it.kind, it.index);
-      if (!els.length) return;
-      let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
-      for (const e of els) { const cr = e.getBoundingClientRect(); l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
-      if (!isFinite(l)) return;
+      const rect = itemClientRect(it);
+      if (!rect) return;
       const box = document.createElement('div');
       box.className = 'flowdrom-sel-multi';
       box.style.cssText = 'position:absolute;pointer-events:none;border:1.5px solid var(--edit-accent);border-radius:var(--radius-xs);background:var(--edit-accent-soft);z-index:5;';
-      box.style.left = l - c.left + container.scrollLeft - pad + 'px';
-      box.style.top = t - c.top + container.scrollTop - pad + dy + 'px';
-      box.style.width = r - l + 2 * pad + 'px';
-      box.style.height = b - t + 2 * pad + 'px';
+      box.style.left = rect.left - c.left + container.scrollLeft - pad + 'px';
+      box.style.top = rect.top - c.top + container.scrollTop - pad + dy + 'px';
+      box.style.width = rect.right - rect.left + 2 * pad + 'px';
+      box.style.height = rect.bottom - rect.top + 2 * pad + 'px';
       container.appendChild(box);
     });
   }
@@ -636,12 +644,9 @@
   function pointInSelection(clientX, clientY) {
     const pad = 4;
     return selection.some((it) => {
-      const els = itemElements(it.kind, it.index);
-      if (!els.length) return false;
-      let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
-      for (const e of els) { const cr = e.getBoundingClientRect(); l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
-      if (!isFinite(l)) return false;
-      return clientX >= l - pad && clientX <= r + pad && clientY >= t - pad && clientY <= b + pad;
+      const rect = itemClientRect(it);
+      if (!rect) return false;
+      return clientX >= rect.left - pad && clientX <= rect.right + pad && clientY >= rect.top - pad && clientY <= rect.bottom + pad;
     });
   }
 
@@ -655,6 +660,7 @@
         else if (it.kind === 'state') { const s = model.states[it.index]; min = Math.min(min, s.fromTime, s.toTime != null ? s.toTime : s.fromTime); }
         else if (it.kind === 'infoBox') { min = Math.min(min, model.infoBoxes[it.index].time); }
         else if (it.kind === 'frame') { const f = model.frames[it.index]; min = Math.min(min, f.fromTime, f.toTime); }
+        else if (it.kind === 'timeGap') { const g = model.timeGaps[it.index]; min = Math.min(min, g.fromTime, g.toTime); }
       } catch (e) { /* ignore */ }
     });
     return isFinite(min) ? min : 0;
@@ -684,6 +690,10 @@
         const f = model.frames[it.index]; if (!f) return;
         text = setOrInsertField(text, 'frames', it.index, 'fromTime', numLiteral(f.fromTime + dt)) || text;
         text = setOrInsertField(text, 'frames', it.index, 'toTime', numLiteral(f.toTime + dt)) || text;
+      } else if (it.kind === 'timeGap') {
+        const g = model.timeGaps[it.index]; if (!g) return;
+        text = setOrInsertField(text, 'timeGaps', it.index, 'fromTime', numLiteral(g.fromTime + dt)) || text;
+        text = setOrInsertField(text, 'timeGaps', it.index, 'toTime', numLiteral(g.toTime + dt)) || text;
       }
     });
     applyText(text);
@@ -824,7 +834,7 @@
   }
   function cloneWithOffset(obj, kind, dt) {
     const c = Object.assign({}, obj); const r3 = (x) => parseFloat((x).toFixed(3));
-    if (kind === 'message' || kind === 'state' || kind === 'frame') { if (c.fromTime != null) c.fromTime = r3(c.fromTime + dt); if (c.toTime != null) c.toTime = r3(c.toTime + dt); }
+    if (kind === 'message' || kind === 'state' || kind === 'frame' || kind === 'timeGap') { if (c.fromTime != null) c.fromTime = r3(c.fromTime + dt); if (c.toTime != null) c.toTime = r3(c.toTime + dt); }
     else if (kind === 'infoBox') { if (c.time != null) c.time = r3(c.time + dt); }
     return c;
   }
@@ -834,8 +844,8 @@
     const ed = getEditor(); const model = parseModel(); const J = getJSON5();
     if (!ed || !model || !J || !items.length) return;
     const dt = 1; let text = ed.getValue(); const newSel = [];
-    const arrs = { message: model.messages || [], state: model.states || [], infoBox: model.infoBoxes || [], legend: model.legend || [], frame: model.frames || [] };
-    const counts = { message: arrs.message.length, state: arrs.state.length, infoBox: arrs.infoBox.length, legend: arrs.legend.length, frame: arrs.frame.length };
+    const arrs = { message: model.messages || [], state: model.states || [], infoBox: model.infoBoxes || [], legend: model.legend || [], frame: model.frames || [], timeGap: model.timeGaps || [] };
+    const counts = { message: arrs.message.length, state: arrs.state.length, infoBox: arrs.infoBox.length, legend: arrs.legend.length, frame: arrs.frame.length, timeGap: arrs.timeGap.length };
     items.forEach((it) => {
       const arr = arrs[it.kind]; if (!arr || !arr[it.index]) return;
       const key = SECTION_BY_KIND[it.kind]; if (!key) return;
@@ -888,18 +898,43 @@
     return Array.prototype.slice.call(svg.querySelectorAll('[data-kind="' + kind + '"][data-index="' + index + '"]'));
   }
 
-  function highlightItem(item) {
+  // Map a diagram-space point to viewport (client) coordinates via the drawn
+  // svg's screen CTM — the inverse of clientToDiagram. (#time-gap)
+  function diagramToClient(dx, dy) {
+    const svg = diagramSvg(); if (!svg) return null;
+    const ctm = svg.getScreenCTM(); if (!ctm) return null;
+    let p;
+    if (typeof DOMPoint !== 'undefined') p = new DOMPoint(dx, dy);
+    else { p = svg.createSVGPoint(); p.x = dx; p.y = dy; }
+    const out = p.matrixTransform(ctm);
+    return { x: out.x, y: out.y };
+  }
+  // The viewport rect to outline for hover/selection. Normally the union of the
+  // item's tagged elements' boxes; a time gap always uses its full band geometry
+  // so a bare (label-less, tint-less) gap highlights the same as a tinted/labelled
+  // one instead of vanishing. Returns {left,top,right,bottom} or null. (#time-gap)
+  function itemClientRect(item) {
+    if (item.kind === 'timeGap') {
+      const g = ((parseModel() || {}).timeGaps || [])[item.index];
+      const gb = g && timeGapBox(g); if (!gb) return null;
+      const a = diagramToClient(gb.x, gb.y), c = diagramToClient(gb.x + gb.w, gb.y + gb.h);
+      if (!a || !c) return null;
+      return { left: Math.min(a.x, c.x), top: Math.min(a.y, c.y), right: Math.max(a.x, c.x), bottom: Math.max(a.y, c.y) };
+    }
     const els = itemElements(item.kind, item.index);
-    if (!els.length) { clearSelBox(); return; }
     let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
     // Zero-size rects (empty text nodes) sit at stray anchors — never union them.
     for (const e of els) { const cr = e.getBoundingClientRect(); if (!cr.width && !cr.height) continue; l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
-    if (l === Infinity) { clearSelBox(); return; }
+    return l === Infinity ? null : { left: l, top: t, right: r, bottom: b };
+  }
+  function highlightItem(item) {
+    const rect = itemClientRect(item);
+    if (!rect) { clearSelBox(); return; }
     const container = getContainer(); const c = container.getBoundingClientRect(); const ov = selBox(); const pad = 4;
-    ov.style.left = l - c.left + container.scrollLeft - pad + 'px';
-    ov.style.top = t - c.top + container.scrollTop - pad + 'px';
-    ov.style.width = r - l + 2 * pad + 'px';
-    ov.style.height = b - t + 2 * pad + 'px';
+    ov.style.left = rect.left - c.left + container.scrollLeft - pad + 'px';
+    ov.style.top = rect.top - c.top + container.scrollTop - pad + 'px';
+    ov.style.width = rect.right - rect.left + 2 * pad + 'px';
+    ov.style.height = rect.bottom - rect.top + 2 * pad + 'px';
     ov.style.display = 'block';
   }
 
@@ -927,17 +962,13 @@
     if (c.style.cursor === 'pointer') c.style.cursor = '';
   }
   function showHover(item) {
-    const els = itemElements(item.kind, item.index);
-    if (!els.length) { clearHover(); return; }
-    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
-    // Zero-size rects (empty text nodes) sit at stray anchors — never union them.
-    for (const e of els) { const cr = e.getBoundingClientRect(); if (!cr.width && !cr.height) continue; l = Math.min(l, cr.left); t = Math.min(t, cr.top); r = Math.max(r, cr.right); b = Math.max(b, cr.bottom); }
-    if (l === Infinity) { clearHover(); return; }
+    const rect = itemClientRect(item);
+    if (!rect) { clearHover(); return; }
     const container = getContainer(); const c = container.getBoundingClientRect(); const ov = hoverEl(); const pad = 3;
-    ov.style.left = l - c.left + container.scrollLeft - pad + 'px';
-    ov.style.top = t - c.top + container.scrollTop - pad + 'px';
-    ov.style.width = r - l + 2 * pad + 'px';
-    ov.style.height = b - t + 2 * pad + 'px';
+    ov.style.left = rect.left - c.left + container.scrollLeft - pad + 'px';
+    ov.style.top = rect.top - c.top + container.scrollTop - pad + 'px';
+    ov.style.width = rect.right - rect.left + 2 * pad + 'px';
+    ov.style.height = rect.bottom - rect.top + 2 * pad + 'px';
     ov.style.display = 'block';
   }
   function onCanvasHover(ev) {
@@ -963,6 +994,7 @@
       if (item.kind === 'lane') { return 'Lane  ' + m.lanes[item.index]; }
       if (item.kind === 'laneGroup') { return 'Group  ' + m.laneGroups[item.index].label; }
       if (item.kind === 'frame') { const x = m.frames[item.index]; return 'Frame  “' + (x.label || '') + '”'; }
+      if (item.kind === 'timeGap') { const x = m.timeGaps[item.index]; return 'Time gap  “' + (x.label || '') + '”'; }
       if (item.kind === 'legend') { const x = m.legend[item.index]; return 'Legend  “' + (x.label || '') + '”'; }
       if (item.kind === 'legendBox') { return 'Legend (whole)  ' + ((m.legend || []).length) + ' entries'; }
       if (item.kind === 'title') { return 'Title  “' + (m.title || '') + '”'; }
@@ -1036,6 +1068,15 @@
         const onLeft = Math.abs(p.x - fb.x) <= tolFrame, onRight = Math.abs(p.x - (fb.x + fb.w)) <= tolFrame;
         const onTop = Math.abs(p.y - fb.y) <= tolFrame, onBot = Math.abs(p.y - (fb.y + fb.h)) <= tolFrame;
         if ((nearV && (onLeft || onRight)) || (nearH && (onTop || onBot))) add('frame', i);
+      });
+      // Time gaps: the whole band (interior + a small edge tolerance) is the
+      // target, so a label-less, tint-less gap — which draws no filled element —
+      // is still selectable by clicking anywhere in its dashed window. Added last,
+      // so lanes/messages/frames sitting inside the band win the click. (#time-gap)
+      (model.timeGaps || []).forEach((g, i) => {
+        const gb = timeGapBox(g); if (!gb) return;
+        if (p.x >= gb.x - tolFrame && p.x <= gb.x + gb.w + tolFrame &&
+            p.y >= gb.y - tolFrame && p.y <= gb.y + gb.h + tolFrame) add('timeGap', i);
       });
     }
 
@@ -1201,6 +1242,10 @@
         if (hasTether) setItemField(item, 'tether', 'false'); // literal false, not quoted
         else clearItemField(item, 'tether');                  // remove → default (shown)
       });
+    }
+    if (item.kind === 'timeGap') {
+      const g = (model.timeGaps || [])[item.index] || {};
+      addRow(menu, '●  Tint background… ' + (g.background ? '(' + g.background + ')' : '(none)'), () => { setBackground(item, clientX, clientY); });
     }
     if (HAS_STYLE[item.kind]) {
       const style = (currentField(model, item, 'style') === 'dashed') ? 'solid' : 'dashed';
@@ -1546,7 +1591,7 @@
     if (!model || !ed || !J) return;
     const key = SECTION_BY_KIND[item.kind]; if (!key) return;
     const obj0 = (model[key] || [])[item.index]; if (!obj0) return;
-    const title = (item.kind === 'infoBox' ? 'Info box' : 'Frame') + ' background (Custom → "none" to clear):';
+    const title = (item.kind === 'infoBox' ? 'Info box' : item.kind === 'timeGap' ? 'Time gap' : 'Frame') + ' background (Custom → "none" to clear):';
     showColorPicker(item.kind, clientX, clientY, obj0.background || '', (c) => {
       const text = ed.getValue();
       if (c && String(c).trim() && String(c).trim().toLowerCase() !== 'none') {
@@ -1806,6 +1851,8 @@
       showTextInput(clientX, clientY, (model.laneGroups[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Group name', true);
     } else if (item.kind === 'frame') {
       showTextInput(clientX, clientY, (model.frames[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Frame label (e.g. loop, alt, opt)', true);
+    } else if (item.kind === 'timeGap') {
+      showTextInput(clientX, clientY, (model.timeGaps[item.index] || {}).label || '', (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'label', quote(v))), 'Time-gap label (e.g. “3 weeks later”)', true);
     } else if (item.kind === 'infoBox') {
       const off = parseInfoOffset((model.infoBoxes[item.index] || {}).text || '');
       showTextInput(clientX, clientY, off.rest, (v) => commit()(setOrInsertField(ed.getValue(), key, item.index, 'text', quote(buildInfoText(off.x, off.y, v)))), 'Info box text', true);
@@ -1821,6 +1868,7 @@
       if (item.kind === 'state') return !!(model.states[item.index].label || '');
       if (item.kind === 'laneGroup') return !!(model.laneGroups[item.index].label || '');
       if (item.kind === 'frame') return !!(model.frames[item.index].label || '');
+      if (item.kind === 'timeGap') return !!(model.timeGaps[item.index].label || '');
       if (item.kind === 'infoBox') return !!parseInfoOffset(model.infoBoxes[item.index].text || '').rest;
       if (item.kind === 'title') return !!(model.title || '');
     } catch (e) { /* ignore */ }
@@ -1943,6 +1991,16 @@
         addHandle(fb.x, midY, { 'data-h': 'frame', 'data-i': dragItem.index, 'data-end': 'left' }, '#0071e3');
         addHandle(fb.x + fb.w, midY, { 'data-h': 'frame', 'data-i': dragItem.index, 'data-end': 'right' }, '#0071e3');
         addHandle(midX, midY, { 'data-h': 'frame', 'data-i': dragItem.index, 'data-end': 'move' });
+      }
+    } else if (dragItem.kind === 'timeGap') {
+      const g = (model.timeGaps || [])[dragItem.index];
+      const gb = g && timeGapBox(g);
+      if (gb) {
+        const midX = gb.x + gb.w / 2;
+        // Top/bottom edges resize the window in time; the center handle moves it. (#time-gap)
+        addHandle(midX, gb.y, { 'data-h': 'timegap', 'data-i': dragItem.index, 'data-end': 'top' }, '#0071e3');
+        addHandle(midX, gb.y + gb.h, { 'data-h': 'timegap', 'data-i': dragItem.index, 'data-end': 'bottom' }, '#0071e3');
+        addHandle(midX, gb.y + gb.h / 2, { 'data-h': 'timegap', 'data-i': dragItem.index, 'data-end': 'move' });
       }
     }
   }
@@ -2078,7 +2136,42 @@
         drag.preview = prev;
         rebuildFramePreview(drag.index, prev);
       }
+    } else if (drag.kind === 'timegap') {
+      const model = parseModel();
+      const g = model && model.timeGaps ? model.timeGaps[drag.index] : null;
+      if (g) {
+        const f0 = Math.min(g.fromTime, g.toTime), f1 = Math.max(g.fromTime, g.toTime);
+        const prev = {};
+        if (drag.end === 'top') { prev.fromTime = Math.min(snapTime(yToTime(p.y)), f1); }
+        else if (drag.end === 'bottom') { prev.toTime = Math.max(snapTime(yToTime(p.y)), f0); }
+        else { // move
+          const dur = f1 - f0; const nf = Math.max(0, snapTime(f0 + (yToTime(p.y) - (f0 + f1) / 2)));
+          prev.fromTime = nf; prev.toTime = nf + dur;
+        }
+        drag.preview = prev;
+        rebuildTimeGapPreview(drag.index, prev);
+      }
     }
+  }
+
+  // Live-update the drawn time-gap band + label + handles as it's dragged. The
+  // dashed lane segments only re-flow on the release re-render (they're the
+  // lanes, not owned by the gap), which is fine — the band/handles give the feel.
+  function rebuildTimeGapPreview(index, prev) {
+    const model = parseModel(); if (!model || !model.timeGaps) return;
+    const g0 = model.timeGaps[index]; if (!g0) return;
+    const orig = timeGapBox(g0);
+    const gb = timeGapBox(Object.assign({}, g0, prev)); if (!gb) return;
+    const svg = diagramSvg();
+    if (svg) {
+      const band = svg.querySelector('rect[data-kind="timeGap"][data-index="' + index + '"][data-role="band"]');
+      if (band) { band.setAttribute('y', gb.y); band.setAttribute('height', gb.h); }
+      const lbl = svg.querySelector('g[data-kind="timeGap"][data-index="' + index + '"][data-role="label"]');
+      if (lbl && orig) { const dy = (gb.y + gb.h / 2) - (orig.y + orig.h / 2); lbl.setAttribute('transform', 'translate(0,' + dy + ')'); }
+    }
+    const ov = overlayEl(); const midX = gb.x + gb.w / 2;
+    const set = (end, cx, cy) => { const h = ov.querySelector('circle[data-h="timegap"][data-end="' + end + '"]'); if (h) { h.setAttribute('cx', cx); h.setAttribute('cy', cy); } };
+    set('top', midX, gb.y); set('bottom', midX, gb.y + gb.h); set('move', midX, gb.y + gb.h / 2);
   }
 
   // Live-update the drawn frame box + its handles as it's dragged, without a full
@@ -2231,6 +2324,15 @@
       const span = locateArrayElement(text, 'frames', d.index);
       if (!span) { rebuildOverlay(); return; }
       text = text.slice(0, span.start) + J.stringify(merged) + text.slice(span.end);
+    } else if (d.kind === 'timegap') {
+      const g = (model.timeGaps || [])[d.index]; if (!g) { rebuildOverlay(); return; }
+      const pv = d.preview || {};
+      const snap01 = (v) => Math.round(v * 10) / 10;
+      const nf = snap01(pv.fromTime != null ? pv.fromTime : g.fromTime);
+      const nt = snap01(pv.toTime != null ? pv.toTime : g.toTime);
+      text = setOrInsertField(text, 'timeGaps', d.index, 'fromTime', numLiteral(nf));
+      if (text != null) text = setOrInsertField(text, 'timeGaps', d.index, 'toTime', numLiteral(nt));
+      if (text == null) { rebuildOverlay(); return; }
     } else if (d.kind === 'lane') {
       const L = layout(); if (!L) return;
       const dropX = d.preview.x;
@@ -2361,6 +2463,11 @@
       const snap = (v) => (typeof v === 'number' ? Math.round(interpTime(v, anchors, valueMap) * 10) / 10 : v);
       out.frames.forEach((f) => { f.fromTime = snap(f.fromTime); f.toTime = snap(f.toTime); });
     }
+    if (out.timeGaps && out.timeGaps.length) {
+      const anchors = Array.from(valueMap.keys()).sort((a, b) => a - b);
+      const snap = (v) => (typeof v === 'number' ? Math.round(interpTime(v, anchors, valueMap) * 10) / 10 : v);
+      out.timeGaps.forEach((g) => { g.fromTime = snap(g.fromTime); g.toTime = snap(g.toTime); });
+    }
     return out;
   }
   // Phase 1, end to end: even, order-preserving re-timing of every event (durations
@@ -2411,6 +2518,7 @@
     (out.states || []).forEach((st) => { st.fromTime = sh(st.fromTime); st.toTime = sh(st.toTime); });
     (out.infoBoxes || []).forEach((b) => { b.time = sh(b.time); });
     (out.frames || []).forEach((f) => { f.fromTime = sh(f.fromTime); f.toTime = sh(f.toTime); });
+    (out.timeGaps || []).forEach((g) => { g.fromTime = sh(g.fromTime); g.toTime = sh(g.toTime); });
     return out;
   }
 
@@ -3108,6 +3216,7 @@
     addRow(menu, '+  State (drag to draw)', () => { closeMenu(); startCreating('state'); });
     addRow(menu, '+  Info box (click a lane)', () => { closeMenu(); startCreating('infoBox'); });
     addRow(menu, '+  Frame (drag across lanes)', () => { closeMenu(); startCreating('frame'); });
+    addRow(menu, '+  Time gap (drag a time span)', () => { closeMenu(); startCreating('timeGap'); });
     addRow(menu, '+  Lane here', () => { closeMenu(); addLaneAt(clientX, clientY); });
     addRow(menu, '+  Legend entry', () => { closeMenu(); addLegendEntry(clientX, clientY); });
     addRow(menu, '+  Lane group (select lanes)', () => { closeMenu(); startGroupSelect(); });
@@ -3284,6 +3393,22 @@
     const ulbl = document.createElement('span'); ulbl.textContent = 'Align state widths per lane (match the widest)';
     usw.appendChild(ucb); usw.appendChild(ulbl); panel.appendChild(usw);
     ucb.addEventListener('change', () => { commitStyle(setOption(ed.getValue(), 'graph', 'uniformStateWidth', ucb.checked ? true : null)); });
+
+    // Feature 2b — time-gap labels stretch across all lanes (independent toggle). (#time-gap)
+    const tgp = document.createElement('label');
+    tgp.style.cssText = 'display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:13px;cursor:pointer;';
+    const tcb = document.createElement('input'); tcb.type = 'checkbox'; tcb.checked = !!graph.timeGapLabelPan;
+    const tlbl = document.createElement('span'); tlbl.textContent = 'Stretch time-gap labels across all lanes';
+    tgp.appendChild(tcb); tgp.appendChild(tlbl); panel.appendChild(tgp);
+    tcb.addEventListener('change', () => { commitStyle(setOption(ed.getValue(), 'graph', 'timeGapLabelPan', tcb.checked ? true : null)); });
+
+    // Feature 2c — hide the time grid inside time-gap windows (independent toggle). (#time-gap)
+    const tgh = document.createElement('label');
+    tgh.style.cssText = 'display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:13px;cursor:pointer;';
+    const hcb = document.createElement('input'); hcb.type = 'checkbox'; hcb.checked = !!graph.timeGapHideGrid;
+    const hlbl = document.createElement('span'); hlbl.textContent = 'Hide the time grid inside time gaps';
+    tgh.appendChild(hcb); tgh.appendChild(hlbl); panel.appendChild(tgh);
+    hcb.addEventListener('change', () => { commitStyle(setOption(ed.getValue(), 'graph', 'timeGapHideGrid', hcb.checked ? true : null)); });
 
     // Feature 3 — self-message loop distance from the lane, px (blank = 45). (#self-message)
     const smw = document.createElement('div');
@@ -3476,6 +3601,17 @@
       g.setAttribute('x', left); g.setAttribute('y', yTop); g.setAttribute('width', Math.max(2, right - left)); g.setAttribute('height', Math.max(2, yBot - yTop));
       g.setAttribute('rx', '2'); g.setAttribute('fill', 'rgba(0,113,227,0.06)'); g.setAttribute('stroke', '#0071e3'); g.setAttribute('stroke-dasharray', '4,3');
       ov.appendChild(g); createDrag.ghost = g;
+    } else if (createDrag.kind === 'timeGap') {
+      // Full-width band over the dragged time span; x is ignored (gaps span all
+      // lanes). Matches timeGapBox()/main.js extent. (#time-gap)
+      const L = layout(); const xs = (L && L.lanes || []).map((l) => l.x);
+      const left = (xs.length ? Math.min(...xs) : 0) - 40, right = (xs.length ? Math.max(...xs) : 0) + 40;
+      const t0 = snapTime(yToTime(createDrag.start.y)), t1 = snapTime(yToTime(p.y));
+      const yTop = timeToY(Math.min(t0, t1)), yBot = timeToY(Math.max(t0, t1));
+      const g = document.createElementNS(SVGNS, 'rect');
+      g.setAttribute('x', left); g.setAttribute('y', yTop); g.setAttribute('width', Math.max(2, right - left)); g.setAttribute('height', Math.max(2, yBot - yTop));
+      g.setAttribute('fill', 'rgba(0,113,227,0.06)'); g.setAttribute('stroke', '#0071e3'); g.setAttribute('stroke-dasharray', '4,4');
+      ov.appendChild(g); createDrag.ghost = g;
     }
   }
 
@@ -3602,6 +3738,15 @@
       if (t0 === t1) t1 = t0 + 1; // give a fresh frame a visible height
       createWithPrompts('frame', { label: 'loop', lanes: lanesSpan, fromTime: t0, toTime: t1 }, [
         { key: 'label', label: 'Frame label (e.g. loop, alt, opt)', def: 'loop', multiline: true },
+      ], x, y);
+    } else if (wasCreating === 'timeGap') {
+      // A time gap spans the whole diagram width; only the time window matters. The
+      // label is optional (omit if left empty). (#time-gap)
+      let t0 = snapTime(yToTime(d.start.y)), t1 = snapTime(yToTime(d.cur.y));
+      if (t1 < t0) { const tmp = t0; t0 = t1; t1 = tmp; }
+      if (t0 === t1) t1 = t0 + 1; // give a fresh gap a visible height
+      createWithPrompts('timeGap', { fromTime: t0, toTime: t1 }, [
+        { key: 'label', label: 'Time-gap label (e.g. “3 weeks later”)', def: '', omitIfEmpty: true },
       ], x, y);
     }
   }

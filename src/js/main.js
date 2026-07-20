@@ -5,13 +5,13 @@ let currentConfig = {};
 // to the string 'default' falls back to the value here.
 const TEXT_DEFAULT_SIZES = {
   lane: 18, subLane: 12, laneGroup: 14, message: 15, state: 11,
-  info: 12, legend: 27, legendTitle: 16, time: 12, title: 24, frame: 13,
+  info: 12, legend: 27, legendTitle: 16, time: 12, title: 24, frame: 13, timeGap: 13,
 };
 // Default colors. 'item' means "inherit the message's / legend entry's own color".
 const TEXT_DEFAULT_COLORS = {
   lane: '#2a5eb2', subLane: '#2a5eb2', laneGroup: '#6699cc',
   message: 'item', state: 'black', info: '#333',
-  legend: 'item', legendTitle: '#2a5eb2', time: '#666', title: '#2a5eb2', frame: '#666',
+  legend: 'item', legendTitle: '#2a5eb2', time: '#666', title: '#2a5eb2', frame: '#666', timeGap: '#6b7280',
 };
 const TEXT_TYPES = Object.keys(TEXT_DEFAULT_COLORS);
 
@@ -43,6 +43,34 @@ function frameEncloses(outer, inner) {
     inner.x >= outer.x - eps && inner.y >= outer.y - eps &&
     inner.x + inner.w <= outer.x + outer.w + eps &&
     inner.y + inner.h <= outer.y + outer.h + eps;
+}
+
+// Split a lifeline running yTop→yBot into solid/dashed runs around time-gap
+// bands. `bands` is a list of {y0, y1} in the same y units; anywhere a band
+// overlaps the lifeline becomes a dashed run (elapsed-time window), the rest
+// stays solid. Overlapping bands merge. Returns [{ y1, y2, dashed }] covering
+// the whole span in order. Pure; unit-tested. (#time-gap)
+function lifelineSegments(yTop, yBot, bands) {
+  const iv = (bands || [])
+    .map((b) => [Math.max(yTop, b.y0), Math.min(yBot, b.y1)])
+    .filter(([a, b]) => b > a)
+    .sort((p, q) => p[0] - q[0]);
+  // Merge overlapping/touching gap intervals so each becomes ONE dashed run.
+  const merged = [];
+  iv.forEach(([a, b]) => {
+    const last = merged[merged.length - 1];
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+    else merged.push([a, b]);
+  });
+  const out = [];
+  let cur = yTop;
+  merged.forEach(([a, b]) => {
+    if (a > cur) out.push({ y1: cur, y2: a, dashed: false });
+    out.push({ y1: a, y2: b, dashed: true });
+    cur = b;
+  });
+  if (cur < yBot) out.push({ y1: cur, y2: yBot, dashed: false });
+  return out;
 }
 
 // Resolve the per-entity text config (size + color) from the options section.
@@ -92,6 +120,8 @@ function buildDiagramCss(cfg) {
     .label-box { fill: white; stroke: none; }
     .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
     .lane-label { font-weight: bold; font-size: ${cfg.lane.size}px; text-anchor: middle; fill: ${cfg.lane.color}; ${sans} }
+    /* Time-gap labels use the same face as lane labels; size/color are configurable. */
+    .time-gap-label { font-weight: bold; font-size: ${cfg.timeGap.size}px; text-anchor: middle; fill: ${cfg.timeGap.color}; ${sans} }
     .sub-lane-label { font-weight: bold; font-size: ${cfg.subLane.size}px; text-anchor: middle; fill: ${cfg.subLane.color}; ${sans} }
     /* Repeated lane labels: a distinct guide style so they don't read as ordinary
        message/state text. Three variants (options.graph.labelStyle); opacity is
@@ -136,11 +166,12 @@ function buildDiagramCss(cfg) {
 // ===========================================================================
 
 // Fixed top-level key order. Keys not listed are appended in original order.
-const TOP_LEVEL_ORDER = ['title', 'options', 'lanes', 'laneGroups', 'frames', 'infoBoxes', 'messages', 'states', 'legend'];
+const TOP_LEVEL_ORDER = ['title', 'options', 'lanes', 'laneGroups', 'frames', 'timeGaps', 'infoBoxes', 'messages', 'states', 'legend'];
 // Preferred key order within each array section's element objects.
 const SECTION_KEY_ORDER = {
   laneGroups: ['label', 'lanes'],
   frames: ['label', 'lanes', 'background', 'fromTime', 'toTime', 'lMargin', 'rMargin'],
+  timeGaps: ['fromTime', 'toTime', 'label', 'background'],
   infoBoxes: ['lane', 'time', 'background', 'tether', 'text'],
   messages: ['path', 'label', 'color', 'style', 'fromTime', 'toTime'],
   states: ['lane', 'label', 'color', 'width', 'fromTime', 'toTime'],
@@ -343,6 +374,7 @@ function renderGraph(modelOverride, measureOnly) {
     const laneGroups = input.laneGroups || [];
     const infoBoxes = input.infoBoxes || [];
     const frames = input.frames || [];
+    const timeGaps = input.timeGaps || [];
     const textCfg = resolveTextConfig(input.options);
     // Graph styling (options.graph): repeated lane labels are an opt-in aid for
     // tall diagrams, driven entirely by the model so the editor render, exportSVG,
@@ -357,6 +389,13 @@ function renderGraph(modelOverride, measureOnly) {
     // When on, every state box in a lane is widened to the widest state in that
     // lane, so the states line up as a column. Width is determined per lane.
     const uniformStateWidth = !!graphOpts.uniformStateWidth;
+    // When on, every time-gap label frame is stretched to span all lanes (a
+    // full-width divider) rather than hugging its text. One graph-wide knob so
+    // all gaps look consistent. (#time-gap)
+    const timeGapLabelPan = !!graphOpts.timeGapLabelPan;
+    // When on, the time grid + T-labels are suppressed inside EVERY time-gap
+    // window, reinforcing that those stretches aren't to scale. (#time-gap)
+    const timeGapHideGrid = !!graphOpts.timeGapHideGrid;
     // Visual style of the repeated labels: 'outline' (hollow colored letters),
     // 'white' (white letters with a colored outline), or 'solid' (colored fill +
     // white halo). Default 'outline'.
@@ -397,11 +436,12 @@ function renderGraph(modelOverride, measureOnly) {
     const maxStateTime = timeOf(states, 'toTime');
     const maxInfoBoxTime = timeOf(infoBoxes, 'time');
     const maxFrameTime = timeOf(frames, 'toTime');
+    const maxTimeGapTime = timeOf(timeGaps, 'toTime');
 
     // Calculate the overall maximum time. A from-scratch diagram (no messages/
     // states/info boxes yet) gets a small default so the canvas has usable
     // height for lifelines instead of collapsing.
-    let maxTime = Math.max(maxMessageTime, maxStateTime, maxInfoBoxTime, maxFrameTime, 0);
+    let maxTime = Math.max(maxMessageTime, maxStateTime, maxInfoBoxTime, maxFrameTime, maxTimeGapTime, 0);
     if (maxTime <= 0) maxTime = 4;
 
     // Extra "runway" below the last event: lifelines, grid and time labels
@@ -621,24 +661,45 @@ function renderGraph(modelOverride, measureOnly) {
       return g;
     }
 
+    // Time-gap bands: horizontal windows where every lifeline goes dashed to
+    // denote a stretch of elapsed time "not to scale". Computed here (before the
+    // lanes) so the lifelines can be split around them; reused for the grid
+    // skip, tint band and label below. x-extent spans all lanes + a small margin
+    // and MUST match the editor's timeGapBox() geometry. (#time-gap)
+    const laneXsAll = lanes.map(l => lanePositions[l]).filter(v => v != null);
+    const gapBandLeft = (laneXsAll.length ? Math.min(...laneXsAll) : startX) - 40;
+    const gapBandRight = (laneXsAll.length ? Math.max(...laneXsAll) : startX) + 40;
+    const timeGapBands = timeGaps.map((g, index) => {
+      const a = Math.min(g.fromTime, g.toTime), b = Math.max(g.fromTime, g.toTime);
+      return { index: index, gap: g, y0: laneTop + a * timeStep, y1: laneTop + b * timeStep };
+    }).filter(b => b.y1 > b.y0);
+
     // Draw lanes
     lanes.forEach((lane, laneIndex) => {
       const x = lanePositions[lane];
       const meta = laneLabelMeta(lane);
 
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", x);
-      line.setAttribute("y1", laneTop);
-      line.setAttribute("x2", x);
-      line.setAttribute("y2", lifelineEndY);
-
-      line.setAttribute("stroke", meta.isSubLane ? "#666" :  meta.isSpecialLane ? "LightGray" : "#333");
-      line.setAttribute("stroke-width", meta.isSubLane ? "2" :  meta.isSpecialLane ? "16" :"3");
-      // Editor identity tags (inert; used only by editor.js, ignored by the engine/extension).
-      line.setAttribute("data-kind", "lane");
-      line.setAttribute("data-index", laneIndex);
-      line.setAttribute("data-role", "line");
-      tempSvg.appendChild(line);
+      const laneStroke = meta.isSubLane ? "#666" : meta.isSpecialLane ? "LightGray" : "#333";
+      const laneW = meta.isSubLane ? 2 : meta.isSpecialLane ? 16 : 3;
+      // One <line> per solid/dashed run so the lifeline dashes only inside gaps.
+      lifelineSegments(laneTop, lifelineEndY, timeGapBands).forEach((s) => {
+        const seg = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        seg.setAttribute("x1", x); seg.setAttribute("y1", s.y1);
+        seg.setAttribute("x2", x); seg.setAttribute("y2", s.y2);
+        seg.setAttribute("stroke", laneStroke);
+        seg.setAttribute("stroke-width", laneW);
+        if (s.dashed) {
+          const d = Math.max(3, Math.min(7, laneW * 1.4));
+          seg.setAttribute("stroke-dasharray", d + "," + (d * 1.7).toFixed(1));
+          seg.setAttribute("stroke-linecap", "round");
+          seg.setAttribute("opacity", "0.7");
+        }
+        // Editor identity tags (inert; used only by editor.js, ignored by the engine/extension).
+        seg.setAttribute("data-kind", "lane");
+        seg.setAttribute("data-index", laneIndex);
+        seg.setAttribute("data-role", "line");
+        tempSvg.appendChild(seg);
+      });
 
       // Fill comes from the (configurable) .lane-label / .sub-lane-label CSS.
       // Lane names may use '|' for line breaks; stack the top labels upward so the
@@ -817,6 +878,9 @@ function renderGraph(modelOverride, measureOnly) {
     if (showGrid) {
       for (let t = 0; t <= lifelineBottom; t++) {
         const y = laneTop + t * timeStep;
+        // With options.graph.timeGapHideGrid on, suppress the grid line + T-label
+        // inside any gap window, reinforcing that the stretch isn't to scale. (#time-gap)
+        if (timeGapHideGrid && timeGapBands.some(b => y > b.y0 + 0.5 && y < b.y1 - 0.5)) continue;
         const gridLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
         gridLine.setAttribute("x1", startX - 100);
         gridLine.setAttribute("y1", y);
@@ -834,6 +898,64 @@ function renderGraph(modelOverride, measureOnly) {
           tempSvg.appendChild(timeLabel);
         }
       }
+    }
+
+    // Time-gap tint bands sit behind states/messages; their labels are collected
+    // and drawn AFTER the messages (like frame tabs) so nothing obscures them.
+    const timeGapLabelGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    if (timeGapBands.length > 0) {
+      const timeGapGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const gapFont = textCfg.timeGap.size;
+      const gapLineHeight = gapFont * 1.2;
+      timeGapBands.forEach((b) => {
+        if (b.gap.background) {
+          const band = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          band.setAttribute("x", gapBandLeft); band.setAttribute("y", b.y0);
+          band.setAttribute("width", gapBandRight - gapBandLeft); band.setAttribute("height", b.y1 - b.y0);
+          band.setAttribute("fill", b.gap.background);
+          band.setAttribute("fill-opacity", "0.12");
+          band.setAttribute("stroke", "none");
+          band.setAttribute("data-kind", "timeGap"); band.setAttribute("data-index", b.index); band.setAttribute("data-role", "band");
+          timeGapGroup.appendChild(band);
+        }
+        // The label supports '|' line breaks like other text; the frame grows to
+        // fit the widest line and the total height. (#time-gap)
+        const gapLines = String(b.gap.label == null ? '' : b.gap.label).split('|');
+        if (gapLines.some(l => l.trim())) {
+          const cx = (gapBandLeft + gapBandRight) / 2, cy = (b.y0 + b.y1) / 2;
+          const padX = 10, padY = 5;
+          const maxLen = Math.max(...gapLines.map(l => l.length));
+          const textW = Math.max(48, maxLen * gapFont * 0.62) + 2 * padX;
+          // Global timeGapLabelPan: stretch the frame across all lanes (a full-width
+          // divider) rather than hugging the text. (#time-gap)
+          const pillW = timeGapLabelPan ? (gapBandRight - gapBandLeft) : textW;
+          const pillH = gapLines.length * gapLineHeight + 2 * padY;
+          const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          g.setAttribute("data-kind", "timeGap"); g.setAttribute("data-index", b.index); g.setAttribute("data-role", "label");
+          const pill = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          pill.setAttribute("x", cx - pillW / 2); pill.setAttribute("y", cy - pillH / 2);
+          pill.setAttribute("width", pillW); pill.setAttribute("height", pillH);
+          const radius = Math.min(pillH / 2, 10);
+          pill.setAttribute("rx", radius); pill.setAttribute("ry", radius);
+          pill.setAttribute("fill", "#ffffff"); pill.setAttribute("stroke", "#d9d9d9"); pill.setAttribute("stroke-width", "1");
+          g.appendChild(pill);
+          const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          text.setAttribute("class", "time-gap-label");
+          // Vertically center the multi-line block around cy (first line's baseline).
+          const firstBaseline = cy - (gapLines.length - 1) * gapLineHeight / 2 + gapFont * 0.34;
+          text.setAttribute("x", cx); text.setAttribute("y", firstBaseline);
+          gapLines.forEach((ln, i) => {
+            const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+            tspan.setAttribute("x", cx);
+            tspan.setAttribute("dy", i === 0 ? 0 : gapLineHeight);
+            tspan.textContent = ln;
+            text.appendChild(tspan);
+          });
+          g.appendChild(text);
+          timeGapLabelGroup.appendChild(g);
+        }
+      });
+      tempSvg.appendChild(timeGapGroup);
     }
 
     const stateGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -1483,6 +1605,7 @@ function renderGraph(modelOverride, measureOnly) {
     tempSvg.appendChild(messageGroup);
     tempSvg.appendChild(infoBoxGroup);
     tempSvg.appendChild(frameTabGroup); // frame labels on top, so messages never hide them
+    tempSvg.appendChild(timeGapLabelGroup); // time-gap labels on top too
 
     // Draw legend (unchanged from original)
     if (legend.length > 0) {
@@ -1898,6 +2021,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatConfig, jsonLiteral, formatKey, orderedKeys,
     cleanLaneName, computeGroupExtents, resolveTextConfig, migrateLanes,
     parseStateLabel, parsePath, messageNumbers,
+    frameEncloses, lifelineSegments,
     TOP_LEVEL_ORDER, SECTION_KEY_ORDER,
   };
 }

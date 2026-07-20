@@ -285,6 +285,7 @@ corpus.forEach(({ name, text }) => {
     (c.states || []).forEach((x) => { delete x.fromTime; delete x.toTime; });
     (c.infoBoxes || []).forEach((x) => { delete x.time; });
     (c.frames || []).forEach((x) => { delete x.fromTime; delete x.toTime; });
+    (c.timeGaps || []).forEach((x) => { delete x.fromTime; delete x.toTime; });
     return c;
   };
   eq(canon(stripTimes(arranged)), canon(stripTimes(model)), `${name}: arrange changes only time fields`);
@@ -453,6 +454,32 @@ section('Auto-arrange — Phase 2 helpers (insertGapAtTime, state sequentialize,
   eq(M.parsePath('nonsense'), null, 'parsePath: no arrow gives null');
   eq(M.parsePath(null), null, 'parsePath: null-safe');
 
+  // lifelineSegments — split a lifeline around time-gap bands (#time-gap)
+  eq(M.lifelineSegments(0, 100, []), [{ y1: 0, y2: 100, dashed: false }], 'lifelineSegments: no gaps = one solid run');
+  eq(M.lifelineSegments(0, 100, [{ y0: 30, y1: 50 }]),
+     [{ y1: 0, y2: 30, dashed: false }, { y1: 30, y2: 50, dashed: true }, { y1: 50, y2: 100, dashed: false }],
+     'lifelineSegments: a mid gap yields solid / dashed / solid');
+  eq(M.lifelineSegments(0, 100, [{ y0: 60, y1: 90 }, { y0: 20, y1: 40 }]),
+     [{ y1: 0, y2: 20, dashed: false }, { y1: 20, y2: 40, dashed: true }, { y1: 40, y2: 60, dashed: false }, { y1: 60, y2: 90, dashed: true }, { y1: 90, y2: 100, dashed: false }],
+     'lifelineSegments: two gaps are sorted and interleaved');
+  eq(M.lifelineSegments(0, 100, [{ y0: 20, y1: 60 }, { y0: 40, y1: 80 }]),
+     [{ y1: 0, y2: 20, dashed: false }, { y1: 20, y2: 80, dashed: true }, { y1: 80, y2: 100, dashed: false }],
+     'lifelineSegments: overlapping gaps merge into one dashed run');
+  eq(M.lifelineSegments(0, 100, [{ y0: 0, y1: 100 }]), [{ y1: 0, y2: 100, dashed: true }], 'lifelineSegments: a full-span gap is all dashed');
+  eq(M.lifelineSegments(0, 100, [{ y0: -20, y1: 30 }]),
+     [{ y1: 0, y2: 30, dashed: true }, { y1: 30, y2: 100, dashed: false }], 'lifelineSegments: a gap is clamped to the lifeline top');
+
+  // formatConfig canonicalises a timeGaps section (fromTime, toTime, label, background, hideGrid)
+  const tg = M.formatConfig({ timeGaps: [{ background: 'gray', label: '3 weeks later', toTime: 5, fromTime: 3 }] });
+  ok(tg.indexOf("{ fromTime: 3, toTime: 5, label: '3 weeks later', background: 'gray' }") >= 0,
+     'formatConfig orders timeGap keys as fromTime, toTime, label, background');
+
+  // timeGap is a text-styleable entity: options.timeGap.{textSize,textColor} resolve
+  eq(M.resolveTextConfig({}).timeGap, { size: 13, color: '#6b7280' }, 'resolveTextConfig: timeGap has size/color defaults');
+  eq(M.resolveTextConfig({ timeGap: { textSize: 18, textColor: 'red' } }).timeGap, { size: 18, color: 'red' }, 'resolveTextConfig: timeGap size/color are overridable');
+  ok(tg.indexOf('timeGaps:') >= 0 && tg.indexOf('timeGaps:') < (tg.indexOf('messages:') >= 0 ? tg.indexOf('messages:') : Infinity),
+     'formatConfig places timeGaps before messages');
+
   // renameLane must cascade through '<-' paths and KEEP the notation
   const rn = E.renameLane("{\n  lanes: ['A', 'B'],\n  messages: [\n    { path: 'B<-A', fromTime: 0, toTime: 1 }\n  ]\n}", 'A', 'X');
   ok(rn != null && rn.indexOf("'B<-X'") >= 0, 'renameLane renames through a back arrow and keeps <- notation');
@@ -588,6 +615,20 @@ section('PlantUML import — plantumlToModel maps the common subset (#plantuml)'
   r = conv(['@startuml', 'A -> B : x', 'B -> C : x', 'C -> D : x',
             'A -> D : long-ish label across three whole gaps here', '@enduml']);
   ok(!r.model.options, 'plantuml: a spanning label divides its width across the spanned gaps');
+
+  // Delay ('...text...') → a time gap labelled with the text; a bare '...' is a
+  // label-less gap; a '|||' spacer adds blank space but no gap. (#time-gap)
+  r = conv(['@startuml', 'A -> B : req', '...3 weeks later...', 'B -> A : ack', '@enduml']);
+  eq((r.model.timeGaps || []).length, 1, 'plantuml: delay becomes a time gap');
+  eq(r.model.timeGaps[0].label, '3 weeks later', 'plantuml: delay text becomes the gap label');
+  ok(r.model.timeGaps[0].fromTime < r.model.timeGaps[0].toTime, 'plantuml: the gap has a positive window');
+  ok(r.model.messages[1].fromTime > r.model.timeGaps[0].toTime, 'plantuml: the message after a delay comes after the gap');
+  ok(!(r.report.unsupported || []).some((u) => /^\.\.\./.test(u.line)), 'plantuml: a delay is no longer reported unsupported');
+  r = conv(['@startuml', 'A -> B : x', '...', 'A -> B : y', '@enduml']);
+  ok((r.model.timeGaps || []).length === 1 && r.model.timeGaps[0].label == null, 'plantuml: a bare ... is a label-less gap');
+  r = conv(['@startuml', 'A -> B : x', '|||', 'A -> B : y', '@enduml']);
+  ok(!(r.model.timeGaps || []).length, 'plantuml: a ||| spacer adds space but no gap');
+  ok(r.model.messages[1].fromTime > r.model.messages[0].toTime + 1, 'plantuml: the spacer leaves a blank row');
 
   // Activation shorthand semantics: '++' activates the TARGET, '--' deactivates
   // the SOURCE — including on a reverse arrow, where the shorthand is written

@@ -255,6 +255,12 @@
         continue;
       }
 
+      // delay ('...' or '...text...') → a flowdrom time gap; spacer ('|||' or
+      // '||N||') → blank vertical space (no marker). (#time-gap)
+      m = /^\.\.\.(.*)$/.exec(line);
+      if (m) { top().push({ type: 'delay', label: nlToPipe(m[1].trim().replace(/\.+$/, '').trim()) }); continue; }
+      if (/^\|{3,}$/.test(line) || /^\|\|\s*\d+\s*\|\|$/.test(line)) { top().push({ type: 'spacer' }); continue; }
+
       // activate / deactivate / return
       m = /^activate\s+(\S+)/i.exec(line); if (m) { top().push({ type: 'activate', lane: ensureLane(m[1]) }); continue; }
       m = /^deactivate\s+(\S+)/i.exec(line); if (m) { top().push({ type: 'deactivate', lane: ensureLane(m[1]) }); continue; }
@@ -306,7 +312,7 @@
     // =====================================================================
     // Phase B + C — row layout over the tree, emitting the flowdrom model.
     // =====================================================================
-    const model = { messages: [], states: [], infoBoxes: [], frames: [] };
+    const model = { messages: [], states: [], infoBoxes: [], frames: [], timeGaps: [] };
     let r = 1;            // next free row; row 0 is headroom under the lane labels
     let lastMsg = null;   // { row, from, to } — side-note + activation anchor
     const actStacks = {}; // lane -> stack of open activations
@@ -363,6 +369,16 @@
       doDeactivate(rec.lane);
     }
 
+    // A delay becomes a time gap spanning a short window at the current row; the
+    // optional text is its label. A spacer just advances the row (blank space).
+    function emitDelay(node) {
+      const g = { fromTime: r, toTime: r + 2 };
+      if (node.label) g.label = node.label;
+      model.timeGaps.push(g);
+      r = g.toTime + 1;
+      lastMsg = null; // a delay breaks "beside the last message" note anchoring
+    }
+
     function emitNote(node) {
       let names = node.targets;
       if (!names.length) {
@@ -417,6 +433,8 @@
     function walk(children, depth) {
       children.forEach((node) => {
         if (node.type === 'message') emitMessage(node);
+        else if (node.type === 'delay') emitDelay(node);
+        else if (node.type === 'spacer') { r += 2; lastMsg = null; }
         else if (node.type === 'note') emitNote(node);
         else if (node.type === 'activate') doActivate(node.lane, lastMsg ? lastMsg.from : null);
         else if (node.type === 'deactivate') doDeactivate(node.lane);
@@ -438,6 +456,7 @@
     out.lanes = laneOrder.slice();
     if (laneGroups.length) out.laneGroups = laneGroups;
     if (model.frames.length) out.frames = model.frames;
+    if (model.timeGaps.length) out.timeGaps = model.timeGaps;
     if (model.infoBoxes.length) out.infoBoxes = model.infoBoxes;
     if (model.messages.length) out.messages = model.messages;
     if (model.states.length) out.states = model.states;
