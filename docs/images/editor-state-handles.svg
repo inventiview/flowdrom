@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Original JSON Input:
+{
+  title: 'Editing a state (drag the handles)',
+  lanes: [
+    'Server',
+  ],
+  states: [
+    {
+      lane: 'Server',
+      label: 'Processing',
+      color: 'yellow',
+      fromTime: 1,
+      toTime: 4,
+    },
+  ],
+}
+-->
+<svg xmlns="http://www.w3.org/2000/svg" id="temp-graph" width="420" height="382" viewBox="0 0 420 382" preserveAspectRatio="xMidYMid meet" style="max-width: none; height: auto;"><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; font-family: Helvetica, Arial, sans-serif; }
+    /* Time-gap labels use the same face as lane labels; size/color are configurable. */
+    .time-gap-label { font-weight: bold; font-size: 13px; text-anchor: middle; fill: #6b7280; font-family: Helvetica, Arial, sans-serif; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; font-family: Helvetica, Arial, sans-serif; }
+    /* Repeated lane labels: a distinct guide style so they don't read as ordinary
+       message/state text. Three variants (options.graph.labelStyle); opacity is
+       set per-group inline from options.graph.opacity. */
+    .lane-label-repeat { pointer-events: none; }
+    /* outline: hollow, colored letters (true "word-art" outline) */
+    .lane-label-repeat.outline .lane-label { fill: none; stroke: #2a5eb2; stroke-width: 1.3px; stroke-linejoin: round; }
+    .lane-label-repeat.outline .sub-lane-label { fill: none; stroke: #2a5eb2; stroke-width: 1px; stroke-linejoin: round; }
+    /* white: white letters with a colored outline */
+    .lane-label-repeat.white .lane-label { fill: #ffffff; stroke: #2a5eb2; stroke-width: 3px; paint-order: stroke; stroke-linejoin: round; }
+    .lane-label-repeat.white .sub-lane-label { fill: #ffffff; stroke: #2a5eb2; stroke-width: 2px; paint-order: stroke; stroke-linejoin: round; }
+    /* solid: colored letters with a white halo (chunky, reads solid on white) */
+    .lane-label-repeat.solid .lane-label, .lane-label-repeat.solid .sub-lane-label { paint-order: stroke; stroke: #ffffff; stroke-width: 3.5px; stroke-linejoin: round; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; font-family: Helvetica, Arial, sans-serif; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: Helvetica, Arial, sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: Helvetica, Arial, sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; font-family: Helvetica, Arial, sans-serif; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: Helvetica, Arial, sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+    /* Interaction frames (PlantUML-style): a thin bordered region with a cut-corner
+       label tab at the top-left. Transparent interior so it scopes without hiding. */
+    .frame-box { fill: none; stroke: #888; stroke-width: 1.2; }
+    .frame-tab { fill: #f3f3f3; stroke: #888; stroke-width: 1.2; }
+    .frame-label { font-size: 13px; font-weight: bold; font-family: Helvetica, Arial, sans-serif; fill: #666; }
+  </style><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; font-family: Helvetica, Arial, sans-serif; }
+    /* Time-gap labels use the same face as lane labels; size/color are configurable. */
+    .time-gap-label { font-weight: bold; font-size: 13px; text-anchor: middle; fill: #6b7280; font-family: Helvetica, Arial, sans-serif; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; font-family: Helvetica, Arial, sans-serif; }
+    /* Repeated lane labels: a distinct guide style so they don't read as ordinary
+       message/state text. Three variants (options.graph.labelStyle); opacity is
+       set per-group inline from options.graph.opacity. */
+    .lane-label-repeat { pointer-events: none; }
+    /* outline: hollow, colored letters (true "word-art" outline) */
+    .lane-label-repeat.outline .lane-label { fill: none; stroke: #2a5eb2; stroke-width: 1.3px; stroke-linejoin: round; }
+    .lane-label-repeat.outline .sub-lane-label { fill: none; stroke: #2a5eb2; stroke-width: 1px; stroke-linejoin: round; }
+    /* white: white letters with a colored outline */
+    .lane-label-repeat.white .lane-label { fill: #ffffff; stroke: #2a5eb2; stroke-width: 3px; paint-order: stroke; stroke-linejoin: round; }
+    .lane-label-repeat.white .sub-lane-label { fill: #ffffff; stroke: #2a5eb2; stroke-width: 2px; paint-order: stroke; stroke-linejoin: round; }
+    /* solid: colored letters with a white halo (chunky, reads solid on white) */
+    .lane-label-repeat.solid .lane-label, .lane-label-repeat.solid .sub-lane-label { paint-order: stroke; stroke: #ffffff; stroke-width: 3.5px; stroke-linejoin: round; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; font-family: Helvetica, Arial, sans-serif; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: Helvetica, Arial, sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: Helvetica, Arial, sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; font-family: Helvetica, Arial, sans-serif; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: Helvetica, Arial, sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+    /* Interaction frames (PlantUML-style): a thin bordered region with a cut-corner
+       label tab at the top-left. Transparent interior so it scopes without hiding. */
+    .frame-box { fill: none; stroke: #888; stroke-width: 1.2; }
+    .frame-tab { fill: #f3f3f3; stroke: #888; stroke-width: 1.2; }
+    .frame-label { font-size: 13px; font-weight: bold; font-family: Helvetica, Arial, sans-serif; fill: #666; }
+  </style><defs/><style>
+    .label-box { fill: white; stroke: none; }
+    .state-box { fill: #ffffcc; stroke: #aaa; rx: 4; ry: 4; }
+    .lane-label { font-weight: bold; font-size: 18px; text-anchor: middle; fill: #2a5eb2; font-family: Helvetica, Arial, sans-serif; }
+    /* Time-gap labels use the same face as lane labels; size/color are configurable. */
+    .time-gap-label { font-weight: bold; font-size: 13px; text-anchor: middle; fill: #6b7280; font-family: Helvetica, Arial, sans-serif; }
+    .sub-lane-label { font-weight: bold; font-size: 12px; text-anchor: middle; fill: #2a5eb2; font-family: Helvetica, Arial, sans-serif; }
+    /* Repeated lane labels: a distinct guide style so they don't read as ordinary
+       message/state text. Three variants (options.graph.labelStyle); opacity is
+       set per-group inline from options.graph.opacity. */
+    .lane-label-repeat { pointer-events: none; }
+    /* outline: hollow, colored letters (true "word-art" outline) */
+    .lane-label-repeat.outline .lane-label { fill: none; stroke: #2a5eb2; stroke-width: 1.3px; stroke-linejoin: round; }
+    .lane-label-repeat.outline .sub-lane-label { fill: none; stroke: #2a5eb2; stroke-width: 1px; stroke-linejoin: round; }
+    /* white: white letters with a colored outline */
+    .lane-label-repeat.white .lane-label { fill: #ffffff; stroke: #2a5eb2; stroke-width: 3px; paint-order: stroke; stroke-linejoin: round; }
+    .lane-label-repeat.white .sub-lane-label { fill: #ffffff; stroke: #2a5eb2; stroke-width: 2px; paint-order: stroke; stroke-linejoin: round; }
+    /* solid: colored letters with a white halo (chunky, reads solid on white) */
+    .lane-label-repeat.solid .lane-label, .lane-label-repeat.solid .sub-lane-label { paint-order: stroke; stroke: #ffffff; stroke-width: 3.5px; stroke-linejoin: round; }
+    .lane-group-label { font-weight: bold; font-size: 14px; text-anchor: middle; fill: #6699cc; font-family: Helvetica, Arial, sans-serif; }
+    .lane-group-bracket { stroke: #6699cc; stroke-width: 2; stroke-dasharray: 4,4; fill: none; }
+    .message-label { font-size: 15px; font-family: 'Courier New', monospace; dominant-baseline: middle; font-weight: bold; }
+    .state-label { font-size: 11px; fill: black; font-family: Helvetica, Arial, sans-serif; text-anchor: middle; }
+    .arrow { stroke-width: 2; }
+    .dashed { stroke-dasharray: 5,5; }
+    .time-label { font-size: 12px; fill: #666; font-family: Helvetica, Arial, sans-serif; }
+    .grid-line { stroke: #eee; stroke-width: 1; }
+    .legend-box { fill: white; stroke: #ccc; stroke-width: 1; rx: 6; ry: 6; }
+    .legend-title { font-weight: bold; font-size: 16px; fill: #2a5eb2; font-family: Helvetica, Arial, sans-serif; }
+    .legend-label { font-size: 27px; font-family: 'Courier New', monospace; dominant-baseline: middle; }
+    .info-box { fill: white; stroke: #333; stroke-width: 1; rx: 4; ry: 4; }
+    .info-box-text { font-size: 12px; font-family: Helvetica, Arial, sans-serif; fill: #333; }
+    .info-box-line { stroke: #333; stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+    /* Interaction frames (PlantUML-style): a thin bordered region with a cut-corner
+       label tab at the top-left. Transparent interior so it scopes without hiding. */
+    .frame-box { fill: none; stroke: #888; stroke-width: 1.2; }
+    .frame-tab { fill: #f3f3f3; stroke: #888; stroke-width: 1.2; }
+    .frame-label { font-size: 13px; font-weight: bold; font-family: Helvetica, Arial, sans-serif; fill: #666; }
+  </style><line x1="150" y1="102" x2="150" y2="352" stroke="#333" stroke-width="3" data-kind="lane" data-index="0" data-role="line"/><text x="150" y="92" class="lane-label" data-kind="lane" data-index="0" data-role="label"><tspan x="150" dy="0">Server</tspan></text><text x="130" y="25" text-anchor="middle" font-size="24" font-weight="bold" fill="#2a5eb2" data-kind="title" data-index="0"><tspan x="130" dy="0">Editing a state (drag the handles)</tspan></text><line x1="50" y1="102" x2="200" y2="102" class="grid-line"/><text x="30" y="107" class="time-label">T0</text><line x1="50" y1="152" x2="200" y2="152" class="grid-line"/><text x="30" y="157" class="time-label">T1</text><line x1="50" y1="202" x2="200" y2="202" class="grid-line"/><text x="30" y="207" class="time-label">T2</text><line x1="50" y1="252" x2="200" y2="252" class="grid-line"/><text x="30" y="257" class="time-label">T3</text><line x1="50" y1="302" x2="200" y2="302" class="grid-line"/><text x="30" y="307" class="time-label">T4</text><line x1="50" y1="352" x2="200" y2="352" class="grid-line"/><text x="30" y="357" class="time-label">T5</text><g><g data-kind="state" data-index="0"><rect x="116.65156173706055" width="66.6968765258789" y="152" height="150" fill="#ffffcc" stroke="#aaa" stroke-width="1" rx="4" ry="4"/><text x="150" y="230.6" class="state-label" style="font-size: 11px;"><tspan x="150" dy="0">Processing</tspan></text></g></g><g/><g/><g/><g/><circle cx="150" cy="152" r="8" fill="#ffffff" stroke="#0071e3" stroke-width="2.5"/><circle cx="150" cy="227" r="8" fill="#ffffff" stroke="#0071e3" stroke-width="2.5"/><circle cx="150" cy="302" r="8" fill="#ffffff" stroke="#0071e3" stroke-width="2.5"/></svg>

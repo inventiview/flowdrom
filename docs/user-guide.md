@@ -6,28 +6,29 @@
 - [Getting Started](#getting-started)
 - [Basic Concepts](#basic-concepts)
 - [The Graphical Editor](#the-graphical-editor)
-  - [Start a new diagram](#start-a-new-diagram)
-  - [Select an item](#select-an-item)
-  - [Zoom and fit the canvas](#zoom-and-fit-the-canvas)
-  - [Move and edit existing items](#move-and-edit-existing-items)
-  - [Select multiple items](#select-multiple-items)
-  - [Add items](#add-items)
 - [Feature Examples](#feature-examples)
   - [1. Two-Lane Communication](#1-two-lane-communication)
     - [Simple Two-Lane Communication](#simple-two-lane-communication)
     - [Unordered Two-Lane Communication](#unordered-two-lane-communication)
+  - [Building & editing on the canvas](#building--editing-on-the-canvas)
+    - [Start a new diagram](#start-a-new-diagram)
+    - [Select an item](#select-an-item)
+    - [Zoom and fit the canvas](#zoom-and-fit-the-canvas)
+    - [Move and edit existing items](#move-and-edit-existing-items)
+    - [Select multiple items](#select-multiple-items)
+    - [Add items](#add-items)
   - [2. Adding States](#2-adding-states)
     - [Thin & nested states (activation bars)](#thin--nested-states-activation-bars)
   - [3. Multi-Lane Systems](#3-multi-lane-systems)
   - [4. Lane Groups](#4-lane-groups)
-  - [4b. Frames (interaction scopes)](#4b-frames-interaction-scopes)
-  - [4c. Time gaps (elapsed time)](#4c-time-gaps-elapsed-time)
-  - [5. Information Boxes](#5-information-boxes)
-  - [6. Complex Transactions](#6-complex-transactions)
-  - [7. Legends](#7-legends)
-  - [8. Display Options](#8-display-options)
-- [HTML / CSS named colors](#html--css-named-colors)
+  - [5. Frames (interaction scopes)](#5-frames-interaction-scopes)
+  - [6. Time gaps (elapsed time)](#6-time-gaps-elapsed-time)
+  - [7. Information Boxes](#7-information-boxes)
+  - [8. Complex Transactions](#8-complex-transactions)
+  - [9. Legends](#9-legends)
+- [Styling & Options](#styling--options)
 - [Importing from PlantUML](#importing-from-plantuml)
+- [HTML / CSS named colors](#html--css-named-colors)
 - [JSON Schema Reference](#json-schema-reference)
 
 ## Getting Started
@@ -39,38 +40,6 @@
 5. Use **"Load SVG"** to edit existing diagrams
 
 > **The interface** has a **toolbar** across the top, the **source panel** (JSON) on the left, and the **canvas** on the right. Drag the divider between them to resize, or use the toolbar's pane toggle (top-left) to hide the source and give the canvas full width. Toolbar actions include **Render**, **Canonize** (reformat the JSON to the canonical guide style), **Fit** (fit the diagram to the canvas — see [Zoom and fit](#zoom-and-fit-the-canvas)), **Undo / Redo**, **Export SVG / PNG**, and **Load SVG**.
-
-## Importing from PlantUML
-
-Already have a PlantUML **sequence diagram**? Copy its text (the whole
-`@startuml … @enduml` block) and click **Paste** in the source panel — Flowdrom
-detects PlantUML and converts it to flowdrom JSON automatically, then renders it.
-From there it's a normal flowdrom diagram: drag arrows off horizontal to show
-real latency, tidy it with **Arrange**, and add timing that PlantUML can't express.
-
-What's converted:
-
-| PlantUML | becomes |
-|---|---|
-| `participant/actor/database…"Name" as X` | a **lane** (referenced by its display name) |
-| `A -> B : label`, `A --> B` (dashed), `A -[#red]> B` | a **message** (color + solid/dashed) |
-| `A -> A` | a **self message** |
-| `A <- B` | the same as `B -> A` |
-| `activate A` / `deactivate A` | a thin **state** (activation bar) |
-| `note over/left/right A : text` | an **info box** |
-| `alt … else … end`, `loop`, `opt`, `par`, `group` | **frames** (alt/else become two stacked frames) |
-| `...` / `...text...` (delay) | a **time gap** (dashed window; text becomes the label) |
-| `\|\|\|` / `\|\|N\|\|` (spacer) | blank vertical space (no marker) |
-| `box "Layer" … end box` | a **lane group** |
-| `autonumber` | message numbering (`options.graph.autonumber`) |
-| `title` | the diagram title |
-
-Because PlantUML is order-based and Flowdrom is time-based, each message is
-placed at the next whole time step (a horizontal arrow) — order is preserved,
-and you add real timing afterward. Anything the importer can't map is **skipped,
-not dropped silently**: the Paste button reports how many lines were skipped and
-lists them in the browser console. (`skinparam`, themes, `create/destroy`,
-delays and dividers are not converted in this version.)
 
 ## Basic Concepts
 
@@ -94,64 +63,6 @@ Flowdrom diagrams consist of:
 The rendered diagram is **interactive** — you can build and edit it directly on the canvas, and every change is written back to the JSON (and vice-versa). The diagram looks exactly like a normal render until you interact with it.
 
 > Tip: you don't have to choose between the two — mix graphical edits and JSON editing freely. Use **Undo / Redo** (the toolbar buttons, or **Ctrl/Cmd-Z** and **Ctrl/Cmd-Shift-Z** / **Ctrl-Y**) to step back and forth. These work whether your focus is on the canvas or the JSON panel, and each one re-renders the diagram.
-
-### Start a new diagram
-
-Click **New** to start a fresh diagram. It walks you through two quick prompts — the **title**, then the **lane names** (comma-separated) — each pre-filled with a default you can accept by pressing **Enter**. The diagram opens with those lanes ready; build it up by right-clicking the canvas to add messages, states, and so on. (You can also type JSON directly in the source panel, or **Load SVG**.)
-
-### Select an item
-
-- **Hover** over the canvas: the item under the pointer is **highlighted** and the cursor turns to a pointer, so you can see exactly what a click will select. Thin targets like legend lines have a **forgiving hit area** — you don't have to land on the stroke.
-- **Left-click** the highlighted element — a message, state, info box, lane, lane group, legend entry, or the title — to open a small menu of actions for it. Where items overlap, the click acts on the highlighted (top) one; hover a different part to target another.
-- **Double-click** an item to jump straight to its most common action — **Edit text** for a labelled item, **Rename** for a lane — skipping the menu.
-- **Left-click empty space** clears the menu. **Esc** cancels any open menu, drag, or pending action.
-
-### Zoom and fit the canvas
-
-- By default the diagram **fits the canvas width**, and re-fits automatically when the canvas changes size — resizing the window or dragging the divider between the source panel and the canvas.
-- **Ctrl/Cmd + mouse-wheel** over the canvas **zooms the diagram** (centered on the pointer), scrolling within the canvas when you zoom in past its edges. This zooms only the diagram — not the toolbar or source panel — and takes over from auto-fit.
-- The toolbar's **Fit** button snaps the diagram back to fit the canvas and **resumes auto-fit** on resize.
-
-### Move and edit existing items
-
-Most items offer a **Drag** action that reveals draggable handles:
-
-- **Message** — drag an endpoint handle to change its **time** (move vertically) or send it to **another lane** (move horizontally). Drag the handle on the **label** to slide it along the arrow.
-- **State** — drag the **top/bottom** handles to resize (change start/end time) or the **middle** handle to move the whole box; drag sideways to change lane.
-- **Info box** — drag the handle on the **box** to **reposition it**; drag the handle on the **anchor** (the lane/time point it connects to) to change what it points at.
-- **Lane** — **Drag** the handle sideways: cross another lane to **reorder**, or move within its current slot to **nudge** its horizontal position.
-
-> All editing handles and the selection outline use a single highlight color, so they're easy to tell apart from the diagram's own colors.
-
-Times **snap to 0.1** steps while dragging — hold **Alt** for free placement.
-
-Other actions in an item's menu:
-
-- **Edit text** — label, info text, group name, or the diagram title. The editor is **multi-line**: **Enter** saves, **Alt+Enter** adds a line break (so you don't have to type `|` yourself), and the box grows to fit what you type.
-- **Duplicate** — for messages, states, and info boxes, drops a copy one time-step below, selected so you can drag it into place; for a **legend entry** it appends an identical row.
-- **Change color** and **Make dashed / Make solid** — for messages and legend entries. **Change color** opens a **palette** — colors already used by **that element type** first (e.g. existing state colors when coloring a state), then the rest of the palette, plus a **Custom…** field for any CSS color name or hex. **States** can take a color too (rendered as a soft tint).
-- **Go to JSON definition** — selects that element in the JSON panel.
-- **Delete**.
-- For **lanes**: **Rename** (updates every reference automatically), **Make sub-lane of…** (then **click the parent lane**), **Make medium lane**, and **Delete lane** (also removes elements that referenced it). A sub-lane or medium lane instead offers **Make primary lane** to revert it (drops the parent, or the `_…_` medium markers).
-
-### Select multiple items
-
-- **Drag a box** over empty canvas to select every message, state, and info box it **fully encloses** (items only partly inside the box aren't selected). You can also **Ctrl/Cmd-click** items to build up a selection one at a time.
-- **Drag** anywhere inside the selection to shift all the selected items in time together.
-- **Right-click** the selection for actions on the whole set: **Duplicate**, **Change color**, **Make dashed / Make solid**, and **Delete all**.
-
-### Add items
-
-**Right-click** anywhere on the canvas to open the **Add** menu:
-
-- **Message** / **State** — pick it, then **drag** on the canvas to draw it (between lanes, or down a lane). The element appears immediately, then you're guided through its fields, each applied live: the **label** in a text box, the **color** from the palette picker, and the line **style** from a solid/dashed menu (same controls as editing an existing item). You can stop at any point — what you've set so far stays.
-- **Info box** — pick it, then **click a lane** at the time you want, and enter its text.
-- **Lane** — adds a lane at the clicked position (you give it a name).
-- **Legend entry** — adds a legend line: enter its label, then pick a color and a solid/dashed style.
-- **Lane group (select lanes)** — then click the lanes to include and press **Create**.
-- **Styling…** — opens a panel to set per-element text size/color and whole-diagram **graph styling** (this edits the `options` block; see [Display Options](#8-display-options)).
-
-> Note: JSON **comments are not supported**. Graphical edits may not behave correctly if the JSON in the editor contains comments.
 
 ## Feature Examples
 
@@ -273,6 +184,76 @@ into a horizontal, always-upright label (same modifier as vertical state text:
 }
 ```
 
+![Self messages](images/01-self-messages.svg)
+
+### Building & editing on the canvas
+
+Now that you've seen a diagram, here's how to build and edit one directly on the canvas — every change is written back to the JSON, and vice-versa.
+
+#### Start a new diagram
+
+Click **New** to start a fresh diagram. It walks you through two quick prompts — the **title**, then the **lane names** (comma-separated) — each pre-filled with a default you can accept by pressing **Enter**. The diagram opens with those lanes ready; build it up by right-clicking the canvas to add messages, states, and so on. (You can also type JSON directly in the source panel, or **Load SVG**.)
+
+#### Select an item
+
+- **Hover** over the canvas: the item under the pointer is **highlighted** and the cursor turns to a pointer, so you can see exactly what a click will select. Thin targets like legend lines have a **forgiving hit area** — you don't have to land on the stroke.
+- **Left-click** the highlighted element — a message, state, info box, lane, lane group, legend entry, or the title — to open a small menu of actions for it. Where items overlap, the click acts on the highlighted (top) one; hover a different part to target another.
+- **Double-click** an item to jump straight to its most common action — **Edit text** for a labelled item, **Rename** for a lane — skipping the menu.
+- **Left-click empty space** clears the menu. **Esc** cancels any open menu, drag, or pending action.
+
+#### Zoom and fit the canvas
+
+- By default the diagram **fits the canvas width**, and re-fits automatically when the canvas changes size — resizing the window or dragging the divider between the source panel and the canvas.
+- **Ctrl/Cmd + mouse-wheel** over the canvas **zooms the diagram** (centered on the pointer), scrolling within the canvas when you zoom in past its edges. This zooms only the diagram — not the toolbar or source panel — and takes over from auto-fit.
+- The toolbar's **Fit** button snaps the diagram back to fit the canvas and **resumes auto-fit** on resize.
+
+#### Move and edit existing items
+
+Most items offer a **Drag** action that reveals draggable handles:
+
+- **Message** — drag an endpoint handle to change its **time** (move vertically) or send it to **another lane** (move horizontally). Drag the handle on the **label** to slide it along the arrow.
+- **State** — drag the **top/bottom** handles to resize (change start/end time) or the **middle** handle to move the whole box; drag sideways to change lane.
+- **Info box** — drag the handle on the **box** to **reposition it**; drag the handle on the **anchor** (the lane/time point it connects to) to change what it points at.
+- **Lane** — **Drag** the handle sideways: cross another lane to **reorder**, or move within its current slot to **nudge** its horizontal position.
+
+> All editing handles and the selection outline use a single highlight color, so they're easy to tell apart from the diagram's own colors.
+
+A message reveals a handle at each **endpoint** (change its time or lane) and one on its **label** (slide it along the arrow); a state reveals **top / middle / bottom** handles (resize from either end, or move the whole box):
+
+![Message drag handles](images/editor-message-handles.svg)
+
+![State drag handles](images/editor-state-handles.svg)
+
+Times **snap to 0.1** steps while dragging — hold **Alt** for free placement.
+
+Other actions in an item's menu:
+
+- **Edit text** — label, info text, group name, or the diagram title. The editor is **multi-line**: **Enter** saves, **Alt+Enter** adds a line break (so you don't have to type `|` yourself), and the box grows to fit what you type.
+- **Duplicate** — for messages, states, and info boxes, drops a copy one time-step below, selected so you can drag it into place; for a **legend entry** it appends an identical row.
+- **Change color** and **Make dashed / Make solid** — for messages and legend entries. **Change color** opens a **palette** — colors already used by **that element type** first (e.g. existing state colors when coloring a state), then the rest of the palette, plus a **Custom…** field for any CSS color name or hex. **States** can take a color too (rendered as a soft tint).
+- **Go to JSON definition** — selects that element in the JSON panel.
+- **Delete**.
+- For **lanes**: **Rename** (updates every reference automatically), **Make sub-lane of…** (then **click the parent lane**), **Make medium lane**, and **Delete lane** (also removes elements that referenced it). A sub-lane or medium lane instead offers **Make primary lane** to revert it (drops the parent, or the `_…_` medium markers).
+
+#### Select multiple items
+
+- **Drag a box** over empty canvas to select every message, state, and info box it **fully encloses** (items only partly inside the box aren't selected). You can also **Ctrl/Cmd-click** items to build up a selection one at a time.
+- **Drag** anywhere inside the selection to shift all the selected items in time together.
+- **Right-click** the selection for actions on the whole set: **Duplicate**, **Change color**, **Make dashed / Make solid**, and **Delete all**.
+
+#### Add items
+
+**Right-click** anywhere on the canvas to open the **Add** menu:
+
+- **Message** / **State** — pick it, then **drag** on the canvas to draw it (between lanes, or down a lane). The element appears immediately, then you're guided through its fields, each applied live: the **label** in a text box, the **color** from the palette picker, and the line **style** from a solid/dashed menu (same controls as editing an existing item). You can stop at any point — what you've set so far stays.
+- **Info box** — pick it, then **click a lane** at the time you want, and enter its text.
+- **Lane** — adds a lane at the clicked position (you give it a name).
+- **Legend entry** — adds a legend line: enter its label, then pick a color and a solid/dashed style.
+- **Lane group (select lanes)** — then click the lanes to include and press **Create**.
+- **Styling…** — opens a panel to set per-element text size/color and whole-diagram **graph styling** (this edits the `options` block; see [Styling & Options](#styling--options)).
+
+> Note: JSON **comments are not supported**. Graphical edits may not behave correctly if the JSON in the editor contains comments.
+
 ### 2. Adding States
 
 Now let's add state changes to show what happens inside each entity:
@@ -327,6 +308,8 @@ activation-style bars and sub-states:
 }
 ```
 
+![Thin and nested states](images/02-thin-nested-states.svg)
+
 ### 3. Multi-Lane Systems
 
 Real systems often involve multiple components. Here's a three-lane system:
@@ -378,7 +361,7 @@ For complex systems, you can group related lanes visually:
 
 Lane groups help organize complex diagrams by showing architectural boundaries.
 
-### 4b. Frames (interaction scopes)
+### 5. Frames (interaction scopes)
 
 **Frames** draw a PlantUML-style bordered region — with a cut-corner label tab —
 around a rectangle of lanes and time. Use them to scope a `loop`, `alt`, `opt`,
@@ -400,6 +383,8 @@ interior is transparent, so a frame scopes without hiding what's inside.
 }
 ```
 
+![Frames](images/05-frames.svg)
+
 - **`label`** — shown in the tab at the top-left (e.g. `loop`, `alt [x > 0]`, `opt`).
 - **`lanes`** — the frame spans from its leftmost to its rightmost listed lane.
 - **`fromTime` / `toTime`** — the vertical (time) extent; the edges sit exactly on these times.
@@ -414,7 +399,7 @@ side margin and cross lanes to grow/shrink the span), edit the label, set a
 background color, or adjust the left/right margins. **Arrange** moves frames
 along with the diagram so they keep scoping the same events.
 
-### 4c. Time gaps (elapsed time)
+### 6. Time gaps (elapsed time)
 
 A **time gap** marks a stretch where a lot of time passes that isn't drawn to
 scale — something happens, then "three weeks later" something else does. Across
@@ -436,13 +421,15 @@ carry the "not to scale" meaning.
 }
 ```
 
+![Time gaps](images/06-time-gaps.svg)
+
 - **`fromTime` / `toTime`** — the time window; every lane dashes between them.
 - **`label`** *(optional)* — a centered caption naming the elapsed time. Supports
   `|` line breaks; the label frame grows to fit the widest line and the height.
 - **`background`** *(optional)* — a light tint wash across the whole band.
 
 The label uses the same typeface as lane labels; set its size/color via
-`options.timeGap.{textSize,textColor}` (see [Display Options](#8-display-options)).
+`options.timeGap.{textSize,textColor}` (see [Styling & Options](#styling--options)).
 Two **global** toggles in the Styling panel (under `options.graph`) apply to every
 gap: *Stretch time-gap labels across all lanes* (`timeGapLabelPan`) makes labels
 full-width bars, and *Hide the time grid inside time gaps* (`timeGapHideGrid`)
@@ -455,7 +442,7 @@ select it — drag the top/bottom edges to resize the window, the center to move
 it, and use the menu to edit the label or set a tint. Like frames, **Arrange**
 re-times gaps along with the diagram.
 
-### 5. Information Boxes
+### 7. Information Boxes
 
 Add contextual information with info boxes:
 
@@ -499,7 +486,7 @@ Info box placement
   - The renderer does not currently perform advanced collision avoidance for info boxes — if boxes/labels overlap, adjust offsets manually.
   - Offsets must be provided as integers in pixels and placed at the very start of the `text` string (no leading spaces).
 
-### 6. Complex Transactions
+### 8. Complex Transactions
 
 Here's an advanced example showing 2 new features of lanes by using a different name syntax:
 1. Sublanes: handy for showing a sub-component's interaction with the system. A sublane is named **`Parent.Sub`** (parent first) — e.g. for lane `HN`, a sublane is `HN.MEM`. Its **side is determined by array order**, not by the name: list the sublane *after* its parent to place it on the parent's right, or *before* the parent to place it on the left (multiple sublanes on a side stack outward). In the graphical editor you can simply drag a sublane across its parent to flip sides. (Older diagrams that used the reverse `Sub.Parent` form are migrated to `Parent.Sub` automatically on load.)
@@ -539,7 +526,7 @@ Here's an advanced example showing 2 new features of lanes by using a different 
 
 This complex example shows how two caching agents conflict when trying to access the same memory address simultaneously.
 
-### 7. Legends
+### 9. Legends
 
 Add legends to explain your color coding:
 
@@ -566,7 +553,7 @@ Add legends to explain your color coding:
 
 Legends help readers understand what different colors and line styles represent.
 
-### 8. Display Options
+## Styling & Options
 
 The optional `options` object controls the **size** and **color** of each kind of text in the diagram. It is part of the diagram definition (just like `lanes` or `messages`), so it is saved with **Export SVG**, restored by **Load SVG**, and respected by any application that renders a Flowdrom config — not just the editor page.
 
@@ -611,19 +598,19 @@ Example — bigger, high-contrast lanes and messages while leaving everything el
 }
 ```
 
-#### In the editor
+### In the editor
 
 Add the `options` object to your config in the JSON panel and click **Render**. Type `options` in the editor for an autocomplete snippet to get started. Because the setting lives in the config, it round-trips through Export/Load SVG.
 
 You can also set it visually: right-click the canvas → **Styling…** opens a panel with a size/color field per element type (plus the **Graph styling** options below).
 
-#### Make it persistent (apply to every graph)
+### Make it persistent (apply to every graph)
 
 The Styling panel has a **Make persistent** toggle. When on, your current styling is saved in the browser and automatically applied to every graph you create or open — so you don't have to re-set it each time. Editing a field while it's on updates the saved styling too; turning it off forgets it.
 
 Because persistence would otherwise silently change a diagram that has its own styling, Flowdrom asks first: when you **Load SVG** (or hand-edit the styling and press **Render**) and the diagram's styling differs from your saved one, a prompt lets you **keep the diagram's** styling or **use your saved** styling. Persistence covers **all** of the Styling panel — text styling and graph styling alike.
 
-#### Graph styling
+### Graph styling
 
 A separate **`options.graph`** block holds whole-diagram layout aids. They're **off by default**, and — like text styling — they're part of the config, so they round-trip through Export/Load SVG and are honored by any renderer (the editor and the exported SVG always match).
 
@@ -654,6 +641,38 @@ options: {
 Set these visually under right-click → **Styling…** → **Graph styling**, or edit the `options.graph` block directly.
 
 > Persistence is stored per browser (it doesn't follow you across machines or browsers), and private/incognito windows forget it when closed.
+
+## Importing from PlantUML
+
+Already have a PlantUML **sequence diagram**? Copy its text (the whole
+`@startuml … @enduml` block) and click **Paste** in the source panel — Flowdrom
+detects PlantUML and converts it to flowdrom JSON automatically, then renders it.
+From there it's a normal flowdrom diagram: drag arrows off horizontal to show
+real latency, tidy it with **Arrange**, and add timing that PlantUML can't express.
+
+What's converted:
+
+| PlantUML | becomes |
+|---|---|
+| `participant/actor/database…"Name" as X` | a **lane** (referenced by its display name) |
+| `A -> B : label`, `A --> B` (dashed), `A -[#red]> B` | a **message** (color + solid/dashed) |
+| `A -> A` | a **self message** |
+| `A <- B` | the same as `B -> A` |
+| `activate A` / `deactivate A` | a thin **state** (activation bar) |
+| `note over/left/right A : text` | an **info box** |
+| `alt … else … end`, `loop`, `opt`, `par`, `group` | **frames** (alt/else become two stacked frames) |
+| `...` / `...text...` (delay) | a **time gap** (dashed window; text becomes the label) |
+| `\|\|\|` / `\|\|N\|\|` (spacer) | blank vertical space (no marker) |
+| `box "Layer" … end box` | a **lane group** |
+| `autonumber` | message numbering (`options.graph.autonumber`) |
+| `title` | the diagram title |
+
+Because PlantUML is order-based and Flowdrom is time-based, each message is
+placed at the next whole time step (a horizontal arrow) — order is preserved,
+and you add real timing afterward. Anything the importer can't map is **skipped,
+not dropped silently**: the Paste button reports how many lines were skipped and
+lists them in the browser console. (`skinparam`, themes, and `create/destroy`
+are not converted in this version.)
 
 ## HTML / CSS named colors
 
@@ -827,7 +846,7 @@ You can use any standard HTML/CSS named color in your diagrams (for message colo
 ```
 
 ### Options Object
-All optional — omit `options` entirely for the standard look. See [Display Options](#8-display-options) for full details and defaults. Two parts:
+All optional — omit `options` entirely for the standard look. See [Styling & Options](#styling--options) for full details and defaults. Two parts:
 
 ```js
 {
@@ -909,7 +928,7 @@ All optional — omit `options` entirely for the standard look. See [Display Opt
   background: 'gray'               // Optional: light tint wash across the band
 }
 ```
-> Spans all lanes; every lifeline dashes between `fromTime` and `toTime`. The label uses the lane-label typeface, supports `|` line breaks (the frame grows to fit), and takes its size/color from `options.timeGap.{textSize,textColor}` (see [Display Options](#8-display-options)). Two **global** toggles under `options.graph` affect all gaps: **`timeGapLabelPan`** makes labels full-width bars, and **`timeGapHideGrid`** suppresses the time grid inside every gap window. Set the tint from the graphical editor via right-click; drag the top/bottom edges to resize, the center to move.
+> Spans all lanes; every lifeline dashes between `fromTime` and `toTime`. The label uses the lane-label typeface, supports `|` line breaks (the frame grows to fit), and takes its size/color from `options.timeGap.{textSize,textColor}` (see [Styling & Options](#styling--options)). Two **global** toggles under `options.graph` affect all gaps: **`timeGapLabelPan`** makes labels full-width bars, and **`timeGapHideGrid`** suppresses the time grid inside every gap window. Set the tint from the graphical editor via right-click; drag the top/bottom edges to resize, the center to move.
 
 ### Info Box Object
 ```js
