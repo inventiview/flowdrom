@@ -1254,6 +1254,9 @@
     if (item.kind === 'laneGroup') addRow(menu, '☷  Edit members…', () => { closeMenu(); startGroupSelect(item.index); });
     if (item.kind !== 'title') addRow(menu, '⟶  Go to JSON definition', () => { closeMenu(); gotoDefinition(item); });
     if (DELETABLE[item.kind]) addRow(menu, '✕  Delete', () => { closeMenu(); deleteItem(item); });
+    // Title isn't an array element (it's a top-level scalar), so it gets its own
+    // removal that drops the `title` field entirely → the diagram renders untitled.
+    if (item.kind === 'title') addRow(menu, '✕  Delete title', () => { closeMenu(); deleteTitle(); });
     if (item.kind === 'lane') {
       const refs = countLaneRefs(model, parseLanePrefix(model.lanes[item.index]).clean);
       addRow(menu, '✕  Delete lane' + (refs ? ' (+ ' + refs + ' refs)' : ''), () => { closeMenu(); deleteLaneAction(item); });
@@ -1634,6 +1637,17 @@
     if (text == null) return;
     exitDrag();
     applyText(text);
+  }
+  // Remove the top-level `title` scalar (deleteTopLevelKey is array-only). applyText
+  // re-canonizes, so reserializing the model without `title` is enough. (#title)
+  function deleteTitle() {
+    const ed = getEditor(); const J = getJSON5();
+    if (!ed || !J) return;
+    let model; try { model = J.parse(ed.getValue()); } catch (e) { return; }
+    if (model.title == null) return;
+    delete model.title;
+    exitDrag();
+    applyText(J.stringify(model));
   }
   function gotoLegend() {
     const ed = getEditor();
@@ -3220,6 +3234,15 @@
     addRow(menu, '+  Lane here', () => { closeMenu(); addLaneAt(clientX, clientY); });
     addRow(menu, '+  Legend entry', () => { closeMenu(); addLegendEntry(clientX, clientY); });
     addRow(menu, '+  Lane group (select lanes)', () => { closeMenu(); startGroupSelect(); });
+    // A titleless diagram has no title element to click, so offer adding one here.
+    const model = parseModel();
+    if (model && !(model.title && String(model.title).trim())) {
+      addRow(menu, '+  Title', () => {
+        closeMenu();
+        const ed = getEditor(); if (!ed) return;
+        showTextInput(clientX, clientY, '', (v) => { const t = (v || '').trim(); if (t) applyText(setTopField(ed.getValue(), 'title', quote(t))); }, 'Diagram title', true);
+      });
+    }
     addRow(menu, '⚙  Styling…', () => { closeMenu(); showOptionsPanel(); });
   }
 

@@ -303,7 +303,7 @@ activation-style bars and sub-states:
   ],
   states: [
     { lane: 'HN', label: 'busy', color: 'yellow', fromTime: 0, toTime: 6 },
-    { lane: 'HN', label: '^block', color: 'red', width: 14, fromTime: 2, toTime: 5 },
+    { lane: 'HN', label: '^block', color: 'red', width: 14, fromTime: 3.5, toTime: 5 },
   ],
 }
 ```

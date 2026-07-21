@@ -584,10 +584,14 @@ function renderGraph(modelOverride, measureOnly) {
     // Title and group labels may use '|' for line breaks; reserve extra vertical
     // room so the multi-line versions push content down / clear the level above
     // rather than overlapping it. (#12)
-    const titleText = input.title || "Enhanced Transaction Graph";
-    const titleLines = String(titleText).split('|');
+    // No title means no title: an empty/absent title draws nothing (rather than
+    // the old "Enhanced Transaction Graph" placeholder) and only reserves a small
+    // top margin instead of the full title band. (#title)
+    const hasTitle = input.title != null && String(input.title).trim() !== '';
+    const titleText = hasTitle ? String(input.title) : '';
+    const titleLines = titleText.split('|');
     const titleLineHeight = textCfg.title.size * 1.2;
-    const titleHeight = 40 + (titleLines.length - 1) * titleLineHeight;
+    const titleHeight = hasTitle ? 40 + (titleLines.length - 1) * titleLineHeight : 12;
 
     const groupLabelLineHeight = textCfg.laneGroup.size * 1.2;
     const maxGroupLabelLines = groupHierarchy.length
@@ -852,27 +856,29 @@ function renderGraph(modelOverride, measureOnly) {
     tempSvg.style.maxWidth = '100%';
     tempSvg.style.height = 'auto';
 
-    // Add title with minimal spacing
-    const titleY = 25;
-    const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    title.setAttribute("x", (svgWidth / 2) - 80);
-    title.setAttribute("y", titleY);
-    title.setAttribute("text-anchor", "middle");
-    title.setAttribute("font-size", textCfg.title.size);
-    title.setAttribute("font-weight", "bold");
-    title.setAttribute("fill", textCfg.title.color);
-    title.setAttribute("data-kind", "title");
-    title.setAttribute("data-index", 0);
-    // Title may use '|' for line breaks; stack downward from titleY (titleHeight
-    // above reserved room for the extra lines). (#12)
-    titleLines.forEach((ln, i) => {
-      const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-      tspan.setAttribute("x", (svgWidth / 2) - 80);
-      tspan.setAttribute("dy", i === 0 ? 0 : titleLineHeight);
-      tspan.textContent = ln;
-      title.appendChild(tspan);
-    });
-    tempSvg.appendChild(title);
+    // Add title with minimal spacing (skipped entirely when there is no title).
+    if (hasTitle) {
+      const titleY = 25;
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      title.setAttribute("x", (svgWidth / 2) - 80);
+      title.setAttribute("y", titleY);
+      title.setAttribute("text-anchor", "middle");
+      title.setAttribute("font-size", textCfg.title.size);
+      title.setAttribute("font-weight", "bold");
+      title.setAttribute("fill", textCfg.title.color);
+      title.setAttribute("data-kind", "title");
+      title.setAttribute("data-index", 0);
+      // Title may use '|' for line breaks; stack downward from titleY (titleHeight
+      // above reserved room for the extra lines). (#12)
+      titleLines.forEach((ln, i) => {
+        const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+        tspan.setAttribute("x", (svgWidth / 2) - 80);
+        tspan.setAttribute("dy", i === 0 ? 0 : titleLineHeight);
+        tspan.textContent = ln;
+        title.appendChild(tspan);
+      });
+      tempSvg.appendChild(title);
+    }
 
     // Draw grid
     if (showGrid) {
