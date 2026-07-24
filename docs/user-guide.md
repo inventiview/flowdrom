@@ -337,22 +337,29 @@ continues inward to the next state (and on to the lane center if none snaps). If
 snapping would ever reverse or collapse an arrow (very wide boxes on closely
 spaced lanes), that message falls back to the centered arrows automatically.
 
+Below, the global default is `boundary`. Every message meeting **HN**'s `busy`
+state stops at its edge, while **CA0**'s `wait` state sets `attach: 'center'` and
+so lets the same arrows pass straight through to its lifeline — the two sides show
+the two behaviors side by side.
+
 ```js
 {
-  title: 'Boundary-attached messages',
+  title: 'Boundary attach (with a per-state override)',
   options: { graph: { messageAttach: 'boundary' } },
   lanes: ['CA0', 'HN'],
   messages: [
-    { path: 'CA0->HN', label: 'Req', color: 'purple', fromTime: 1, toTime: 2 },
+    { path: 'CA0->HN', label: 'Req', color: 'purple', fromTime: 2, toTime: 3 },
     { path: 'HN->CA0', label: 'Resp', color: 'green', fromTime: 4, toTime: 5 },
   ],
   states: [
-    { lane: 'HN', label: 'busy', color: 'yellow', fromTime: 1, toTime: 5 },
-    // This one opts out and keeps centered arrows:
-    { lane: 'CA0', label: 'wait', color: 'blue', attach: 'center', fromTime: 2, toTime: 4 },
+    { lane: 'HN', label: 'busy', color: 'yellow', fromTime: 1, toTime: 6 },
+    // Opts out of the global boundary snap — arrows still reach its lifeline:
+    { lane: 'CA0', label: 'wait', color: 'blue', attach: 'center', fromTime: 1, toTime: 6 },
   ],
 }
 ```
+
+![Boundary attach with a per-state override](images/02-boundary-messages.svg)
 
 ### 3. Multi-Lane Systems
 
