@@ -310,6 +310,50 @@ activation-style bars and sub-states:
 
 ![Thin and nested states](images/02-thin-nested-states.svg)
 
+#### Message attachment (boundary vs. center)
+
+By default a message runs to the **center** of its target lane — so when it lands
+inside a state box, the arrow crosses over the box and its label. Turn on
+boundary attachment and the arrow instead stops at the state's **near edge** (the
+side facing the sender), leaving the label clear. The arrowhead lands cleanly on
+the box, the way an activation bar is drawn in UML.
+
+- **Global default** — `options.graph.messageAttach: 'boundary'` (or the **Snap
+  messages to state boundaries** checkbox under right-click → **Styling…**)
+  applies it to every state. Leave it off (or `'center'`) for the classic look.
+- **Per-state override** — each state can set its own `attach`, which wins over
+  the global: `'boundary'` always snaps, `'center'` always lets messages pass
+  through to the lifeline, and `'default'` (or omitting the field) inherits the
+  global. Right-click a state → **Message attach…** to set it visually.
+
+A message that lands exactly on a state's **begin or end time** — the box's top
+or bottom edge — still reaches the lane center: at that edge the box already
+meets the lifeline, so there's nothing to clear. Only messages that fall *inside*
+the state's span get snapped to the side.
+
+For **nested** states, a message is captured by the outermost box whose `attach`
+resolves to `'boundary'`; a box set to `'center'` is transparent, so the message
+continues inward to the next state (and on to the lane center if none snaps). If
+snapping would ever reverse or collapse an arrow (very wide boxes on closely
+spaced lanes), that message falls back to the centered arrows automatically.
+
+```js
+{
+  title: 'Boundary-attached messages',
+  options: { graph: { messageAttach: 'boundary' } },
+  lanes: ['CA0', 'HN'],
+  messages: [
+    { path: 'CA0->HN', label: 'Req', color: 'purple', fromTime: 1, toTime: 2 },
+    { path: 'HN->CA0', label: 'Resp', color: 'green', fromTime: 4, toTime: 5 },
+  ],
+  states: [
+    { lane: 'HN', label: 'busy', color: 'yellow', fromTime: 1, toTime: 5 },
+    // This one opts out and keeps centered arrows:
+    { lane: 'CA0', label: 'wait', color: 'blue', attach: 'center', fromTime: 2, toTime: 4 },
+  ],
+}
+```
+
 ### 3. Multi-Lane Systems
 
 Real systems often involve multiple components. Here's a three-lane system:
@@ -624,7 +668,8 @@ options: {
     uniformStateWidth: true,  // make every state box in a lane as wide as that lane's widest
     selfMessageWidth: 70,     // self-message loop distance from the lane, px (default 60)
     laneSpacing: 320,         // lane-to-lane distance in px (default 250)
-    autonumber: true          // prefix each message label with a sequence number
+    autonumber: true,         // prefix each message label with a sequence number
+    messageAttach: 'boundary' // snap message ends to state boundaries ('center' = default)
   }
 }
 ```
@@ -637,6 +682,7 @@ options: {
 - **`selfMessageWidth`** — how far a [self message's](#self-messages--back-arrows) loop bulges from its lane, in px (default 60). One knob for the whole diagram, so loops stay visually consistent.
 - **`autonumber`** — prefixes each message label with a sequence number, ordered by start time (ties broken by definition order). Computed at render time, so numbers stay correct as you add, reorder, or re-time messages — they're never written into the label text.
 - **`laneSpacing`** — the horizontal distance between main lanes in px (default 250). The [PlantUML importer](#importing-from-plantuml) raises it automatically when long message labels wouldn't fit their arrows; hand-authored diagrams keep the default unless you set it.
+- **`messageAttach`** — where a message that lands inside a state box ends: `'boundary'` stops the arrow at the state's near edge (so it no longer crosses the box's label), or `'center'` (the default) keeps the classic arrow to the lifeline center. This is the whole-diagram default; any state can override it — see [Message attachment](#message-attachment-boundary-vs-center).
 
 Set these visually under right-click → **Styling…** → **Graph styling**, or edit the `options.graph` block directly.
 

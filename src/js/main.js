@@ -174,7 +174,7 @@ const SECTION_KEY_ORDER = {
   timeGaps: ['fromTime', 'toTime', 'label', 'background'],
   infoBoxes: ['lane', 'time', 'background', 'tether', 'text'],
   messages: ['path', 'label', 'color', 'style', 'fromTime', 'toTime'],
-  states: ['lane', 'label', 'color', 'width', 'fromTime', 'toTime'],
+  states: ['lane', 'label', 'color', 'width', 'attach', 'fromTime', 'toTime'],
   legend: ['label', 'color', 'style'],
 };
 
@@ -298,6 +298,32 @@ function messageNumbers(messages) {
   return out;
 }
 
+// Pure boundary-snap core (exported for tests). Given a lane center, the other
+// endpoint's x, and the state boxes on this lane whose span contains the
+// endpoint's y — each { x, w, attach } with `attach` already resolved to
+// 'boundary' | 'center' — walk widest (outermost) first and return the near edge
+// of the first 'boundary' box (facing the other end); 'center' passes through;
+// none -> lane center. (#boundary-msg)
+function snapEndpointPure(laneCenterX, otherX, boxes) {
+  const sorted = (boxes || []).slice().sort((a, b) => b.w - a.w);
+  for (let i = 0; i < sorted.length; i++) {
+    if (sorted[i].attach === 'boundary') {
+      return (otherX >= laneCenterX) ? (sorted[i].x + sorted[i].w) : sorted[i].x;
+    }
+  }
+  return laneCenterX;
+}
+
+// Pure inversion guard (exported for tests): if snapping reversed the arrow's
+// direction or collapsed it below `min` px, revert both ends to their lane
+// centers. Returns [x1, x2]. (#boundary-msg)
+function guardInversion(cx1, cx2, x1, x2, min) {
+  const m = (typeof min === 'number') ? min : 8;
+  const dir = Math.sign(cx2 - cx1);
+  if (dir !== 0 && (Math.sign(x2 - x1) !== dir || Math.abs(x2 - x1) < m)) return [cx1, cx2];
+  return [x1, x2];
+}
+
 // Parse a state label: a leading '^' renders the text vertically (rotated 90°,
 // reading bottom-up) — the natural fit for thin activation-style bars (pairs
 // with the state's optional `width` field). '|' still splits lines. Pure.
@@ -389,6 +415,18 @@ function renderGraph(modelOverride, measureOnly) {
     // When on, every state box in a lane is widened to the widest state in that
     // lane, so the states line up as a column. Width is determined per lane.
     const uniformStateWidth = !!graphOpts.uniformStateWidth;
+    // Message-endpoint attachment (options.graph.messageAttach): 'boundary' snaps
+    // a message that lands inside a state to that state's near edge (so the arrow
+    // stops at the box instead of crossing the centered label); 'center' (default)
+    // keeps the classic center-to-center arrows. Per-state `attach` overrides this
+    // global. Default 'center' keeps existing diagrams unchanged. (#boundary-msg)
+    const messageAttach = (graphOpts.messageAttach === 'boundary') ? 'boundary' : 'center';
+    // Resolve a state's effective attachment: its own `attach` unless 'default'
+    // (or unset), in which case it inherits the global. Used by the snap pass. (#boundary-msg)
+    const resolveStateAttach = (state) => {
+      const a = state && state.attach;
+      return (a === 'boundary' || a === 'center') ? a : messageAttach;
+    };
     // When on, every time-gap label frame is stretched to span all lanes (a
     // full-width divider) rather than hugging its text. One graph-wide knob so
     // all gaps look consistent. (#time-gap)
@@ -968,6 +1006,127 @@ function renderGraph(modelOverride, measureOnly) {
     const messageGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     const infoBoxGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
+    // ---- State box geometry (computed up-front) -----------------------------
+    // Message endpoints can snap to a state's edge (options.graph.messageAttach /
+    // per-state `attach`), so every state box must be measured BEFORE messages are
+    // drawn. This block is the single source of truth for box geometry: the
+    // state-draw loop below consumes the same rects, so snap targets and the drawn
+    // boxes can never drift apart. (#boundary-msg)
+
+    // Uniform-width column: widen every auto-width state in a lane to the lane's
+    // widest so the boxes align. Explicit-width bars opt out entirely. (graph)
+    const laneStateMaxWidth = {};
+    if (uniformStateWidth && showStates) {
+      const minStateBoxWidth = 50, paddingX = 6;
+      states.forEach((state) => {
+        // Explicit-width states (activation bars) neither widen the column nor
+        // get widened by it — their width is a deliberate statement. (#activation)
+        if (typeof state.width === 'number' && state.width > 0) return;
+        const fontSize = textCfg.state.size;
+        const lineHeight = fontSize * 1.2;
+        const pl = parseStateLabel(state.label);
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", 0); t.setAttribute("class", "state-label"); t.style.fontSize = fontSize + "px";
+        pl.lines.forEach((line, i) => {
+          const ts = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          ts.setAttribute("x", 0); ts.setAttribute("dy", i === 0 ? 0 : lineHeight); ts.textContent = line;
+          t.appendChild(ts);
+        });
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        g.appendChild(t); tempSvg.appendChild(g);
+        const bb = t.getBBox();
+        // A vertical ('^') label occupies its measured HEIGHT across the lane.
+        const w = Math.max(minStateBoxWidth, (pl.vertical ? bb.height : bb.width) + 2 * paddingX);
+        tempSvg.removeChild(g);
+        laneStateMaxWidth[state.lane] = Math.max(laneStateMaxWidth[state.lane] || 0, w);
+      });
+    }
+
+    // Measure + place every state box, in model order, keyed by index. Mirrors
+    // the exact width/rect math the draw loop used to do inline, so the boxes it
+    // reports are the boxes that get drawn. (#boundary-msg)
+    function computeStateBoxes() {
+      const out = [];
+      if (!showStates) return out;
+      const minStateBoxWidth = 50, paddingX = 6, statePadY = 4;
+      states.forEach((state, stateIndex) => {
+        const laneKey = lanes.find((l) => parseLaneNameOffset(l).cleanLane === state.lane);
+        const laneXc = lanePositions[laneKey] ?? startX;
+        const stateFontSize = textCfg.state.size;
+        const pLabel = parseStateLabel(state.label);
+        const stateLines = pLabel.lines;
+        const stateLineHeight = stateFontSize * 1.2;
+        const provisionalTextY = laneTop + state.fromTime * timeStep + 8 + stateLineHeight / 2;
+
+        const measureG = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        const measureT = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        measureT.setAttribute("x", laneXc);
+        measureT.setAttribute("y", provisionalTextY);
+        measureT.setAttribute("class", "state-label");
+        measureT.style.fontSize = stateFontSize + "px";
+        stateLines.forEach((line, i) => {
+          const ts = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          ts.setAttribute("x", laneXc);
+          ts.setAttribute("dy", i === 0 ? 0 : stateLineHeight);
+          ts.textContent = line;
+          measureT.appendChild(ts);
+        });
+        measureG.appendChild(measureT); tempSvg.appendChild(measureG);
+        const bb = measureT.getBBox();
+        tempSvg.removeChild(measureG);
+        const stateBbox = { x: bb.x, y: bb.y, width: bb.width, height: bb.height };
+
+        const textW = pLabel.vertical ? stateBbox.height : stateBbox.width;
+        const textH = pLabel.vertical ? stateBbox.width : stateBbox.height;
+        let boxWidth = Math.max(pLabel.vertical ? 0 : minStateBoxWidth, textW + 2 * paddingX);
+        if (typeof state.width === 'number' && state.width > 0) boxWidth = state.width;
+        else if (uniformStateWidth && laneStateMaxWidth[state.lane]) boxWidth = laneStateMaxWidth[state.lane];
+        const boxX = laneXc - (boxWidth / 2);
+
+        let rectY, rectH;
+        if (state.fromTime === state.toTime) {
+          rectY = laneTop + state.fromTime * timeStep;
+          rectH = textH + 2 * statePadY;
+        } else {
+          const fromGridY = laneTop + state.fromTime * timeStep;
+          const toGridY = laneTop + state.toTime * timeStep;
+          const boxTop = Math.min(fromGridY, toGridY);
+          const boxHeight = Math.abs(toGridY - fromGridY);
+          rectH = Math.max(boxHeight, textH + 2 * statePadY);
+          rectY = boxTop - (rectH > boxHeight ? (rectH - boxHeight) / 2 : 0);
+        }
+        const rectCenterY = rectY + rectH / 2;
+
+        out.push({
+          stateIndex, lane: state.lane, laneX: laneXc,
+          pLabel, stateLines, stateFontSize, stateLineHeight, provisionalTextY,
+          stateBbox, boxX, boxWidth, rectY, rectH, rectCenterY,
+        });
+      });
+      return out;
+    }
+    const stateBoxes = computeStateBoxes();
+    const stateBoxByIndex = {};
+    stateBoxes.forEach((b) => { stateBoxByIndex[b.stateIndex] = b; });
+
+    // Snap a message endpoint (on lane `laneClean`, at pixel `y`, with its other
+    // end near `otherX`) to a state edge per the walk rule: of the states
+    // containing y, take the widest (outermost) first; the first whose resolved
+    // attach is 'boundary' captures the endpoint at its near edge; 'center' passes
+    // through to the next inner state; none -> lane center. Returns the lane
+    // center whenever nothing snaps, so 'center' mode is a pure no-op and existing
+    // diagrams are byte-for-byte unchanged. (#boundary-msg)
+    function snapMessageEndpoint(laneClean, laneCenterX, y, otherX) {
+      // Strictly inside the box: an endpoint sitting exactly on the top/bottom
+      // edge (the state's begin/end time) already meets the box where it crosses
+      // the lifeline, so it reaches the lane center rather than being pushed
+      // sideways. Exclusive bounds handle both edges without a special case. (#boundary-msg)
+      const boxes = stateBoxes
+        .filter((b) => b.lane === laneClean && y > b.rectY && y < b.rectY + b.rectH)
+        .map((b) => ({ x: b.boxX, w: b.boxWidth, attach: resolveStateAttach(states[b.stateIndex]) }));
+      return snapEndpointPure(laneCenterX, otherX, boxes);
+    }
+
     // Function to calculate label position based on leading/trailing spaces
     function calculateLabelPosition(labelText, fromX, fromY, toX, toY) {
       const originalLabel = labelText || '';
@@ -1038,6 +1197,9 @@ function renderGraph(modelOverride, measureOnly) {
     // Draw messages with space-based label positioning. Paths may be written
     // forward ('A->B') or backward ('B<-A'); same-lane paths are self messages
     // (see parsePath). (#self-message)
+    // Final (possibly boundary-snapped) endpoints per message, exposed on the
+    // layout so the editor's handles/hit-test/guides sit on the drawn arrow. (#boundary-msg)
+    const messageEndpoints = {};
     messages.forEach((msg, msgIndex) => {
       const pp = parsePath(msg.path);
       if (!pp) return; // no arrow in the path: nothing sensible to draw
@@ -1065,12 +1227,22 @@ function renderGraph(modelOverride, measureOnly) {
         if (Math.abs(yb - fromY) < timeStep * 0.25) yb = fromY + timeStep * 0.25; // keep the loop readable
         const xf = fromX + dir * w;
         const rr = Math.min(8, w / 2, Math.abs(yb - fromY) / 2);
-        const dPath = 'M ' + fromX + ' ' + fromY +
+        // Boundary attach: pull the loop's two near ends onto the state edge on
+        // the bulge side (otherX points toward the bulge). A box wider than the
+        // loop would push the end past the vertical segment, so revert that end
+        // to the lane center. Default 'center' mode leaves both at fromX. (#boundary-msg)
+        const loopInner = xf - dir * rr;
+        let nearFromX = snapMessageEndpoint(pp.from, fromX, fromY, fromX + dir);
+        let nearToX = snapMessageEndpoint(pp.from, fromX, yb, fromX + dir);
+        if (dir > 0) { if (nearFromX > loopInner) nearFromX = fromX; if (nearToX > loopInner) nearToX = fromX; }
+        else { if (nearFromX < loopInner) nearFromX = fromX; if (nearToX < loopInner) nearToX = fromX; }
+        messageEndpoints[msgIndex] = { fromX: nearFromX, fromY: fromY, toX: nearToX, toY: yb, self: true, side: pp.side, laneX: fromX, xf: xf };
+        const dPath = 'M ' + nearFromX + ' ' + fromY +
           ' L ' + (xf - dir * rr) + ' ' + fromY +
           ' Q ' + xf + ' ' + fromY + ' ' + xf + ' ' + (fromY + rr) +
           ' L ' + xf + ' ' + (yb - rr) +
           ' Q ' + xf + ' ' + yb + ' ' + (xf - dir * rr) + ' ' + yb +
-          ' L ' + fromX + ' ' + yb;
+          ' L ' + nearToX + ' ' + yb;
         const loop = document.createElementNS("http://www.w3.org/2000/svg", "path");
         loop.setAttribute("d", dPath);
         loop.setAttribute("fill", "none");
@@ -1141,11 +1313,22 @@ function renderGraph(modelOverride, measureOnly) {
         return;
       }
 
+      // Boundary attach for a straight message: snap each end into a state edge,
+      // facing the OTHER end's lane center (whose side is stable even if it also
+      // snaps, since a box is centered on its lane). If snapping would reverse or
+      // collapse the arrow (wide boxes, close lanes), revert both ends. 'center'
+      // mode returns the lane centers, so this is a no-op there. (#boundary-msg)
+      const guarded = guardInversion(fromX, toX,
+        snapMessageEndpoint(pp.from, fromX, fromY, toX),
+        snapMessageEndpoint(pp.to, toX, toY, fromX));
+      const sFromX = guarded[0], sToX = guarded[1];
+      messageEndpoints[msgIndex] = { fromX: sFromX, fromY: fromY, toX: sToX, toY: toY, self: false, side: null };
+
       // Draw the message line
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", fromX);
+      line.setAttribute("x1", sFromX);
       line.setAttribute("y1", fromY);
-      line.setAttribute("x2", toX);
+      line.setAttribute("x2", sToX);
       line.setAttribute("y2", toY);
       line.setAttribute("stroke", msg.color || "black");
       line.setAttribute("class", "arrow" + (msg.style === "dashed" ? " dashed" : ""));
@@ -1155,16 +1338,17 @@ function renderGraph(modelOverride, measureOnly) {
       messageGroup.appendChild(line);
       line.setAttribute("marker-end", `url(#${ensureArrowMarker(msg.color)})`);
 
-      // Calculate label position based on spaces
-      const labelPosition = calculateLabelPosition(msg.label, fromX, fromY, toX, toY);
+      // Calculate label position based on spaces (on the snapped, drawn line so
+      // the label re-centers on the shortened arrow). (#boundary-msg)
+      const labelPosition = calculateLabelPosition(msg.label, sFromX, fromY, sToX, toY);
       // Prefix the autonumber; draws even for an arrow-only message. (#autonumber)
       let displayLabel = labelPosition.cleanLabel;
       if (autonumber && msgNumbers[msgIndex]) displayLabel = msgNumbers[msgIndex] + ' ' + displayLabel;
 
       // Only create label if there's actual text content (or a number to show)
       if (displayLabel.trim()) {
-        // Calculate arrow angle for text rotation
-        const dx = toX - fromX;
+        // Calculate arrow angle for text rotation (snapped line). (#boundary-msg)
+        const dx = sToX - sFromX;
         const dy = toY - fromY;
         let angle = Math.atan2(dy, dx) * 180 / Math.PI;
         if (angle > 90 || angle < -90) {
@@ -1229,53 +1413,23 @@ function renderGraph(modelOverride, measureOnly) {
       }
     });
 
-    // Uniform state widths (options.graph.uniformStateWidth): a first measuring
-    // pass finds the widest state box per lane, so the draw loop below can widen
-    // every state in that lane to match — same metrics (font, padding, floor) as
-    // the loop's own sizing. (graph)
-    const laneStateMaxWidth = {};
-    if (uniformStateWidth && showStates) {
-      const minStateBoxWidth = 50, paddingX = 6;
-      states.forEach((state) => {
-        // Explicit-width states (activation bars) neither widen the column nor
-        // get widened by it — their width is a deliberate statement. (#activation)
-        if (typeof state.width === 'number' && state.width > 0) return;
-        const fontSize = textCfg.state.size;
-        const lineHeight = fontSize * 1.2;
-        const pl = parseStateLabel(state.label);
-        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        t.setAttribute("x", 0); t.setAttribute("class", "state-label"); t.style.fontSize = fontSize + "px";
-        pl.lines.forEach((line, i) => {
-          const ts = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-          ts.setAttribute("x", 0); ts.setAttribute("dy", i === 0 ? 0 : lineHeight); ts.textContent = line;
-          t.appendChild(ts);
-        });
-        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        g.appendChild(t); tempSvg.appendChild(g);
-        const bb = t.getBBox();
-        // A vertical ('^') label occupies its measured HEIGHT across the lane.
-        const w = Math.max(minStateBoxWidth, (pl.vertical ? bb.height : bb.width) + 2 * paddingX);
-        tempSvg.removeChild(g);
-        laneStateMaxWidth[state.lane] = Math.max(laneStateMaxWidth[state.lane] || 0, w);
-      });
-    }
-
     // Draw states. Longer-duration states first, so a state fully inside
     // another on the same lane (a sub-state / nested activation bar) renders on
     // top of its container and stays visible. data-index keeps the model order,
-    // so the editor is unaffected by the draw order. (#activation)
+    // so the editor is unaffected by the draw order. Geometry (box + text
+    // placement) comes entirely from the up-front computeStateBoxes() pass, the
+    // single source of truth shared with the message-snap logic. (#activation)
     const stateDur = (s) => Math.abs(((s.toTime != null) ? s.toTime : s.fromTime) - s.fromTime);
     states.map((s, i) => i).sort((a, b) => stateDur(states[b]) - stateDur(states[a])).forEach((stateIndex) => {
-      const state = states[stateIndex];
       if (!showStates) return;
-      // Find the original lane string (with prefix) for this state
-      const laneKey = lanes.find(l => {
-        const { cleanLane } = parseLaneNameOffset(l);
-        return cleanLane === state.lane;
-      });
-      const laneX = lanePositions[laneKey] ?? startX;
-      const fromY = laneTop + state.fromTime * timeStep;
-      const toY = laneTop + state.toTime * timeStep;
+      const geom = stateBoxByIndex[stateIndex];
+      if (!geom) return;
+      const state = states[stateIndex];
+      const laneX = geom.laneX, pLabel = geom.pLabel, stateLines = geom.stateLines,
+            stateFontSize = geom.stateFontSize, stateLineHeight = geom.stateLineHeight,
+            provisionalTextY = geom.provisionalTextY, stateBbox = geom.stateBbox,
+            stateBoxX = geom.boxX, stateBoxWidth = geom.boxWidth,
+            rectY = geom.rectY, rectH = geom.rectH, rectCenterY = geom.rectCenterY;
 
       function getPastelColor(color) {
         const colorMap = {
@@ -1299,24 +1453,17 @@ function renderGraph(modelOverride, measureOnly) {
         const tint = (c) => Math.round(c + (255 - c) * 0.72);
         return `rgb(${tint(rgb.r)}, ${tint(rgb.g)}, ${tint(rgb.b)})`;
       }
-      
+
       const stateSubGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
       stateSubGroup.setAttribute("data-kind", "state");
       stateSubGroup.setAttribute("data-index", stateIndex);
-      const stateFontSize = textCfg.state.size;
-      const pLabel = parseStateLabel(state.label); // '^' prefix = vertical text (#activation)
-      const stateLines = pLabel.lines;
-      const stateLineHeight = stateFontSize * 1.2;
 
       const stateText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      const provisionalTextY = fromY + 8 + stateLineHeight / 2; // measured here, repositioned below
       stateText.setAttribute("x", laneX);
-      stateText.setAttribute("y", provisionalTextY);
       stateText.setAttribute("class", "state-label");
       // Inline style (not attribute) so it wins over any document .state-label
-      // rule and getBBox measures the scaled size correctly.
+      // rule and getBBox measured the scaled size correctly in the pre-pass.
       stateText.style.fontSize = stateFontSize + "px";
-
       stateLines.forEach((line, i) => {
         const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
         tspan.setAttribute("x", laneX);
@@ -1325,72 +1472,25 @@ function renderGraph(modelOverride, measureOnly) {
         stateText.appendChild(tspan);
       });
 
-      stateSubGroup.appendChild(stateText);
-      tempSvg.appendChild(stateSubGroup);
-      const stateBbox = stateText.getBBox();
-      tempSvg.removeChild(stateSubGroup);
-
-      const minStateBoxWidth = 50;
-      const paddingX = 6;
-      // Text footprint on each axis — a vertical ('^') label swaps the measured
-      // box, so a thin bar fits the text height across the lane. (#activation)
-      const textW = pLabel.vertical ? stateBbox.height : stateBbox.width;
-      const textH = pLabel.vertical ? stateBbox.width : stateBbox.height;
-      // Always size to the measured text (+ padding) so it never overflows the
-      // box; keep minStateBoxWidth only as a floor so short labels still get a
-      // reasonably sized box — vertical labels skip the floor (thin is their
-      // point). (A small character count can still be wide — large fonts or wide
-      // glyphs — so we must not key off line length.)
-      let stateBoxWidth = Math.max(pLabel.vertical ? 0 : minStateBoxWidth, textW + 2 * paddingX);
-      // An explicit `width` (activation-style bar) beats auto AND uniform sizing;
-      // otherwise widen to the lane's widest state when uniform widths are on
-      // (centered on the lifeline, so the boxes align as a column). (graph)
-      if (typeof state.width === 'number' && state.width > 0) stateBoxWidth = state.width;
-      else if (uniformStateWidth && laneStateMaxWidth[state.lane]) stateBoxWidth = laneStateMaxWidth[state.lane];
-
-      const stateBoxX = laneX - (stateBoxWidth / 2);
-      
       const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       rect.setAttribute("x", stateBoxX);
       rect.setAttribute("width", stateBoxWidth);
-      
-      // Vertical placement. The rect is sized to the time span but never smaller
-      // than the measured text (+ padding); when it must grow, it grows evenly
-      // around the span. The text is then centered in the FINAL rect by shifting
-      // its measured bbox — exact for any font size and line count, replacing the
-      // old fixed-offset math that was tuned for the 11px default and drifted the
-      // letters past the box edges at larger sizes. (#state-text-metrics)
-      const statePadY = 4;
-      let rectY, rectH;
-      if (state.fromTime === state.toTime) {
-        rectY = laneTop + state.fromTime * timeStep;
-        rectH = textH + 2 * statePadY;
-      } else {
-        const fromGridY = laneTop + state.fromTime * timeStep;
-        const toGridY = laneTop + state.toTime * timeStep;
-        const boxTop = Math.min(fromGridY, toGridY);
-        const boxHeight = Math.abs(toGridY - fromGridY);
-        rectH = Math.max(boxHeight, textH + 2 * statePadY);
-        rectY = boxTop - (rectH > boxHeight ? (rectH - boxHeight) / 2 : 0);
-      }
       rect.setAttribute("y", rectY);
       rect.setAttribute("height", rectH);
       // Center the text block on the rect center via its measured bbox (exact for
       // any font size / line count), then rotate a vertical label 90° about that
       // center — getBBox is pre-transform, so center-then-rotate stays centered.
       // +90 so the text reads DOWNWARD (top-to-bottom), following the time axis.
-      const rectCenterY = rectY + rectH / 2;
       const stateTextTop = rectCenterY - stateBbox.height / 2;
       stateText.setAttribute("y", provisionalTextY + (stateTextTop - stateBbox.y));
       if (pLabel.vertical) stateText.setAttribute("transform", "rotate(90 " + laneX + " " + rectCenterY + ")");
-      
+
       rect.setAttribute("fill", getPastelColor(state.color || 'yellow'));
       rect.setAttribute("stroke", "#aaa");
       rect.setAttribute("stroke-width", "1");
       rect.setAttribute("rx", "4");
       rect.setAttribute("ry", "4");
 
-      stateSubGroup.innerHTML = '';
       stateSubGroup.appendChild(rect);
       // No <text> node for an empty label: an empty SVG text still exposes a
       // zero-size client rect at its anchor — and with nothing to measure, the
@@ -1781,6 +1881,16 @@ function renderGraph(modelOverride, measureOnly) {
         clean: parseLaneNameOffset(laneStr).cleanLane,
         x: lanePositions[laneStr],
       })),
+      // Final message endpoints after boundary snapping, keyed by message index,
+      // so the editor's handles / hit-test / drag guides land on the drawn arrow
+      // rather than the lane center. Empty in pure 'center' mode. (#boundary-msg)
+      messageEndpoints: messageEndpoints,
+      // State box geometry (diagram units) for the editor's live create/drag
+      // preview, which must snap against the same boxes the renderer used. (#boundary-msg)
+      stateBoxes: stateBoxes.map((b) => ({
+        index: b.stateIndex, lane: b.lane, laneX: b.laneX,
+        x: b.boxX, y: b.rectY, w: b.boxWidth, h: b.rectH,
+      })),
     };
 
     if (measureOnly) {
@@ -2027,6 +2137,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatConfig, jsonLiteral, formatKey, orderedKeys,
     cleanLaneName, computeGroupExtents, resolveTextConfig, migrateLanes,
     parseStateLabel, parsePath, messageNumbers,
+    snapEndpointPure, guardInversion,
     frameEncloses, lifelineSegments,
     TOP_LEVEL_ORDER, SECTION_KEY_ORDER,
   };

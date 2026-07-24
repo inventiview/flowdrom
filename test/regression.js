@@ -683,6 +683,52 @@ section('PlantUML import — plantumlToModel maps the common subset (#plantuml)'
 }
 
 // ---------------------------------------------------------------------------
+section('Boundary messages — snapEndpointPure / guardInversion + serialization (#boundary-msg)');
+{
+  const snap = M.snapEndpointPure, guard = M.guardInversion;
+  // Fallback: no containing boxes -> the endpoint stays at the lane center.
+  eq(snap(100, 200, []), 100, 'boundary: no boxes -> lane center');
+  // Single boundary box (centered on lane 100, width 40 -> edges 80..120): the
+  // endpoint snaps to whichever edge faces the OTHER end.
+  const b = { x: 80, w: 40, attach: 'boundary' };
+  eq(snap(100, 200, [b]), 120, 'boundary: other end on the right -> right edge');
+  eq(snap(100, 0, [b]), 80, 'boundary: other end on the left -> left edge');
+  // A 'center' box is transparent to the walk -> passes through to the center.
+  eq(snap(100, 200, [{ x: 80, w: 40, attach: 'center' }]), 100, 'boundary: center box -> pass through');
+  // Nested: outer 'center' + inner 'boundary' -> the inner edge, and the walk is
+  // widest-first regardless of the array order it is handed.
+  const outerC = { x: 70, w: 60, attach: 'center' }, innerB = { x: 85, w: 30, attach: 'boundary' };
+  eq(snap(100, 200, [outerC, innerB]), 115, 'boundary: outer center passes through to inner boundary edge');
+  eq(snap(100, 200, [innerB, outerC]), 115, 'boundary: walk is widest-first regardless of array order');
+  // Nested: the outermost 'boundary' short-circuits before any inner box.
+  const outerB = { x: 70, w: 60, attach: 'boundary' };
+  eq(snap(100, 200, [outerB, innerB]), 130, 'boundary: outermost boundary wins (short-circuit)');
+
+  // Inversion guard.
+  eq(guard(100, 300, 120, 280), [120, 280], 'guard: a valid (shortened) snap is kept');
+  eq(guard(100, 300, 320, 280), [100, 300], 'guard: a reversed arrow reverts both ends to centers');
+  eq(guard(100, 130, 118, 122), [100, 130], 'guard: a collapsed arrow reverts to centers');
+  eq(guard(300, 100, 280, 120), [280, 120], 'guard: a right-to-left arrow is kept when direction is preserved');
+
+  // Serialization: `attach` sits between `width` and `fromTime` in the state key
+  // order, and both the per-state field and the global option round-trip.
+  const so = M.SECTION_KEY_ORDER.states;
+  ok(so.indexOf('attach') > so.indexOf('width') && so.indexOf('attach') < so.indexOf('fromTime'),
+     'serialization: attach is ordered after width, before fromTime');
+  const model = {
+    options: { graph: { messageAttach: 'boundary' } },
+    lanes: ['A', 'B'],
+    messages: [{ path: 'A->B', fromTime: 0, toTime: 1 }],
+    states: [{ lane: 'B', label: 'busy', attach: 'boundary', fromTime: 0, toTime: 2 }],
+  };
+  const out = M.formatConfig(model);
+  ok(parses(out, 'boundary: formatConfig output is valid JSON5'), 'serialization: formatConfig stays valid with attach + messageAttach');
+  const rt = JSON5.parse(out);
+  eq(rt.states[0].attach, 'boundary', 'serialization: per-state attach round-trips');
+  eq(rt.options.graph.messageAttach, 'boundary', 'serialization: global messageAttach round-trips');
+}
+
+// ---------------------------------------------------------------------------
 console.log(`\n${'='.repeat(60)}\n${pass} passed, ${fail} failed`);
 if (fail) { console.error('\nFAILURES:\n - ' + failures.join('\n - ')); process.exit(1); }
 console.log('All green.');

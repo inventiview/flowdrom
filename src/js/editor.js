@@ -506,6 +506,44 @@
   }
   function timeToY(t) { const L = layout(); return L.laneTop + t * L.timeStep; }
   function yToTime(y) { const L = layout(); return (y - L.laneTop) / L.timeStep; }
+
+  // ---- Message boundary-snap (mirror of main.js) --------------------------
+  // For COMMITTED messages, read the renderer's already-snapped endpoints from
+  // the layout (they include the inversion guard). For LIVE create/drag previews
+  // of not-yet-saved geometry, snap against layout.stateBoxes with the same walk
+  // rule the renderer uses, so the ghost matches what will render. (#boundary-msg)
+  function committedEndpoints(msgIndex) {
+    const L = layout();
+    return (L && L.messageEndpoints && L.messageEndpoints[msgIndex]) || null;
+  }
+  // Snap one endpoint on `laneClean` (lane center `cx`, pixel `y`) toward `otherX`.
+  function snapEndpointX(model, laneClean, cx, y, otherX) {
+    const L = layout();
+    if (!L || !L.stateBoxes || cx == null) return cx;
+    const gAttach = (((model.options || {}).graph || {}).messageAttach === 'boundary') ? 'boundary' : 'center';
+    // Strictly inside: an endpoint on the box's top/bottom edge (the state's
+    // begin/end time) already meets the lifeline there, so it reaches the lane
+    // center instead of snapping sideways. Mirrors main.js. (#boundary-msg)
+    const boxes = L.stateBoxes.filter((b) => b.lane === laneClean && y > b.y && y < b.y + b.h);
+    if (!boxes.length) return cx;
+    boxes.sort((a, b) => b.w - a.w); // widest (outermost) first
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      const st = (model.states || [])[b.index] || {};
+      const eff = (st.attach === 'boundary' || st.attach === 'center') ? st.attach : gAttach;
+      if (eff === 'boundary') return (otherX >= cx) ? (b.x + b.w) : b.x;
+    }
+    return cx;
+  }
+  // Straight message: snap both ends against lane centers, then apply the same
+  // reverse/collapse guard as the renderer. Returns { x1, x2 }.
+  function snapStraightEnds(model, fromLane, cx1, y1, toLane, cx2, y2) {
+    let x1 = snapEndpointX(model, fromLane, cx1, y1, cx2);
+    let x2 = snapEndpointX(model, toLane, cx2, y2, cx1);
+    const dir = Math.sign(cx2 - cx1);
+    if (dir !== 0 && (Math.sign(x2 - x1) !== dir || Math.abs(x2 - x1) < 8)) { x1 = cx1; x2 = cx2; }
+    return { x1: x1, x2: x2 };
+  }
   // Resolve a frame's left/right margins, honoring the legacy single xMargin. (#frames)
   function frameMarginsE(frame) {
     const f = frame || {};
@@ -1040,7 +1078,11 @@
       (model.messages || []).forEach((msg, i) => {
         const pp = pathInfo(msg);
         if (!pp) return;
-        const x1 = laneX(pp.from), y1 = timeToY(msg.fromTime), x2 = laneX(pp.to), y2 = timeToY(msg.toTime);
+        // Follow the renderer's boundary-snapped endpoints so the click target
+        // matches the drawn arrow; fall back to lane centers. (#boundary-msg)
+        const ep = committedEndpoints(i);
+        const y1 = timeToY(msg.fromTime), y2 = timeToY(msg.toTime);
+        const x1 = ep ? ep.fromX : laneX(pp.from), x2 = ep ? ep.toX : laneX(pp.to);
         if (x1 == null || x2 == null) return;
         if (pp.self) {
           // Self loop: test its three segments (out, far vertical, back) with
@@ -1048,11 +1090,11 @@
           const dir = pp.side === 'left' ? -1 : 1;
           const gph = (model.options && model.options.graph) || {};
           const w = (gph.selfMessageWidth > 0) ? gph.selfMessageWidth : 60;
-          const yb = (Math.abs(y2 - y1) < L.timeStep * 0.25) ? y1 + L.timeStep * 0.25 : y2;
-          const xf = x1 + dir * w;
+          const yb = ep ? ep.toY : ((Math.abs(y2 - y1) < L.timeStep * 0.25) ? y1 + L.timeStep * 0.25 : y2);
+          const xf = (ep && ep.xf != null) ? ep.xf : (laneX(pp.from) + dir * w);
           if (distToSeg(p.x, p.y, x1, y1, xf, y1) <= tolMsg ||
               distToSeg(p.x, p.y, xf, y1, xf, yb) <= tolMsg ||
-              distToSeg(p.x, p.y, xf, yb, x1, yb) <= tolMsg) add('message', i);
+              distToSeg(p.x, p.y, xf, yb, x2, yb) <= tolMsg) add('message', i);
         } else if (distToSeg(p.x, p.y, x1, y1, x2, y2) <= tolMsg) add('message', i);
       });
       const top = L.laneTop, bot = L.laneTop + L.maxTime * L.timeStep;
@@ -1223,6 +1265,9 @@
       const w = currentField(model, item, 'width');
       addRow(menu, '↔  Width… ' + (typeof w === 'number' ? '(' + w + 'px)' : '(auto)'),
         () => { setStateWidth(item, clientX, clientY); });
+      const at = currentField(model, item, 'attach');
+      const atLabel = at === 'boundary' ? '(boundary)' : (at === 'center' ? '(center)' : '(default)');
+      addRow(menu, '⤓  Message attach… ' + atLabel + ' ▸', () => { showStateAttachMenu(item, clientX, clientY); });
     }
     if (item.kind === 'frame') {
       const fr = (model.frames || [])[item.index] || {};
@@ -1541,6 +1586,21 @@
     addHeader(menu, 'Line style:');
     addRow(menu, '─  Solid', () => { closeMenu(); onPick('solid'); });
     addRow(menu, '┄  Dashed', () => { closeMenu(); onPick('dashed'); });
+  }
+
+  // Per-state message attachment: Default inherits the global messageAttach;
+  // Snap always attaches messages to this state's boundary; Center always lets
+  // them pass through to the lane center. Writes/clears the `attach` field. A
+  // check marks the current choice. (#boundary-msg)
+  function showStateAttachMenu(item, clientX, clientY) {
+    const model = parseModel();
+    const cur = (model && currentField(model, item, 'attach')) || 'default';
+    const menu = buildMenu(clientX, clientY);
+    addHeader(menu, 'Message attach:');
+    const mark = (v) => (cur === v ? '✓  ' : '     ');
+    addRow(menu, mark('default') + 'Default (global)', () => { closeMenu(); clearItemField(item, 'attach'); });
+    addRow(menu, mark('boundary') + 'Snap to boundary', () => { closeMenu(); setItemField(item, 'attach', quote('boundary')); });
+    addRow(menu, mark('center') + 'Center (through state)', () => { closeMenu(); setItemField(item, 'attach', quote('center')); });
   }
 
   // Prompt for a state's fixed width (activation-style bar). Pre-filled with the
@@ -1961,7 +2021,11 @@
       const msg = (model.messages || [])[dragItem.index];
       if (msg) {
         const pp = pathInfo(msg) || { from: '', to: '', self: false };
-        const x1 = laneX(pp.from), y1 = timeToY(msg.fromTime), x2 = laneX(pp.to), y2 = timeToY(msg.toTime);
+        // Handles sit on the renderer's snapped endpoints so they stay on the
+        // drawn arrow; dragging still reads the handle's Y for the time. (#boundary-msg)
+        const ep = committedEndpoints(dragItem.index);
+        const y1 = timeToY(msg.fromTime), y2 = timeToY(msg.toTime);
+        const x1 = ep ? ep.fromX : laneX(pp.from), x2 = ep ? ep.toX : laneX(pp.to);
         addHandle(x1, y1, { 'data-h': 'msg', 'data-i': dragItem.index, 'data-end': 'from' });
         addHandle(x2, y2, { 'data-h': 'msg', 'data-i': dragItem.index, 'data-end': 'to' });
         // label-position handle (orange), only when the message has visible text
@@ -2061,8 +2125,7 @@
     if (drag.kind === 'msg') {
       const t = snapTime(yToTime(p.y));
       const lane = nearestLaneClean(p.x);
-      const y = timeToY(t), x = laneX(lane);
-      drag.handle.setAttribute('cy', y); drag.handle.setAttribute('cx', x);
+      const y = timeToY(t);
       // Keep the raw pointer x (not just the snapped lane) so a drop that lands
       // on the message's own lane can pick the self-loop side. (#self-message)
       drag.preview = { t: t, lane: lane, px: p.x };
@@ -2070,16 +2133,29 @@
       // endpoint, follow the pointer with the dragged one, and preview a
       // self-loop when both share a lane (the '<-' render is a path, not a
       // line, so mutating the real element can't show this). (#self-message)
-      const msg = (parseModel().messages || [])[drag.index];
+      const model = parseModel();
+      const msg = ((model && model.messages) || [])[drag.index];
+      // The ring tracks where the arrow actually ends — the snapped boundary when
+      // boundary attach is active, else the lane center — so it follows the ghost
+      // instead of jumping back to the lifeline mid-drag. (#boundary-msg)
+      let handleX = laneX(lane);
       if (msg) {
         const pp = pathInfo(msg) || { from: '', to: '' };
         let fromLane = pp.from, toLane = pp.to;
         let fromY = timeToY(msg.fromTime), toY = timeToY(msg.toTime);
         if (drag.end === 'from') { fromLane = lane; fromY = y; } else { toLane = lane; toY = y; }
+        if (fromLane != null && fromLane === toLane) {
+          const lx = laneX(fromLane), dir = p.x >= lx ? 1 : -1;
+          handleX = snapEndpointX(model, fromLane, lx, y, lx + dir);
+        } else {
+          const s = snapStraightEnds(model, fromLane, laneX(fromLane), fromY, toLane, laneX(toLane), toY);
+          handleX = (drag.end === 'from') ? s.x1 : s.x2;
+        }
         if (drag.ghost && drag.ghost.parentNode) drag.ghost.parentNode.removeChild(drag.ghost);
         drag.ghost = messageGuide(fromLane, fromY, toLane, toY, p.x, drag.selfW);
         drag.ov.appendChild(drag.ghost);
       }
+      drag.handle.setAttribute('cy', y); drag.handle.setAttribute('cx', handleX);
     } else if (drag.kind === 'state') {
       const st = parseModel().states[drag.index];
       const lane = nearestLaneClean(p.x), pt = yToTime(p.y);
@@ -2102,7 +2178,12 @@
       const msg = model && model.messages ? model.messages[drag.index] : null;
       if (msg) {
         const pp = pathInfo(msg) || { from: '', to: '' };
-        const x1 = laneX(pp.from), y1 = timeToY(msg.fromTime), x2 = laneX(pp.to), y2 = timeToY(msg.toTime);
+        // Slide along the drawn (snapped) arrow, so the label ring tracks the same
+        // baseline the renderer places the label on. Endpoints don't move during a
+        // label drag, so the committed snapped ends are exact. (#boundary-msg)
+        const ep = committedEndpoints(drag.index);
+        const x1 = ep ? ep.fromX : laneX(pp.from), y1 = timeToY(msg.fromTime),
+              x2 = ep ? ep.toX : laneX(pp.to), y2 = timeToY(msg.toTime);
         const dx = x2 - x1, dy = y2 - y1, len2 = (dx * dx + dy * dy) || 1;
         const t = ((p.x - x1) * dx + (p.y - y1) * dy) / len2; // param along the arrow
         const ratio = Math.max(-0.4, Math.min(0.4, t - 0.5));
@@ -3417,6 +3498,16 @@
     usw.appendChild(ucb); usw.appendChild(ulbl); panel.appendChild(usw);
     ucb.addEventListener('change', () => { commitStyle(setOption(ed.getValue(), 'graph', 'uniformStateWidth', ucb.checked ? true : null)); });
 
+    // Feature — snap message endpoints to state boundaries (global default; each
+    // state's own `attach` can override this). Unchecked = classic center-to-
+    // center arrows. (#boundary-msg)
+    const mab = document.createElement('label');
+    mab.style.cssText = 'display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:13px;cursor:pointer;';
+    const mcb = document.createElement('input'); mcb.type = 'checkbox'; mcb.checked = graph.messageAttach === 'boundary';
+    const mlbl = document.createElement('span'); mlbl.textContent = 'Snap messages to state boundaries';
+    mab.appendChild(mcb); mab.appendChild(mlbl); panel.appendChild(mab);
+    mcb.addEventListener('change', () => { commitStyle(setOption(ed.getValue(), 'graph', 'messageAttach', mcb.checked ? 'boundary' : null)); });
+
     // Feature 2b — time-gap labels stretch across all lanes (independent toggle). (#time-gap)
     const tgp = document.createElement('label');
     tgp.style.cssText = 'display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:13px;cursor:pointer;';
@@ -3536,37 +3627,55 @@
   // Self-message loop path in diagram units — mirrors the engine's geometry in
   // main.js so the creation ghost matches the rendered result. dir = +1 right /
   // -1 left; w = bulge px. (#self-message)
-  function selfLoopPath(lx, y1, y2, dir, w) {
+  // `nearTop`/`nearBot` optionally pull the loop's two near ends onto a state
+  // edge (boundary attach); a box wider than the loop reverts that end to lx.
+  // Omit them (or pass null) for a plain center-anchored loop. (#boundary-msg)
+  function selfLoopPath(lx, y1, y2, dir, w, nearTop, nearBot) {
     const ts = (layout() && layout().timeStep) || 50;
     let yb = y2;
     if (Math.abs(yb - y1) < ts * 0.25) yb = y1 + ts * 0.25;
     const xf = lx + dir * w;
     const rr = Math.min(8, w / 2, Math.abs(yb - y1) / 2);
-    return 'M ' + lx + ' ' + y1 +
+    const loopInner = xf - dir * rr;
+    let nt = (nearTop != null) ? nearTop : lx;
+    let nb = (nearBot != null) ? nearBot : lx;
+    if (dir > 0) { if (nt > loopInner) nt = lx; if (nb > loopInner) nb = lx; }
+    else { if (nt < loopInner) nt = lx; if (nb < loopInner) nb = lx; }
+    return 'M ' + nt + ' ' + y1 +
       ' L ' + (xf - dir * rr) + ' ' + y1 +
       ' Q ' + xf + ' ' + y1 + ' ' + xf + ' ' + (y1 + rr) +
       ' L ' + xf + ' ' + (yb - rr) +
       ' Q ' + xf + ' ' + yb + ' ' + (xf - dir * rr) + ' ' + yb +
-      ' L ' + lx + ' ' + yb;
+      ' L ' + nb + ' ' + yb;
   }
 
   // The dashed blue message guide, shared by drawing a new message and
   // re-dragging an existing one: a straight line between two lanes, or a
   // self-loop when both endpoints land on the same lane (side chosen by the
-  // pointer x, matching the create-vs-drop rule). Returns an unattached SVG
-  // element the caller appends and later removes. (#self-message)
+  // pointer x, matching the create-vs-drop rule). Endpoints snap to state
+  // boundaries live so the ghost matches what will render. Returns an unattached
+  // SVG element the caller appends and later removes. (#self-message)
   function messageGuide(fromLane, fromY, toLane, toY, px, selfW) {
+    const model = parseModel() || {};
     let g;
     if (fromLane != null && fromLane === toLane) {
       const lx = laneX(fromLane);
       const dir = px >= lx ? 1 : -1;
+      const nearTop = snapEndpointX(model, fromLane, lx, fromY, lx + dir);
+      const nearBot = snapEndpointX(model, fromLane, lx, toY, lx + dir);
       g = document.createElementNS(SVGNS, 'path');
-      g.setAttribute('d', selfLoopPath(lx, fromY, toY, dir, selfW));
+      g.setAttribute('d', selfLoopPath(lx, fromY, toY, dir, selfW, nearTop, nearBot));
       g.setAttribute('fill', 'none');
     } else {
+      const cx1 = laneX(fromLane), cx2 = laneX(toLane);
+      let x1 = cx1, x2 = cx2;
+      if (cx1 != null && cx2 != null) {
+        const s = snapStraightEnds(model, fromLane, cx1, fromY, toLane, cx2, toY);
+        x1 = s.x1; x2 = s.x2;
+      }
       g = document.createElementNS(SVGNS, 'line');
-      g.setAttribute('x1', laneX(fromLane)); g.setAttribute('y1', fromY);
-      g.setAttribute('x2', laneX(toLane)); g.setAttribute('y2', toY);
+      g.setAttribute('x1', x1); g.setAttribute('y1', fromY);
+      g.setAttribute('x2', x2); g.setAttribute('y2', toY);
     }
     g.setAttribute('stroke', '#0071e3'); g.setAttribute('stroke-width', 2); g.setAttribute('stroke-dasharray', '5,4');
     return g;
