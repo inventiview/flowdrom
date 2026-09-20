@@ -15,6 +15,11 @@ const TEXT_DEFAULT_COLORS = {
 };
 const TEXT_TYPES = Object.keys(TEXT_DEFAULT_COLORS);
 
+// The time grid every edit snaps to (the editor's SNAP_TIME mirrors this). Box
+// geometry that has to grow past its declared times rounds the growth to whole
+// steps of it, so a drawn edge always lands on a grid line. (#state-align)
+const TIME_SNAP = 0.1;
+
 // Default frame side margins (px), shared with the editor's geometry so the
 // drawn box, hit-testing and drag handles agree. lMargin / rMargin: horizontal
 // padding beyond the leftmost / rightmost spanned lane. There is no vertical
@@ -1083,17 +1088,26 @@ function renderGraph(modelOverride, measureOnly) {
         else if (uniformStateWidth && laneStateMaxWidth[state.lane]) boxWidth = laneStateMaxWidth[state.lane];
         const boxX = laneXc - (boxWidth / 2);
 
+        // A label taller than the state's own time span grows the box past its
+        // declared times. The growth is quantized to whole 0.1-time steps, the
+        // same number of steps above and below, so the box stays centred on its
+        // time span (as it always has) AND both edges land on grid lines -
+        // ungridded growth is why a state ending at t stopped lining up with one
+        // starting at t. Costs at most one extra step of height. (#state-align)
+        const gridStep = TIME_SNAP * timeStep; // px per snap step
+        const needH = textH + 2 * statePadY;
         let rectY, rectH;
         if (state.fromTime === state.toTime) {
           rectY = laneTop + state.fromTime * timeStep;
-          rectH = textH + 2 * statePadY;
+          rectH = Math.ceil(needH / gridStep) * gridStep; // top stays on the time; bottom on a grid line
         } else {
           const fromGridY = laneTop + state.fromTime * timeStep;
           const toGridY = laneTop + state.toTime * timeStep;
           const boxTop = Math.min(fromGridY, toGridY);
           const boxHeight = Math.abs(toGridY - fromGridY);
-          rectH = Math.max(boxHeight, textH + 2 * statePadY);
-          rectY = boxTop - (rectH > boxHeight ? (rectH - boxHeight) / 2 : 0);
+          const grow = Math.max(0, Math.ceil((needH - boxHeight) / 2 / gridStep)) * gridStep;
+          rectH = boxHeight + 2 * grow;
+          rectY = boxTop - grow;
         }
         const rectCenterY = rectY + rectH / 2;
 
@@ -1530,9 +1544,14 @@ function renderGraph(modelOverride, measureOnly) {
         const lineHeight = fontSize * 1.2;
         const padding = 8;
         
+        // Measure through the SAME class the drawn text uses, so the box is sized
+        // in the face it is rendered in (.info-box-text -> Helvetica/Arial from the
+        // injected stylesheet). Measuring in a hardcoded Segoe UI under-measured
+        // the real width, and the error grows with the font size - which is why
+        // large info text spilled out of its box. (#infobox-size)
         const tempText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        tempText.setAttribute("font-size", fontSize);
-        tempText.setAttribute("font-family", "'Segoe UI', sans-serif");
+        tempText.setAttribute("class", "info-box-text");
+        tempText.style.fontSize = fontSize + "px";
         tempText.style.visibility = "hidden";
         
         lines.forEach((line, i) => {
@@ -1587,7 +1606,10 @@ function renderGraph(modelOverride, measureOnly) {
 
         const infoText = document.createElementNS("http://www.w3.org/2000/svg", "text");
         infoText.setAttribute("x", boxX + padding);
-        infoText.setAttribute("y", boxY + padding + fontSize);
+        // bbox.y is the first line's ascent above its baseline (negative), so this
+        // seats the measured ink exactly `padding` below the box top at any font
+        // size - `padding + fontSize` assumed a 1em ascent and overflowed. (#infobox-size)
+        infoText.setAttribute("y", boxY + padding - bbox.y);
         infoText.setAttribute("class", "info-box-text");
         infoText.setAttribute("font-size", fontSize);
         infoText.setAttribute("data-kind", "infoBox");
@@ -1968,7 +1990,10 @@ function exportSVG(download = true, svgElement = null) {
     return svgTag + '>';
   });
   const svgHeader = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n<!-- Original JSON Input:\n${escapedJson}\n-->\n`;
-  const fullSvgData = svgHeader + svgData;
+  // LF only, always: Load SVG matches the embedded JSON comment back out with \n
+  // line endings, and a CRLF .svg trips git's end-of-line warnings on commit.
+  // Nothing upstream should introduce a CR, so this is a guarantee, not a repair.
+  const fullSvgData = (svgHeader + svgData).replace(/\r\n?/g, '\n');
 
   if (download) {
     const blob = new Blob([fullSvgData], { type: 'image/svg+xml' });

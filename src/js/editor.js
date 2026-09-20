@@ -583,10 +583,13 @@
     const t0 = Math.min(g.fromTime, g.toTime), t1 = Math.max(g.fromTime, g.toTime);
     return { x: left, y: timeToY(t0), w: right - left, h: (t1 - t0) * L.timeStep };
   }
-  // Main-lane clean names ordered left→right (frame horizontal span uses these). (#frames)
-  function mainLanesLR() {
+  // Every lane's clean name ordered left→right — main lanes AND sub-lanes. A
+  // frame spans a contiguous run of these, so it can be drawn over a sub-lane
+  // (or start / end on one) like any other column; the renderer only reads the
+  // span's extreme x positions. (#frames)
+  function lanesLR() {
     const L = layout(); if (!L) return [];
-    return L.lanes.filter((l) => l.clean.indexOf('.') === -1).slice().sort((a, b) => a.x - b.x).map((l) => l.clean);
+    return L.lanes.slice().sort((a, b) => a.x - b.x).map((l) => l.clean);
   }
   // Snap to the time grid. Dividing/multiplying by 0.1 leaves binary FP noise
   // (e.g. 2.8000000000000003), so scale by the integer inverse and round the
@@ -2209,7 +2212,7 @@
           // Adjust the side MARGIN continuously; once the pointer crosses an
           // adjacent lane, that lane joins/leaves the span and the margin is
           // recomputed relative to the new boundary lane. (#frames)
-          const fb0 = frameBox(frame); const order = mainLanesLR();
+          const fb0 = frameBox(frame); const order = lanesLR();
           const xOf = (c) => { const l = layout().lanes.find((z) => z.clean === c); return l ? l.x : 0; };
           const xs = order.map(xOf);
           if (drag.end === 'left') {
@@ -3198,6 +3201,12 @@
     container.scrollTop = (container.scrollTop + oy) * ratio - oy;
     invalidateCandidates();
     rebuildOverlay();
+    // The dashed selection boxes are plain divs in viewport pixels, so a zoom
+    // leaves them behind the diagram: they keep their old size and position, and
+    // the grab region they advertise no longer covers the item - which is why a
+    // selection looked dead (and refused to drag) after zooming. Redraw them from
+    // the items' current client rects. (#3 zoom)
+    renderSelectionBoxes();
     if (dragItem) highlightItem(dragItem);
     clearHover();
   }
@@ -3208,6 +3217,7 @@
     applyCanvasZoom();
     invalidateCandidates();
     rebuildOverlay();
+    renderSelectionBoxes();
     if (dragItem) highlightItem(dragItem);
     clearHover();
   }
@@ -3418,11 +3428,43 @@
     window.flowdromRender = function () { resolveStyleConflict(false); if (typeof window.renderGraph === 'function') window.renderGraph(); };
   }
 
+  // A blank numeric field in the Styling panel means "use the default", but the
+  // native spinner then steps from 0 — so the first arrow press jumps to a value
+  // nowhere near what the diagram is drawing. Seed the field with its real default
+  // on the first spinner click / arrow key instead, so stepping starts from what
+  // is on screen. `def` falls back to the placeholder, which already spells out
+  // the default for the graph fields. (#style-panel)
+  function seedSpinnerDefault(input, def) {
+    const d = (def != null) ? Number(def) : parseFloat(input.placeholder);
+    if (!isFinite(d)) return;
+    const seed = () => {
+      if (String(input.value).trim() !== '') return false; // already has a value: step normally
+      input.value = String(d);
+      input.dispatchEvent(new Event('change'));
+      return true;
+    };
+    input.addEventListener('mousedown', (e) => {
+      // Only the spinner arrows (right edge) seed — clicking into the text area
+      // to type leaves the field blank, so "blank = default" still reads true.
+      if (e.offsetX <= input.clientWidth - 18) return;
+      // preventDefault swallows the native step (so we land ON the default) and
+      // with it the focus the click would have given the field - take it back.
+      if (seed()) { e.preventDefault(); input.focus(); }
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (seed()) e.preventDefault();
+    });
+  }
+
   // Global text styling panel — edits the options.<entity>.{textSize,textColor}.
   function showOptionsPanel() {
     const ed = getEditor(); if (!ed) return;
     const existing = document.querySelector('.flowdrom-options-panel'); if (existing) existing.remove();
     const opts = (parseModel() || {}).options || {};
+    // The engine's built-in per-entity text sizes (what a blank Size field means).
+    const defText = (typeof window !== 'undefined' && typeof window.resolveTextConfig === 'function')
+      ? window.resolveTextConfig({}) : {};
     const panel = document.createElement('div');
     panel.className = 'flowdrom-options-panel';
     const h = document.createElement('div'); h.textContent = 'Styling'; h.style.cssText = 'font-weight:600;margin-bottom:8px;font-size:15px;'; panel.appendChild(h);
@@ -3448,6 +3490,7 @@
       if (cur.textColor && cur.textColor !== 'default') color.value = cur.textColor;
       size.addEventListener('change', () => { const v = size.value.trim() === '' ? null : parseFloat(size.value); commitStyle(setOption(ed.getValue(), ent, 'textSize', v)); });
       color.addEventListener('change', () => { const v = color.value.trim() === '' ? null : color.value.trim(); commitStyle(setOption(ed.getValue(), ent, 'textColor', v)); });
+      seedSpinnerDefault(size, defText[ent] ? defText[ent].size : null);
       grid.appendChild(name); grid.appendChild(size); grid.appendChild(color);
     });
 
@@ -3475,9 +3518,11 @@
     const interval = document.createElement('input'); interval.type = 'number'; interval.min = '0.1'; interval.step = '0.1'; interval.placeholder = '5'; interval.style.width = '80px';
     if (typeof graph.laneLabelInterval === 'number') interval.value = graph.laneLabelInterval;
     interval.addEventListener('change', () => { const v = interval.value.trim() === '' ? null : parseFloat(interval.value); commitStyle(setOption(ed.getValue(), 'graph', 'laneLabelInterval', v)); });
+    seedSpinnerDefault(interval);
     const opacity = document.createElement('input'); opacity.type = 'number'; opacity.min = '0'; opacity.max = '1'; opacity.step = '0.05'; opacity.placeholder = '0.5'; opacity.style.width = '80px';
     if (typeof graph.opacity === 'number') opacity.value = graph.opacity;
     opacity.addEventListener('change', () => { let v = opacity.value.trim() === '' ? null : parseFloat(opacity.value); if (v != null) v = Math.max(0, Math.min(1, v)); commitStyle(setOption(ed.getValue(), 'graph', 'opacity', v)); });
+    seedSpinnerDefault(opacity);
     const styleSel = document.createElement('select'); styleSel.style.width = '88px';
     [['outline', 'Outline'], ['white', 'White'], ['solid', 'Solid']].forEach(([val, txt]) => {
       const o = document.createElement('option'); o.value = val; o.textContent = txt; styleSel.appendChild(o);
@@ -3531,6 +3576,7 @@
     const smwIn = document.createElement('input'); smwIn.type = 'number'; smwIn.min = '10'; smwIn.step = '5'; smwIn.placeholder = '60'; smwIn.style.width = '80px';
     if (typeof graph.selfMessageWidth === 'number') smwIn.value = graph.selfMessageWidth;
     smwIn.addEventListener('change', () => { const v = smwIn.value.trim() === '' ? null : parseFloat(smwIn.value); commitStyle(setOption(ed.getValue(), 'graph', 'selfMessageWidth', v)); });
+    seedSpinnerDefault(smwIn);
     smw.appendChild(smwLbl); smw.appendChild(smwIn); panel.appendChild(smw);
 
     // Feature 3b — lane-to-lane distance, px (blank = 250). The PlantUML importer
@@ -3541,6 +3587,7 @@
     const lspIn = document.createElement('input'); lspIn.type = 'number'; lspIn.min = '80'; lspIn.step = '10'; lspIn.placeholder = '250'; lspIn.style.width = '80px';
     if (typeof graph.laneSpacing === 'number') lspIn.value = graph.laneSpacing;
     lspIn.addEventListener('change', () => { const v = lspIn.value.trim() === '' ? null : parseFloat(lspIn.value); commitStyle(setOption(ed.getValue(), 'graph', 'laneSpacing', v)); });
+    seedSpinnerDefault(lspIn);
     lsp.appendChild(lspLbl); lsp.appendChild(lspIn); panel.appendChild(lsp);
 
     // Feature 4 — autonumber messages (by fromTime, then order). (#autonumber)
@@ -3857,10 +3904,10 @@
         { key: 'color', label: 'Color', def: 'yellow', type: 'color' },
       ], x, y);
     } else if (wasCreating === 'frame') {
-      // Span the contiguous main lanes between the start and end columns, over the
-      // dragged time range. Margins are NOT prompted — they default and can be
+      // Span the contiguous lanes (main or sub) between the start and end columns,
+      // over the dragged time range. Margins are NOT prompted — they default and can be
       // tuned later from the frame menu. (#frames)
-      const order = mainLanesLR();
+      const order = lanesLR();
       const a = nearestLaneClean(d.start.x), b = nearestLaneClean(d.cur.x);
       const iA = order.indexOf(a), iB = order.indexOf(b);
       if (iA < 0 || iB < 0) return;
@@ -3931,6 +3978,7 @@
           if (!skip) applyCanvasZoom(); // re-fits when !zoomUserSet; keeps manual zoom otherwise
           invalidateCandidates();
           rebuildOverlay();
+          renderSelectionBoxes();
           if (dragItem) highlightItem(dragItem);
         });
       });
@@ -4007,7 +4055,7 @@
     const orig = window.renderGraph;
     const wrapped = function () {
       const out = orig.apply(this, arguments);
-      try { invalidateCandidates(); attach(); applyCanvasZoom(); rebuildOverlay(); if (dragItem) highlightItem(dragItem); } catch (e) { /* never break rendering */ }
+      try { invalidateCandidates(); attach(); applyCanvasZoom(); rebuildOverlay(); renderSelectionBoxes(); if (dragItem) highlightItem(dragItem); } catch (e) { /* never break rendering */ }
       try { applyPersistentStyling(); } catch (e) { /* never break rendering */ }
       return out;
     };
